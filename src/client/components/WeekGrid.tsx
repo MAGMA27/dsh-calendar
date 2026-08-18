@@ -10,7 +10,7 @@
 import { useRef, useState } from 'react'
 import type { CalenderClientController } from '../controller.ts'
 import {
-  blockOnDay, dayFraction, normalizeDrag, snapFloor, weekDays,
+  blockOnDay, dayFraction, dayKey, layoutDayTasks, normalizeDrag, snapFloor, weekDays,
   type DayCell,
 } from '../../core/calendar.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -160,11 +160,26 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
     }
   }
 
+  const todayKey = dayKey(todayStart.getTime())
+
   return (
     <div className={css.weekGrid} ref={bodyRef} data-dsh-calender-week=""
       onPointerMove={onEditMove}
       onPointerUp={onEditUp}
       onPointerCancel={onEditUp}>
+      {/* sticky weekday/date header */}
+      <div className={css.weekHeader} data-dsh-calender-week-header="">
+        <div className={css.weekHeaderCorner} />
+        {days.map(day => {
+          const isToday = day.key === todayKey
+          return (
+            <div key={day.key} className={css.weekHeaderCell} data-today={isToday || undefined}>
+              <span className={css.weekHeaderDay}>{dayShortLabel(day.weekday)}</span>
+              <span className={css.weekHeaderDate}>{day.dateMs === undefined ? '' : new Date(day.dateMs).getDate()}</span>
+            </div>
+          )
+        })}
+      </div>
       <div className={css.weekGridCells} style={{ height: gridHeight }}>
         <div className={css.weekGutter}>
           {HOURS.map(h => (
@@ -176,6 +191,9 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
         {days.map(day => {
           const dayEnd = day.dateMs + 24 * 60 * 60_000
           const columnTasks = snap.snapshot.tasks.filter(t => !t.archivedAt && blockOnDay(t.startAt, t.endAt, day.dateMs, dayEnd))
+          // side-by-side columns so overlapping tasks don't cover each other
+          const layout = layoutDayTasks(columnTasks)
+          const colByTask = new Map(layout.map(l => [l.id, l]))
           return (
             <div key={day.key} className={css.weekColumn} data-weekend={(day.weekday === 0 || day.weekday === 6) ? 'true' : undefined}>
               <div
@@ -197,14 +215,20 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
                 const endMs = editing && inColumn ? preview!.end : task.endAt
                 const topFrac = dayFraction(topMs)
                 const durationFrac = (endMs - topMs) / (24 * 60 * 60_000)
+                const pos = colByTask.get(task.id)
+                const columns = pos?.columnCount ?? 1
+                const column = pos?.column ?? 0
+                // Reserve a little horizontal gap between side-by-side blocks.
+                const widthPct = 100 / columns
+                const gapPct = columns > 1 ? 2 : 0
                 return (
                   <TaskBlock
                     key={task.id}
                     task={task}
                     topPct={topFrac * 100}
                     heightPct={Math.max(durationFrac * 100, 1.6)}
-                    leftPct={0}
-                    widthPct={100}
+                    leftPct={Math.max(column * (widthPct) + (gapPct / 2), 0)}
+                    widthPct={Math.max(widthPct - gapPct, 4)}
                     onSelect={selectTask}
                     onEditStart={onEditStart(task)}
                     editing={editing && inColumn}
@@ -235,6 +259,13 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
       </div>
     </div>
   )
+}
+
+/** Short local weekday name (e.g. "Mon"); swaps the CSS order to match. */
+function dayShortLabel(jsWeekday: number): string {
+  const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
+  const d = new Date(2026, 0, 4 + jsWeekday) // 2026-01-04 is Sunday
+  return fmt.format(d)
 }
 
 function dayKeyEquals(day: DayCell, dateMs: number): boolean {

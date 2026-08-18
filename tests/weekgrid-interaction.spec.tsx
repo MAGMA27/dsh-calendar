@@ -60,3 +60,29 @@ describe('WeekGrid interaction', () => {
     await act(async () => { root.unmount(); host.remove() })
   })
 })
+
+
+describe('WeekGrid header', () => {
+  it('renders a weekday/date header row and assigns overlap columns', async () => {
+    const now = new Date(2026, 0, 12, 10, 0, 0) // a Monday
+    const a: TaskRecord = { id: 'a', title: 'A', description: '', prompt: '', startAt: now.getTime(), endAt: now.getTime() + 60 * 60_000, urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [], createdAt: 0, updatedAt: 0 }
+    const b: TaskRecord = { id: 'b', title: 'B', description: '', prompt: '', startAt: now.getTime() + 10 * 60_000, endAt: now.getTime() + 50 * 60_000, urgency: 'low', importance: 'high', done: false, subtasks: [], executions: [], createdAt: 0, updatedAt: 0 }
+    const snap2: CalenderSnapshot = { schemaVersion: 1, revision: 2, tasks: [a, b], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const c2 = new CalenderClientController(new MemoryCalenderHostTransport(snap2, undefined), initialState(now.getTime(), 0))
+    await c2.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<WeekGrid controller={c2} />) })
+
+    const header = host.querySelector('[data-dsh-calender-week-header]')
+    expect(header).toBeTruthy()
+    expect(header!.querySelectorAll('[class*=weekHeaderCell]').length).toBe(7)
+
+    const blocks = [...host.querySelectorAll('[data-dsh-calender-block]')] as HTMLElement[]
+    expect(blocks.length).toBe(2)
+    const lefts = blocks.map(b => b.style.left)
+    expect(lefts[0]).not.toBe(lefts[1])
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+})

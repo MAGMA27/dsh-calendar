@@ -158,3 +158,41 @@ export function hhmm(ms: number): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
+
+/** A positioned task block on one day column. */
+export interface DayBlockLayout {
+  id: string
+  /** 0-based column within the day. */
+  column: number
+  /** Total number of columns (widths are 100 / columnCount). */
+  columnCount: number
+}
+
+/**
+ * Assign overlapping tasks on one day into non-overlapping side-by-side
+ * columns (the classic calendar-event layout): each task occupies the first
+ * column whose previous occupant has already ended. Returns positions without
+ * mutating input; tasks are treated by their [startAt, endAt) intervals.
+ */
+export function layoutDayTasks<T extends { id: string; startAt: number; endAt: number }>(tasks: readonly T[]): DayBlockLayout[] {
+  const sorted = [...tasks].sort((a, b) => a.startAt - b.startAt || a.endAt - b.endAt)
+  const columnEnds: number[] = []
+  const map = new Map<string, DayBlockLayout>()
+  for (const t of sorted) {
+    let column = columnEnds.findIndex(end => end <= t.startAt)
+    if (column === -1) {
+      column = columnEnds.length
+      columnEnds.push(t.endAt)
+    } else {
+      columnEnds[column] = t.endAt
+    }
+    map.set(t.id, { id: t.id, column, columnCount: 0 })
+  }
+  const columnCount = columnEnds.length
+  const result: DayBlockLayout[] = []
+  for (const t of sorted) {
+    const pos = map.get(t.id)!
+    result.push({ ...pos, columnCount })
+  }
+  return result
+}

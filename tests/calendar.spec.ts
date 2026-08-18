@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  dayFraction, dayKey, hhmm, minutesOfDay, normalizeDrag, sameDay, snapCeil,
-  snapFloor, startOfMonth, startOfWeek, weekDays,
+  dayFraction, dayKey, hhmm, layoutDayTasks, minutesOfDay, normalizeDrag, sameDay,
+  snapCeil, snapFloor, startOfMonth, startOfWeek, weekDays,
 } from '../src/core/calendar.ts'
 
 // 2024-01-15 is a Monday in local time.
@@ -68,5 +68,53 @@ describe('time rendering', () => {
   })
   it('dayFraction maps minute-of-day to [0,1]', () => {
     expect(dayFraction(new Date(2024, 0, 15, 12, 0).getTime())).toBeCloseTo(0.5)
+  })
+})
+
+
+describe('layoutDayTasks', () => {
+  it('gives non-overlapping tasks the same single column', () => {
+    const layout = layoutDayTasks([
+      { id: 'a', startAt: 1000, endAt: 2000 },
+      { id: 'b', startAt: 3000, endAt: 4000 },
+    ])
+    expect(layout.map(l => l.columnCount)).toEqual([1, 1])
+    expect(layout.map(l => l.column)).toEqual([0, 0])
+  })
+
+  it('splits overlapping tasks into side-by-side columns', () => {
+    const layout = layoutDayTasks([
+      { id: 'a', startAt: 1000, endAt: 4000 },
+      { id: 'b', startAt: 1500, endAt: 3000 },
+      { id: 'c', startAt: 2000, endAt: 5000 },
+    ])
+    // All three mutually overlap, so they fan into 3 columns.
+    expect(layout.length).toBe(3)
+    expect(layout.find(l => l.id === 'a')!.columnCount).toBe(3)
+    // a and c overlap b, so they never share b's column.
+    expect(layout.find(l => l.id === 'b')!.column).not.toBe(layout.find(l => l.id === 'a')!.column)
+  })
+
+  it('reuses a column once its earlier occupant has ended', () => {
+    const layout = layoutDayTasks([
+      { id: 'a', startAt: 1000, endAt: 2000 },
+      { id: 'b', startAt: 1000, endAt: 3000 },
+      { id: 'c', startAt: 2100, endAt: 2600 },
+    ])
+    // a and c can share a column (a ended before c starts).
+    expect(layout.find(l => l.id === 'a')!.column).toBe(layout.find(l => l.id === 'c')!.column)
+    expect(layout.find(l => l.id === 'b')!.column).not.toBe(layout.find(l => l.id === 'a')!.column)
+  })
+
+  it('preserves columnCount consistent for all blocks', () => {
+    const tasks = [
+      { id: 'a', startAt: 1000, endAt: 6000 },
+      { id: 'b', startAt: 1500, endAt: 2000 },
+      { id: 'c', startAt: 2500, endAt: 3000 },
+      { id: 'd', startAt: 3500, endAt: 4000 },
+    ]
+    const layout = layoutDayTasks(tasks)
+    const counts = new Set(layout.map(l => l.columnCount))
+    expect(counts.size).toBe(1)
   })
 })

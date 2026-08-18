@@ -28,7 +28,8 @@
 
 ## 3. 周视图（WeekGrid）**[M2 已实现]**
 
-- 7 列（周一开头；周末列 `bg-layer-2` 淡色）+ 24h 时间轴；30 分钟吸附（可配 15/60）。
+- 顶部 sticky 表头行：周一~周日 + 日期数字，今日圆形高亮；然后 7 列（周一开头；周末列 `bg-layer-2` 淡色）+ 24h 时间轴；30 分钟吸附（可配 15/60）。
+- **重叠任务并排**：同列重合的任务按 `layoutDayTasks` 分配到并排子列，互不遮盖（保留 2px 间隙）。
 - 拖选（pointerdown→move→up）→ `controller.setDraft` 打开创建弹窗；选中态 `--dsw-static-deepseek-200` 底 + deepseek-500 2px 边框 + 圆角 6px。
 - 现在线 `--dsw-static-red-500`（今日列）；今日日期数字 `brand-primary` 圆形强调。
 - 任务块：圆角 8px、`bg-layer-1` 底、1px `border-l1`；左缘 3px 象限色条；标题 + 徽标行。M2 单列块（leftPct=0,widthPct=100）；同列并排、块移动/拉伸为增强项。

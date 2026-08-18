@@ -54,7 +54,9 @@ export function CalendarView({ controller }: CalendarViewProps) {
             >{t(v.key)}</button>
           ))}
         </div>
-        <button type="button" className={css.btnGhost} onClick={() => controller.setCursor(Date.now())}>{t('board.today')}</button>
+        {(snap.view === 'week' || snap.view === 'month') && (
+          <button type="button" className={css.btnGhost} onClick={() => controller.setCursor(Date.now())}>{t('board.today')}</button>
+        )}
         <input className={css.search} value={query} placeholder={t('board.search')} onChange={e => setQuery(e.target.value)} />
         <button type="button" className={css.btnPrimary} onClick={() => controller.setDraft({ start: Date.now(), end: Date.now() + 60_000 })}>{t('board.new')}</button>
       </div>

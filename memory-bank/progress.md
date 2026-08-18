@@ -95,3 +95,8 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 卸载后 dsh 无法进入：Failed to load plugins - cannot get property "sessions" without inject。
 根因：上一版为叠会话标题在客户端 apply 里读了 ctx.sessions，但客户端插件 inject 只声明 locale，未声明 sessions 服务 → Cordis 访问 ctx.sessions 抛错，整包加载失败。
 修复：Host 已在 /options 直接读 projections.values.title 得到真实会话标题（前一轮），浏览器端叠标题是冗余且危险的——彻底移除 ctx.sessions 访问与 overlay（连同其测试），客户端 refreshCatalog 直接 fetch Host 目录。71 单测通过。
+### 周视图改进（第九轮，3 项）
+1. 周视图顶部加 sticky 表头：周一~周日 + 日期数字，今日圆形高亮。
+2. 今天按钮只在周/月视图显示（矩阵/议程里 cursor 无意义，隐藏以免目的不明）。
+3. 重叠任务不再互相遮盖：core/calendar 新增 layoutDayTasks（经典日历事件并排布局，同列重叠 → 子列），TaskBlock 按 column 计算 left/width，并排留 2px 间隙；新增纯函数单测 + UI 单测。
+约束无回归：客户端仍未访问任何未 inject 服务。

@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+
+# build output
+lib/
+dist/
+
+# DSH / pnpm
+.dsh/
+
+# test / coverage
+coverage/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# local scratch
+scratch/

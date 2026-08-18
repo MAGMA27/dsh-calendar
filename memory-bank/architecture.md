@@ -1,0 +1,53 @@
+# dsh-calender 技术架构（Architecture）
+
+> 状态：已批准。全部结论基于本机 rc.6 已安装包的 exports/types 逐层取证；关键参考：官方仓库 task-board 0.2.0（Host 权威模式）。
+
+## 1. DSH 插件运行模型（已取证）
+
+- **Bundle/Profile**：bundle = 作者分发包，`package.json.dsh.bundle.patch` 指向配置层 `cordis.patch.yml`（顶层数组 `- insert: {id, name}`）；profile = 用户运行组合，`$DSH_HOME/profiles/<name>/package.json.dsh.profile.bundles` 保存有序 bundle 列表。生效顺序：profile bundles → profile cordis.patch.yml → `$DSH_HOME/cordis.patch.yml` → `--patch`。
+- **挂载**：`dsh plugin --profile web add link:<path>` = 在 profile 目录跑 `pnpm add`，成功后**自动对账 bundles**（依赖声明 `dsh.bundle` 即加入层）。无需手改 profile manifest。重启 dsh web 生效。
+- **双面包**：host 半边 `exports "."`（节点进程，可注册 SystemPrompt 段、settings、HTTP route）；浏览器半边 `exports "./client"`（服务端扫 `dsh.client` 元数据后构建 hash 写入 `window.__DSH_BOOT__`，以 `/plugins/<id>/client.js` 提供）。`dsh.client.inject` 为信息性元数据；真正的依赖等待来自 client bundle 导出的 `export const inject`。
+- **客户端 bundle 格式**：`window.__ModuleLoader__.load({ id, factory: (require) => {...} })`；CSS Modules 经 lightningcss 内联为 `<style data-plugin>`；外部化平台模块表（react/react-dom/cordis/ui-slots/web-react/ui-primitives/schema-form + `dsh-client-runtime/client` 豁免）。
+- **构建**：tsdown + 官方 client bundle 预设（deepseek-harness `packages/client/tsdown.client.ts` = dsh-web-ui `shared/tsdown.client.ts`）；client purity gate 拒绝 `@deepseek-ai/*` 非平台模块的值导入。
+
+## 2. 运行时 API（rc.6 签名）
+
+- 浏览器：`ctx.sessions.list/binding(id).session.{rename,prompt,command,getSnapshot,subscribe}`、`ctx.workspaces.connectWorkspace`、`connection.api.sessions.{models,selectModel,history}`、`connection.api.agentPresets.{list,select}`。
+- Host（`ApiProxy` from `@deepseek-ai/dsh-host-apiproxy`）：`api.sessions.{list,create({workspaceId?,cwd?,sessionId?,agentPreset?}),prompt({sessionId,mode:'queue',content}),rename,models,selectModel({sessionId,provider,model,reasoningEffort?}),history}`、`api.workspaces.{list,create}`。
+- 模型目录：`api.sessions.models({sessionId})` → `SessionModels{current:ModelSelection,routable,groups}`；`selectModel` → `{selected:ModelSelection}`（`ModelSelection={provider,model,reasoningEffort?}`）。
+- UI 接缝：外部插件无可用槽位（sidebar/conversation 均单占），侧边栏入口与中间列接管走 **DOM 注入 + MutationObserver 自愈**；跨面板互斥用 `dsh-panel-activate` 事件。
+
+## 3. 本插件架构（Host 权威，用户已确认）
+
+```
+浏览器（同源异步视图）                Host（权威）
+┌──────────────────────────┐   HTTP   ┌──────────────────────────────┐
+│ React 视图（周网格/矩阵/…） │ ────────▶ │ host-routes: /api/calender/*   │
+│ HttpHostTransport        │ ◀──────── │  state(GET) events(SSE) action(POST) │
+│ sidebar-entry/mount      │  snapshot │ HostCalenderService            │
+│ 设置卡 / locales          │          │  ├ host-ledger  ($DSH_HOME/calender/ledger-v1.json, 原子+锁+幂等) │
+└──────────────────────────┘          │  ├ host-service (cron tick 30s + 会话轮询 5s + 对账 + SSE) │
+                                      │  ├ host-runner  (ApiProxy: 建会话→钉子→prompt→结算) │
+                                      │  └ SystemPrompt.section(plugin:calender) │
+                                      └──────────────────────────────┘
+```
+
+- **Host 为权威**：账本/调度/结算全部在 Host；浏览器动作只提交 `action`（判别联合 + requestId 幂等），UI 状态 = 最近 Host snapshot。
+- **共享纯层**：`src/core/`（tasks/calendar/schedule/store）与 `src/protocol.ts` 为纯 TS，host/client 共用；client 不得值导入 host 包。
+- **执行**：手动/定时共用 host-runner；步骤：建/复用会话（sessionId 或 workspaceId 钉子 → 否则最近工作区）→ selectModel（provider 钉子，失败即关闭）→ agent 预设（空白会话）→ /permission → rename → prompt('queue') → 订阅 turnEnds 结算。重启对账：有 sessionId 继续观察，无则取消不重发。
+- **调度**：Host cron（30s tick + 立即 + 恢复）；nextRunAt<=now 触发；先滚动到下一匹配点、仅接受后持久化；已 running 跳过；错过不补跑；`enabled=false` 暂停。
+
+## 4. 协议（protocol.ts）
+
+- `GET /api/calender/state`（no-store）→ `Snapshot{schemaVersion,revision,tasks,scheduler}`
+- `GET /api/calender/events`（SSE）→ revision/scheduler 变更提示（断线重连+页面恢复可见重拉）
+- `POST /api/calender/action` → `{requestId, action}` → Snapshot；action：create/update/delete/archive/restore/setSchedule/run/import
+- 安全：loopback 同源 + 严格校验；POST 仅 JSON；普通 ≤64KiB / import ≤2MiB；action 无命令/可执行路径/shell 文本
+
+## 5. 命名约定
+
+包 `dsh-calender` / 行 id `ui-calender` / 设置命名空间 `calender` / 存储键 `dsh.calender.v1`（localStorage 迁移源）/ 账本 `$DSH_HOME/calender/ledger-v1.json` / DOM `data-dsh-calender-*` / 面板事件名 `calender`。
+
+## 6. 与既有插件共存
+
+独立 DOM 属性/命名空间/存储键；与 task-board/ssh 面板经 `dsh-panel-activate` 互斥（打开本面板 evict 对方 html 属性与状态）；侧边栏入口落在 family 块相对顺序稳定位置。

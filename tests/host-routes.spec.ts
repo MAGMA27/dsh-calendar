@@ -61,8 +61,8 @@ describe('calender routes', () => {
   it('registers state/action/events and serves GET state', async () => {
     const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 't1')
     const { server, registered } = makeFakeServer()
-    const disposers = mountCalenderRoutes(server as never, ledger)
-    expect(registered.map(r => r.path).sort()).toEqual(['/api/calender/action', '/api/calender/events', '/api/calender/state'])
+    const disposers = mountCalenderRoutes(server as never, ledger, {})
+    expect(registered.map(r => r.path).sort()).toEqual(['/api/calender/action', '/api/calender/events', '/api/calender/options', '/api/calender/state'])
 
     const stateRoute = registered.find(r => r.path === '/api/calender/state')!
     const res = fakeRes()
@@ -79,7 +79,7 @@ describe('calender routes', () => {
   it('POSTs an action and returns the fresh snapshot', async () => {
     const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 't1')
     const { server, registered } = makeFakeServer()
-    const disposers = mountCalenderRoutes(server as never, ledger)
+    const disposers = mountCalenderRoutes(server as never, ledger, {})
     const actionRoute = registered.find(r => r.path === '/api/calender/action')!
     const res = fakeRes()
     await actionRoute.handler(fakeReq('POST', {
@@ -97,7 +97,7 @@ describe('calender routes', () => {
   it('rejects a malformed action with 400', async () => {
     const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 't1')
     const { server, registered } = makeFakeServer()
-    const disposers = mountCalenderRoutes(server as never, ledger)
+    const disposers = mountCalenderRoutes(server as never, ledger, {})
     const actionRoute = registered.find(r => r.path === '/api/calender/action')!
     const res = fakeRes()
     await actionRoute.handler(fakeReq('POST', { requestId: '', action: {} }), res)

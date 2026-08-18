@@ -9,13 +9,13 @@ import type { CalenderAction, CalenderSnapshot } from '../src/protocol.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
 
 // jsdom has no PointerEvent; a minimal polyfill backed by MouseEvent.
-const G = globalThis as { PointerEvent?: typeof Event }
+const G = globalThis as unknown as { PointerEvent?: typeof Event }
 if (typeof G.PointerEvent === 'undefined') {
   class MiniPointerEvent extends MouseEvent {
     declare readonly pointerId: number
-    constructor(type: string, init: MouseEventInit & { pointerId?: number }, pointerId = 1) {
+    constructor(type: string, init: MouseEventInit & { pointerId?: number }) {
       super(type, init)
-      this.pointerId = init.pointerId ?? pointerId
+      this.pointerId = init.pointerId ?? 1
     }
   }
   G.PointerEvent = MiniPointerEvent as unknown as typeof Event
@@ -45,12 +45,11 @@ describe('WeekGrid interaction', () => {
     const block = host.querySelector('[data-dsh-calender-block]') as HTMLElement
     expect(block).toBeTruthy()
 
-    await act(async () => {
-      block.dispatchEvent(new G.PointerEvent!('pointerdown', { bubbles: true, clientY: 10, clientX: 10, pointerId: 1 }))
-    })
-    await act(async () => {
-      block.dispatchEvent(new G.PointerEvent!('pointerup', { bubbles: true, clientY: 10, clientX: 10, pointerId: 1 }))
-    })
+    const PE = G.PointerEvent as unknown as typeof MouseEvent
+    const down = new PE('pointerdown', { bubbles: true, clientY: 10, clientX: 10, pointerId: 1 } as MouseEventInit)
+    const up = new PE('pointerup', { bubbles: true, clientY: 10, clientX: 10, pointerId: 1 } as MouseEventInit)
+    await act(async () => { block.dispatchEvent(down) })
+    await act(async () => { block.dispatchEvent(up) })
     await act(async () => {
       block.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })

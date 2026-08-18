@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { buildCatalog, buildCatalogAsync, EMPTY_CATALOG } from '../src/client/exec-catalog.ts'
+import { buildCatalog, buildCatalogAsync, EMPTY_CATALOG } from '../src/core/exec-catalog.ts'
 
 describe('exec-catalog buildCatalog', () => {
   it('maps workspaces, sessions, and sync models into dropdown options', () => {

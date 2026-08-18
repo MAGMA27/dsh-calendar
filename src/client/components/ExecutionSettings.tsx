@@ -6,7 +6,7 @@
  * parent; emits a TaskUpdatePatch-style partial.
  */
 import { TASK_PERMISSIONS, type TaskPermission } from '../../core/tasks.ts'
-import type { ExecutionCatalog } from '../exec-catalog.ts'
+import type { ExecutionCatalog } from '../../core/exec-catalog.ts'
 import { t } from '../locales.ts'
 import css from '../calender.module.css'
 

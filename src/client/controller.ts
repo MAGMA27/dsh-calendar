@@ -8,7 +8,7 @@ import type { WeekStart } from '../core/calendar.ts'
 import type { TaskRecord } from '../core/tasks.ts'
 import type { CalenderAction, CalenderSnapshot } from '../protocol.ts'
 import type { CalenderHostTransport } from './host-api.ts'
-import type { ExecutionCatalog } from './exec-catalog.ts'
+import type { ExecutionCatalog } from '../core/exec-catalog.ts'
 
 /** The available calendar views. */
 export type CalenderView = 'week' | 'month' | 'matrix' | 'agenda'
@@ -99,6 +99,9 @@ export class CalenderClientController {
   setDraft(draft: { start: number; end: number } | undefined): void { this.set({ draft }) }
   /** Replace the execution-settings option catalog (runtime data). */
   setCatalog(catalog: ExecutionCatalog): void { this.set({ catalog }) }
+
+  /** Read the catalog from the transport. */
+  transportOptions(): Promise<ExecutionCatalog> { return this.transport.options() }
 
   selectedTask(): TaskRecord | undefined {
     return this.state.snapshot.tasks.find(t => t.id === this.state.selectedTaskId)

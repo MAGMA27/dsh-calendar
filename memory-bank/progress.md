@@ -74,3 +74,6 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 - **跨日拖拽**：move 用 x 决定目标星期列、y 决定当天时间；渲染浮动 `.movePreview` 跟随指针跨列；松手按 (startAt,endAt) update 提交。
 - resize 仍限定在原任务当天。
 - 新增 `tests/weekgrid-interaction.spec.tsx`：断言「纯点击选中且不 dispatch update」（PointerEvent 已打 polyfill）。
+### 复测反馈第二轮（2 项）
+1. 议程完成项仍留在过期栏：AgendaPanel 只按时间分组，未处理 done。修复：新增 agenda.done 组，完成任务归入「已完成」，不再混在过期/今天/近期。
+2. provider/模型/工作区/会话仍是填空框：客户端用 fragile 类型断言读 ctx 且只在 apply 跑一次，常静默失败 → 目录空 → 回退文本框。修复：改为 Host 权威——新增 Host 路由 GET /api/calender/options（经 ctx.apiProxy 读 LLM 模型目录/工作区/会话，buildCatalogFromApi 投影）；客户端 HttpCalenderHostTransport.options() fetch；exec-catalog.ts 移到 src/core（host/client 共享）；host index 注入 apiProxy。

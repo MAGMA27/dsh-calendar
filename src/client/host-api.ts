@@ -11,6 +11,7 @@ import {
   type CalenderSnapshot,
 } from '../protocol.ts'
 import type { TaskRecord } from '../core/tasks.ts'
+import type { ExecutionCatalog } from '../core/exec-catalog.ts'
 
 const REQUEST_TIMEOUT_MS = 15_000
 
@@ -37,6 +38,8 @@ export interface CalenderHostTransport {
   subscribe(listener: () => void): () => void
   /** One-shot v1 localStorage import into the Host ledger. */
   bootstrap(legacy: readonly TaskRecord[]): Promise<CalenderSnapshot>
+  /** Read the execution-settings option catalog (workspaces/sessions/providers). */
+  options(): Promise<ExecutionCatalog>
 }
 
 function safeStorage(): Storage | undefined {
@@ -62,6 +65,11 @@ export class HttpCalenderHostTransport implements CalenderHostTransport {
   async state(): Promise<CalenderSnapshot> {
     const res = await fetch(`${this.base}/state`, { cache: 'no-store', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
     return await readJson<CalenderSnapshot>(res)
+  }
+
+  async options(): Promise<ExecutionCatalog> {
+    const res = await fetch(`${this.base}/options`, { cache: 'no-store', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+    return await readJson<ExecutionCatalog>(res)
   }
 
   async action(action: CalenderAction): Promise<CalenderSnapshot> {
@@ -170,4 +178,5 @@ export class MemoryCalenderHostTransport implements CalenderHostTransport {
   }
   subscribe(_listener: () => void): () => void { return () => {} }
   async bootstrap(legacy: readonly TaskRecord[]) { void legacy; return this.snap }
+  async options(): Promise<ExecutionCatalog> { return { workspaces: [], sessions: [], providers: [], modelsByProvider: {} } }
 }

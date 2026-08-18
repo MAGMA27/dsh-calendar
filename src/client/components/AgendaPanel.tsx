@@ -1,4 +1,4 @@
-/** Agenda list grouped by overdue / today / upcoming, with subtask progress. */
+/** Agenda list grouped by overdue / today / upcoming / done, with subtask progress. */
 import type { CalenderClientController } from '../controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
@@ -6,9 +6,13 @@ import css from '../calender.module.css'
 
 interface AgendaPanelProps { controller: CalenderClientController }
 
-function bucket(task: TaskRecord, now: number): 'overdue' | 'today' | 'upcoming' {
+type Bucket = 'overdue' | 'today' | 'upcoming' | 'done'
+
+function bucket(task: TaskRecord, now: number): Bucket {
+  if (task.done) return 'done'
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
   const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999)
-  if (task.startAt < new Date(now).setHours(0, 0, 0, 0)) return 'overdue'
+  if (task.startAt < todayStart.getTime()) return 'overdue'
   if (task.startAt <= todayEnd.getTime()) return 'today'
   return 'upcoming'
 }
@@ -16,10 +20,11 @@ function bucket(task: TaskRecord, now: number): 'overdue' | 'today' | 'upcoming'
 export function AgendaPanel({ controller }: AgendaPanelProps) {
   const snap = controller.getSnapshot()
   const now = Date.now()
-  const groups: Array<{ key: 'overdue' | 'today' | 'upcoming'; label: string; tasks: TaskRecord[] }> = [
+  const groups: Array<{ key: Bucket; label: string; tasks: TaskRecord[] }> = [
     { key: 'overdue', label: t('agenda.overdue'), tasks: [] },
     { key: 'today', label: t('agenda.today'), tasks: [] },
     { key: 'upcoming', label: t('agenda.upcoming'), tasks: [] },
+    { key: 'done', label: t('agenda.done'), tasks: [] },
   ]
   for (const task of snap.snapshot.tasks) {
     if (task.archivedAt !== undefined) continue

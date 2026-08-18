@@ -5,22 +5,27 @@
  * this service.
  */
 import type { Context } from '@deepseek-ai/cordis'
-// Type-only: pulls the web-server service's Context augmentation (ctx.webServer).
+// Type-only: pulls the service Context augmentations.
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import type {} from '@deepseek-ai/dsh-host-apiproxy'
 import { CalenderHostService } from './host-service.ts'
 import { mountCalenderRoutes } from './host-routes.ts'
 import { acquireLedgerLock } from './host-ledger.ts'
 import { dshHome } from './dsh-home.ts'
+import type { CatalogApiFace } from './host-options.ts'
 
-/** Required services: the web server to register the calender routes on. */
-export const inject = ['webServer']
+/** Required services: the web server to register the calender routes on, and
+ * the ApiProxy to read the live execution-settings catalog (workspaces,
+ * sessions, LLM providers/models). */
+export const inject = ['webServer', 'apiProxy']
 
 /** Host plugin body. */
 export function apply(ctx: Context): void {
   const releaseLock = acquireLedgerLock(dshHome())
 
   const service = new CalenderHostService()
-  const disposers = mountCalenderRoutes(ctx.webServer, service.ledger)
+  const api = ctx.apiProxy as unknown as CatalogApiFace
+  const disposers = mountCalenderRoutes(ctx.webServer, service.ledger, api)
 
   ctx.effect(() => {
     return () => {

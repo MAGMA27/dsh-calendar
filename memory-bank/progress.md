@@ -83,3 +83,5 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 ### 复测反馈第四轮（1 项）
 执行设置的会话选择：改为显示会话「名字」（cwd 末段文件夹名）而非完整路径；隐藏已归档会话；并做了项目→会话二级分组（workspace.list 提供 sessionIds 与 archivedSessionIds，sessions.list 提供 cwd 名字）。
 实现：ExecutionCatalog 新增 projects 分组字段；host-options buildCatalogFromApi 直接按 workspace 分组、跳过归档会话、用 cwd 末段命名；客户端 ExecutionSettings 新增 GroupedSessionSelect 渲染 <optgroup>。新增 exec-settings-ui 测试。
+### 复测反馈第五轮（1 项）
+会话下拉的两个问题：① 选了工作区后仍显示所有工作区会话 → 加「级联」：选中工作区只显示该项目下的会话，并清除原会话选择；② 同一项目内所有会话名相同（sessions.list 只给 cwd，同项目共享目录）→ 对同项目内重名会话追加短 id 后缀（如 p · aaaaaa）保证可区分。

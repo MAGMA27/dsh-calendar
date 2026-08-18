@@ -51,6 +51,18 @@ function sessionNameOf(cwd: string | undefined, sessionId: string): string {
   return segments.length === 0 ? sessionId : segments[segments.length - 1]
 }
 
+/** Append a short id suffix to labels that repeat within one project, so
+ * several sessions under the same workspace never display identically. */
+function uniquifyLabels(items: Array<{ id: string; label: string }>): Array<{ id: string; label: string }> {
+  const seen = new Map<string, number>()
+  return items.map(item => {
+    const count = (seen.get(item.label) ?? 0) + 1
+    seen.set(item.label, count)
+    const shortId = item.id.length > 6 ? item.id.slice(0, 6) : item.id
+    return count === 1 ? item : { ...item, label: `${item.label} · ${shortId}` }
+  })
+}
+
 /** Build the catalog from the ApiProxy: providers+models, workspaces, and
  * project-grouped sessions (archived sessions excluded). Resolves a
  * non-throwing catalog on every path. */
@@ -90,10 +102,13 @@ export async function buildCatalogFromApi(api: CatalogApiFace): Promise<Executio
   // projects group sessions by their owning workspace, skipping archived ids.
   for (const w of wsItems ?? []) {
     const id = String(w.workspaceId)
-    const sessions = (w.sessionIds ?? [])
+    const raw = (w.sessionIds ?? [])
       .map(String)
       .filter(sid => !archived.has(sid))
       .map(sid => ({ id: sid, label: nameById.get(sid) ?? sessionNameOf(undefined, sid) }))
+    // Sessions in one project share the same cwd, so their cwd-basename labels
+    // collide; disambiguate duplicates with a short id suffix.
+    const sessions = uniquifyLabels(raw)
     catalog.projects.push({ id, label: w.title || w.path || id, sessions })
     catalog.workspaces.push({ id, label: w.title || w.path || id })
     catalog.sessions.push(...sessions)

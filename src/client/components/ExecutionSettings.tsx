@@ -67,21 +67,27 @@ function TextField(props: {
   )
 }
 
-/** Session <select> grouped by project (<optgroup> per workspace). */
+/** Session <select> grouped by project. When a workspace is chosen, only that
+ * project's sessions appear (cascade); otherwise every project is shown as an
+ * optgroup. */
 function GroupedSessionSelect(props: {
   label: string
   value: string | undefined
+  workspaceId: string | undefined
   projects: Array<{ id: string; label: string; sessions: Array<{ id: string; label: string }> }>
   placeholder: string
   onPick: (id: string | undefined) => void
 }): JSX.Element {
-  const { label, value, projects, placeholder, onPick } = props
+  const { label, value, workspaceId, projects, placeholder, onPick } = props
+  const scoped = workspaceId !== undefined
+    ? projects.filter(p => p.id === workspaceId)
+    : projects
   return (
     <div className={css.formRow}>
       <label className={css.formLabel}>{label}</label>
       <select className={css.select} value={value ?? ''} onChange={e => onPick(e.target.value === '' ? undefined : e.target.value)}>
         <option value="">{placeholder}</option>
-        {projects.map(project => (
+        {scoped.map(project => (
           <optgroup key={project.id} label={project.label}>
             {project.sessions.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </optgroup>
@@ -114,13 +120,13 @@ export function ExecutionSettings({ value, catalog, onChange }: ExecutionSetting
 
       {hasWorkspaces
         ? <OptionSelect label={t('exec.workspace')} value={value.workspaceId} options={catalog!.workspaces}
-            placeholder={t('exec.workspacePlaceholder')} allowBlank onPick={v => onChange({ workspaceId: v })} />
+            placeholder={t('exec.workspacePlaceholder')} allowBlank onPick={v => { onChange({ workspaceId: v, sessionId: undefined }) }} />
         : <TextField label={t('exec.workspace')} value={value.workspaceId} placeholder={t('exec.workspacePlaceholder')}
-            onPick={v => onChange({ workspaceId: v })} />}
+            onPick={v => { onChange({ workspaceId: v, sessionId: undefined }) }} />}
 
       {(hasSessions || hasGroupedSessions)
         ? hasGroupedSessions
-          ? <GroupedSessionSelect label={t('exec.session')} value={value.sessionId} projects={catalog!.projects}
+          ? <GroupedSessionSelect label={t('exec.session')} value={value.sessionId} workspaceId={value.workspaceId} projects={catalog!.projects}
               placeholder={t('exec.sessionPlaceholder')} onPick={v => onChange({ sessionId: v })} />
           : <OptionSelect label={t('exec.session')} value={value.sessionId} options={catalog!.sessions}
               placeholder={t('exec.sessionPlaceholder')} allowBlank onPick={v => onChange({ sessionId: v })} />

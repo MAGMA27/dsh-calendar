@@ -123,7 +123,7 @@ export function initialState(cursor: number = Date.now(), weekStart: WeekStart =
     selectedTaskId: undefined,
     draft: undefined,
     open: false,
-    catalog: { workspaces: [], sessions: [], providers: [], modelsByProvider: {} },
+    catalog: { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} },
     status: 'loading',
     error: null,
   }

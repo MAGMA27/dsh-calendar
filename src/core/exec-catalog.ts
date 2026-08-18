@@ -15,17 +15,27 @@ export interface ExecProviderOption { id: string; label: string }
 /** One selectable model under a provider. */
 export interface ExecModelOption { id: string; label: string }
 
-/** Flat catalog the execution-settings form renders as <select>s. */
+/** One project (workspace) with its sessions, for grouped session selection. */
+export interface ExecProjectOption {
+  id: string
+  label: string
+  sessions: ExecSessionOption[]
+}
+
+/** Catalog the execution-settings form renders as <select>s. */
 export interface ExecutionCatalog {
   workspaces: ExecWorkspaceOption[]
+  /** Flat session list (archived excluded); the flat fallback. */
   sessions: ExecSessionOption[]
+  /** Project-grouped sessions (project → sessions), archived excluded. */
+  projects: ExecProjectOption[]
   providers: ExecProviderOption[]
   /** Models keyed by provider id. */
   modelsByProvider: Record<string, ExecModelOption[]>
 }
 
 export const EMPTY_CATALOG: ExecutionCatalog = {
-  workspaces: [], sessions: [], providers: [], modelsByProvider: {},
+  workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {},
 }
 
 /** Minimal read face the loader needs from the live runtime; satisfies both
@@ -42,7 +52,7 @@ function unwrap<T>(v: T | (() => T)): T {
 
 /** Build the catalog from the runtime face (returns EMPTY_CATALOG on gaps). */
 export function buildCatalog(face: ExecutionRuntimeFace): ExecutionCatalog {
-  const cat: ExecutionCatalog = { workspaces: [], sessions: [], providers: [], modelsByProvider: {} }
+  const cat: ExecutionCatalog = { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} }
 
   try {
     const ws = unwrap(face.workspaces)

@@ -1,7 +1,11 @@
 /**
  * Host-side ExecutionSettings catalog: reads the live dsh runtime through the
  * host ApiProxy (LLM model catalog, workspaces, sessions) and projects it into
- * the same flat ExecutionCatalog the browser form renders as dropdowns.
+ * the ExecutionCatalog the browser form renders as dropdowns.
+ *
+ * Sessions are grouped under their owning project (workspace); archived
+ * sessions are excluded, and each session is labelled by its display name
+ * (cwd basename) rather than the full folder path.
  *
  * Serving from the Host keeps the data source authoritative and avoids the
  * browser reaching into runtime internals; the client fetches it over HTTP
@@ -10,16 +14,28 @@
 // Type-only imports keep the ApiProxy shapes available without pulling the
 // host-apiproxy value runtime into this bundle.
 import type {
-  ModelProviderGroup, SessionSummary, WorkspaceView,
+  ModelProviderGroup,
 } from '@deepseek-ai/dsh-host-apiproxy/api'
-import { buildCatalogAsync, type ExecutionCatalog } from './core/exec-catalog.ts'
+import type { ExecutionCatalog } from './core/exec-catalog.ts'
 
-/** The narrow ApiProxy faces the catalog needs (structural; extra fields on
- * real objects are fine). */
+/** A minimal structural workspace row (extra fields on real objects are fine). */
+interface WsRow {
+  workspaceId: unknown
+  title: string
+  path?: string
+  sessionIds?: readonly unknown[]
+}
+/** A minimal structural session row. */
+interface SsRow {
+  sessionId: unknown
+  cwd?: string
+}
+
+/** The narrow ApiProxy faces the catalog needs. */
 export interface CatalogApiFace {
   llm?: { models(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { groups?: readonly ModelProviderGroup[] } } }> }
-  workspace?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { items?: ReadonlyArray<{ workspaceId: unknown; title: string; path?: string }> } } }> }
-  sessions?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { items?: ReadonlyArray<{ sessionId: unknown; cwd?: string }> } } }> }
+  workspace?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { items?: readonly WsRow[]; archivedSessionIds?: readonly unknown[] } } }> }
+  sessions?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { items?: readonly SsRow[] } } }> }
 }
 
 let rpcSeq = 0
@@ -27,11 +43,22 @@ function req(): { rpcId: unknown; payload: object } {
   return { rpcId: `calender-options-${rpcSeq++}`, payload: {} }
 }
 
-/** Build the flat catalog from the ApiProxy. Always resolves (never rejects). */
+/** A session's display name: the last non-empty path segment of its cwd
+ * (the project directory), falling back to the session id. */
+function sessionNameOf(cwd: string | undefined, sessionId: string): string {
+  if (cwd === undefined || cwd === '') return sessionId
+  const segments = cwd.replaceAll(/\\/g, '/').split('/').filter(Boolean)
+  return segments.length === 0 ? sessionId : segments[segments.length - 1]
+}
+
+/** Build the catalog from the ApiProxy: providers+models, workspaces, and
+ * project-grouped sessions (archived sessions excluded). Resolves a
+ * non-throwing catalog on every path. */
 export async function buildCatalogFromApi(api: CatalogApiFace): Promise<ExecutionCatalog> {
   let groups: readonly ModelProviderGroup[] | undefined
-  let wsItems: readonly WorkspaceView[] | undefined
-  let ssItems: readonly SessionSummary[] | undefined
+  let wsItems: readonly WsRow[] | undefined
+  let archived = new Set<string>()
+  let ssItems: readonly SsRow[] | undefined
 
   try {
     const res = await api.llm?.models?.(req()) as { result?: { ok?: boolean; value?: { groups?: readonly ModelProviderGroup[] } } } | undefined
@@ -39,21 +66,52 @@ export async function buildCatalogFromApi(api: CatalogApiFace): Promise<Executio
   } catch { /* ignore */ }
 
   try {
-    const res = await api.workspace?.list?.(req()) as { result?: { ok?: boolean; value?: { items?: readonly WorkspaceView[] } } } | undefined
-    if (res?.result?.ok === true && res.result.value !== undefined) wsItems = res.result.value.items
+    const res = await api.workspace?.list?.(req()) as { result?: { ok?: boolean; value?: { items?: readonly WsRow[]; archivedSessionIds?: readonly unknown[] } } } | undefined
+    if (res?.result?.ok === true && res.result.value !== undefined) {
+      wsItems = res.result.value.items
+      archived = new Set((res.result.value.archivedSessionIds ?? []).map(String))
+    }
   } catch { /* ignore */ }
 
   try {
-    const res = await api.sessions?.list?.(req()) as { result?: { ok?: boolean; value?: { items?: readonly SessionSummary[] } } } | undefined
+    const res = await api.sessions?.list?.(req()) as { result?: { ok?: boolean; value?: { items?: readonly SsRow[] } } } | undefined
     if (res?.result?.ok === true && res.result.value !== undefined) ssItems = res.result.value.items
   } catch { /* ignore */ }
 
-  return await buildCatalogAsync({
-    workspaces: { items: (wsItems ?? []).map(w => ({ workspaceId: String(w.workspaceId), title: w.title, path: w.path })) },
-    sessions: {
-      ids: (ssItems ?? []).map(s => String(s.sessionId)),
-      byId: Object.fromEntries((ssItems ?? []).map(s => [String(s.sessionId), { id: String(s.sessionId), displayTitle: s.cwd ?? String(s.sessionId) }])),
-    },
-    models: async () => ({ groups: groups === undefined ? [] : [...groups] }),
-  })
+  // session id → display name (basename of cwd)
+  const nameById = new Map<string, string>()
+  for (const s of ssItems ?? []) {
+    const id = String(s.sessionId)
+    nameById.set(id, sessionNameOf(s.cwd, id))
+  }
+
+  const catalog: ExecutionCatalog = { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} }
+
+  // projects group sessions by their owning workspace, skipping archived ids.
+  for (const w of wsItems ?? []) {
+    const id = String(w.workspaceId)
+    const sessions = (w.sessionIds ?? [])
+      .map(String)
+      .filter(sid => !archived.has(sid))
+      .map(sid => ({ id: sid, label: nameById.get(sid) ?? sessionNameOf(undefined, sid) }))
+    catalog.projects.push({ id, label: w.title || w.path || id, sessions })
+    catalog.workspaces.push({ id, label: w.title || w.path || id })
+    catalog.sessions.push(...sessions)
+  }
+
+  // sessions not accounted to any workspace (ungrouped) — still listed flat.
+  for (const s of ssItems ?? []) {
+    const id = String(s.sessionId)
+    if (archived.has(id)) continue
+    if (catalog.sessions.some(x => x.id === id)) continue
+    catalog.sessions.push({ id, label: nameById.get(id) ?? id })
+  }
+
+  if (groups !== undefined) {
+    catalog.providers = groups.map(g => ({ id: g.id, label: g.name || g.id }))
+    catalog.modelsByProvider = {}
+    for (const g of groups) catalog.modelsByProvider[g.id] = g.models.map(m => ({ id: m.id, label: m.name || m.id }))
+  }
+
+  return catalog
 }

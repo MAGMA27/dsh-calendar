@@ -80,3 +80,6 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 ### 复测反馈第三轮（1 项）
 定时清除不生效：TaskDetailPanel 的 save 总是发 enabled:true，且 setSchedule 把 undefined 视作「不动该字段」，导致清空 cron/dueAt 后 schedule 仍 enabled、周视图定时徽标不消失。
 修复：setSchedule 引入 null 语义（null 清除字段、undefined 不动）；协议 SetScheduleAction.patch 与 host-ledger 校验相应放宽；save 在无 cron 且无 dueAt 时发 enabled:false + cron/dueAt 为 null；新增「清除定时」按钮。新增单测。
+### 复测反馈第四轮（1 项）
+执行设置的会话选择：改为显示会话「名字」（cwd 末段文件夹名）而非完整路径；隐藏已归档会话；并做了项目→会话二级分组（workspace.list 提供 sessionIds 与 archivedSessionIds，sessions.list 提供 cwd 名字）。
+实现：ExecutionCatalog 新增 projects 分组字段；host-options buildCatalogFromApi 直接按 workspace 分组、跳过归档会话、用 cwd 末段命名；客户端 ExecutionSettings 新增 GroupedSessionSelect 渲染 <optgroup>。新增 exec-settings-ui 测试。

@@ -67,9 +67,34 @@ function TextField(props: {
   )
 }
 
+/** Session <select> grouped by project (<optgroup> per workspace). */
+function GroupedSessionSelect(props: {
+  label: string
+  value: string | undefined
+  projects: Array<{ id: string; label: string; sessions: Array<{ id: string; label: string }> }>
+  placeholder: string
+  onPick: (id: string | undefined) => void
+}): JSX.Element {
+  const { label, value, projects, placeholder, onPick } = props
+  return (
+    <div className={css.formRow}>
+      <label className={css.formLabel}>{label}</label>
+      <select className={css.select} value={value ?? ''} onChange={e => onPick(e.target.value === '' ? undefined : e.target.value)}>
+        <option value="">{placeholder}</option>
+        {projects.map(project => (
+          <optgroup key={project.id} label={project.label}>
+            {project.sessions.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </optgroup>
+        ))}
+      </select>
+    </div>
+  )
+}
+
 export function ExecutionSettings({ value, catalog, onChange }: ExecutionSettingsProps) {
   const hasWorkspaces = catalog !== undefined && catalog.workspaces.length > 0
   const hasSessions = catalog !== undefined && catalog.sessions.length > 0
+  const hasGroupedSessions = catalog !== undefined && catalog.projects.length > 0
   const hasProviders = catalog !== undefined && catalog.providers.length > 0
 
   // If a pinned provider is no longer selected, default the model dropdown to it.
@@ -93,9 +118,12 @@ export function ExecutionSettings({ value, catalog, onChange }: ExecutionSetting
         : <TextField label={t('exec.workspace')} value={value.workspaceId} placeholder={t('exec.workspacePlaceholder')}
             onPick={v => onChange({ workspaceId: v })} />}
 
-      {hasSessions
-        ? <OptionSelect label={t('exec.session')} value={value.sessionId} options={catalog!.sessions}
-            placeholder={t('exec.sessionPlaceholder')} allowBlank onPick={v => onChange({ sessionId: v })} />
+      {(hasSessions || hasGroupedSessions)
+        ? hasGroupedSessions
+          ? <GroupedSessionSelect label={t('exec.session')} value={value.sessionId} projects={catalog!.projects}
+              placeholder={t('exec.sessionPlaceholder')} onPick={v => onChange({ sessionId: v })} />
+          : <OptionSelect label={t('exec.session')} value={value.sessionId} options={catalog!.sessions}
+              placeholder={t('exec.sessionPlaceholder')} allowBlank onPick={v => onChange({ sessionId: v })} />
         : <TextField label={t('exec.session')} value={value.sessionId} placeholder={t('exec.sessionPlaceholder')}
             onPick={v => onChange({ sessionId: v })} />}
 

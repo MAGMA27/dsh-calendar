@@ -281,7 +281,7 @@ export class HostLedger {
         return true
       }
       case 'setSchedule': {
-        if (action.patch.cron !== undefined && action.patch.cron.trim() !== '' && !isValidCron(action.patch.cron)) return false
+        if (typeof action.patch.cron === 'string' && action.patch.cron.trim() !== '' && !isValidCron(action.patch.cron)) return false
         let tasks = setSchedule(this.state.tasks, action.id, action.patch, now)
         const task = tasks.find(t => t.id === action.id)
         if (task === undefined) return false

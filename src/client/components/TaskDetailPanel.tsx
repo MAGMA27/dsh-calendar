@@ -51,14 +51,25 @@ export function TaskDetailPanel({ controller, task, onClose }: TaskDetailPanelPr
       },
     })
     const dueMs = dueAt.trim() === '' ? undefined : new Date(dueAt).getTime()
+    const hasCron = cron.trim() !== ''
+    // A schedule exists only when a cron or a one-off due time is actually set;
+    // clearing both must switch the schedule off (and drop the week badge).
+    const enabled = hasCron || dueMs !== undefined
     await controller.dispatch({
       kind: 'setSchedule',
       id: task.id,
-      patch: { enabled: true, cron: cron.trim() === '' ? undefined : cron.trim(), dueAt: dueMs },
+      patch: { enabled, cron: hasCron ? cron.trim() : null, dueAt: dueMs ?? null },
     })
     setDirty(false)
     setMessage(t('detail.saved'))
     setError(null)
+  }
+
+  const clearSchedule = (): void => {
+    setCron('')
+    setDueAt('')
+    setDirty(true)
+    void controller.dispatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, cron: null, dueAt: null } })
   }
 
   const runNow = async (): Promise<void> => {
@@ -144,6 +155,9 @@ export function TaskDetailPanel({ controller, task, onClose }: TaskDetailPanelPr
           <label className={css.formLabel}>{t('detail.dueAt')}</label>
           <input className={css.input} type="datetime-local" value={dueAt} onChange={e => { setDueAt(e.target.value); markDirty() }} />
         </div>
+        {(task.schedule?.enabled === true) && (
+          <button type="button" className={css.btnGhost} onClick={clearSchedule}>{t('detail.clearSchedule')}</button>
+        )}
         {task.schedule?.nextRunAt !== undefined && (
           <div className={css.scheduleNext}>{new Date(task.schedule.nextRunAt).toLocaleString()}</div>
         )}

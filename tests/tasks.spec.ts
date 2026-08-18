@@ -119,4 +119,13 @@ describe('setSchedule / setNextRun', () => {
     const [next] = setSchedule([s], 't1', { cron: '' }, 2)
     expect(next.schedule?.cron).toBeUndefined()
   })
+
+  it('clears the schedule (enabled false, no cron/dueAt) so the week badge drops', () => {
+    const [armed] = setSchedule([one()], 't1', { enabled: true, cron: '0 9 * * *' }, 1)
+    expect(armed.schedule?.enabled).toBe(true)
+    const [cleared] = setSchedule([armed], 't1', { enabled: false, cron: null, dueAt: null }, 2)
+    expect(cleared.schedule?.enabled).toBe(false)
+    expect(cleared.schedule?.cron).toBeUndefined()
+    expect(cleared.schedule?.dueAt).toBeUndefined()
+  })
 })

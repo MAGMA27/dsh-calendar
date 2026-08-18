@@ -90,11 +90,11 @@ export interface DeleteTaskAction { kind: 'delete'; id: string }
 export interface ArchiveTaskAction { kind: 'archive'; id: string }
 export interface RestoreTaskAction { kind: 'restore'; id: string }
 
-/** Set a task's scheduled-run rule. */
+/** Set a task's scheduled-run rule (`null` clears cron/dueAt). */
 export interface SetScheduleAction {
   kind: 'setSchedule'
   id: string
-  patch: { enabled?: boolean; cron?: string; dueAt?: number }
+  patch: { enabled?: boolean; cron?: string | null; dueAt?: number | null }
 }
 
 /** Request a real dsh execution of a task (manual run). */

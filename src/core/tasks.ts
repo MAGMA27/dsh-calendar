@@ -316,15 +316,24 @@ export function restoreTask(tasks: readonly TaskRecord[], id: string, now: numbe
   return { tasks: next, restored }
 }
 
-/** Set (merge) a task's schedule rule and persist it. */
-export function setSchedule(tasks: readonly TaskRecord[], id: string, patch: { enabled?: boolean; cron?: string; dueAt?: number }, now: number): TaskRecord[] {
+/** Schedule patch: `undefined` leaves a field untouched; `null` clears it. */
+export interface SchedulePatch {
+  enabled?: boolean
+  cron?: string | null
+  dueAt?: number | null
+}
+
+/** Set (merge) a task's schedule rule and persist it. `null` clears a field. */
+export function setSchedule(tasks: readonly TaskRecord[], id: string, patch: SchedulePatch, now: number): TaskRecord[] {
   return tasks.map(task => {
     if (task.id !== id) return task
     const current = task.schedule ?? { enabled: false }
     const schedule: ScheduleRule = {
       enabled: patch.enabled ?? current.enabled,
-      cron: patch.cron !== undefined ? (patch.cron.trim() === '' ? undefined : patch.cron.trim()) : current.cron,
-      dueAt: patch.dueAt !== undefined ? patch.dueAt : current.dueAt,
+      cron: patch.cron === null
+        ? undefined
+        : patch.cron !== undefined ? (patch.cron.trim() === '' ? undefined : patch.cron.trim()) : current.cron,
+      dueAt: patch.dueAt === null ? undefined : (patch.dueAt !== undefined ? patch.dueAt : current.dueAt),
       nextRunAt: current.nextRunAt,
       lastTriggeredAt: current.lastTriggeredAt,
     }

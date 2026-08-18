@@ -1,7 +1,12 @@
-/** Centered modal for creating a task from a draft time range. */
+/** Full create-task form: title, time range, urgency/importance, description,
+ * prompt, quick subtasks, optional schedule, and execution settings.
+ */
 import { useState } from 'react'
 import type { CalenderClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
+import { randomId } from '../../protocol.ts'
+import type { SubtaskRecord, Urgency, Importance } from '../../core/tasks.ts'
+import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
 import { t, type CalenderKey } from '../locales.ts'
 import css from '../calender.module.css'
 
@@ -14,21 +19,36 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
   const snap = controller.getSnapshot()
   const draft = snap.draft
   const [title, setTitle] = useState('')
-  const [urgency, setUrgency] = useState<'high' | 'medium' | 'low'>('medium')
-  const [importance, setImportance] = useState<'high' | 'medium' | 'low'>('medium')
+  const [description, setDescription] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [urgency, setUrgency] = useState<Urgency>('medium')
+  const [importance, setImportance] = useState<Importance>('medium')
+  const [subtaskInput, setSubtaskInput] = useState('')
+  const [subtasks, setSubtasks] = useState<SubtaskRecord[]>([])
+  const [cron, setCron] = useState('')
+  const [dueAt, setDueAt] = useState('')
+  const [exec, setExec] = useState<ExecutionSettingsValue>({})
   const [error, setError] = useState<string | null>(null)
 
+  const addSubtask = (): void => {
+    const title_ = subtaskInput.trim()
+    if (title_ === '') return
+    setSubtasks([...subtasks, { id: randomId(), title: title_, done: false }])
+    setSubtaskInput('')
+  }
+
   const submit = async (): Promise<void> => {
-    if (title.trim() === '' || draft === undefined) {
-      setError('title required')
-      return
-    }
+    if (title.trim() === '' || draft === undefined) { setError('title required'); return }
+    const dueMs = dueAt.trim() === '' ? undefined : new Date(dueAt).getTime()
     await controller.dispatch({
       kind: 'create',
       input: {
-        title, description: '', prompt: '', startAt: draft.start, endAt: draft.end,
-        urgency, importance,
+        title, description, prompt, startAt: draft.start, endAt: draft.end,
+        urgency, importance, subtasks, ...exec,
       },
+      schedule: (cron.trim() !== '' || dueMs !== undefined)
+        ? { enabled: true, cron: cron.trim() === '' ? undefined : cron.trim(), dueAt: dueMs }
+        : undefined,
     })
     controller.setDraft(undefined)
     onClose()
@@ -53,18 +73,41 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
           <span className={css.formValue}>{draft !== undefined ? hhmm(draft.end) : '–'}</span>
         </div>
         <div className={css.formRow}>
+          <label className={css.formLabel}>{t('new.description')}</label>
+          <input className={css.input} value={description} placeholder={t('detail.descriptionPlaceholder')}
+            onChange={e => setDescription(e.target.value)} />
+        </div>
+        <div className={css.formRow}>
+          <label className={css.formLabel}>{t('new.prompt')}</label>
+          <input className={css.input} value={prompt} placeholder={t('detail.promptPlaceholder')}
+            onChange={e => setPrompt(e.target.value)} />
+        </div>
+        <div className={css.formRow}>
           <label className={css.formLabel}>{t('quadrant.placeholder')}</label>
-          <select className={css.select} value={urgency} onChange={e => setUrgency(e.target.value as 'high' | 'medium' | 'low')}>
-            {(['high', 'medium', 'low'] as const).map(u => (
-              <option key={u} value={u}>{t(`urgency.${u}` as CalenderKey)}</option>
-            ))}
+          <select className={css.select} value={urgency} onChange={e => setUrgency(e.target.value as Urgency)}>
+            {(['high', 'medium', 'low'] as const).map(u => <option key={u} value={u}>{t(`urgency.${u}` as CalenderKey)}</option>)}
           </select>
-          <select className={css.select} value={importance} onChange={e => setImportance(e.target.value as 'high' | 'medium' | 'low')}>
-            {(['high', 'medium', 'low'] as const).map(i => (
-              <option key={i} value={i}>{t(`importance.${i}` as CalenderKey)}</option>
-            ))}
+          <select className={css.select} value={importance} onChange={e => setImportance(e.target.value as Importance)}>
+            {(['high', 'medium', 'low'] as const).map(i => <option key={i} value={i}>{t(`importance.${i}` as CalenderKey)}</option>)}
           </select>
         </div>
+        <div className={css.formRow}>
+          <label className={css.formLabel}>{t('new.subtasks')}</label>
+          <input className={css.input} value={subtaskInput} placeholder={t('new.subtaskInput')}
+            onChange={e => setSubtaskInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSubtask() } }} />
+          <button type="button" className={css.btnGhost} onClick={addSubtask}>{t('detail.addSubtask')}</button>
+        </div>
+        {subtasks.length > 0 && (
+          <ul className={css.subtaskList}>
+            {subtasks.map(s => <li key={s.id} className={css.subtaskRow}>{s.title}</li>)}
+          </ul>
+        )}
+        <div className={css.formRow}>
+          <label className={css.formLabel}>{t('new.schedule')}</label>
+          <input className={css.input} value={cron} placeholder={t('new.scheduleCron')} onChange={e => setCron(e.target.value)} />
+          <input className={css.input} type="datetime-local" value={dueAt} onChange={e => setDueAt(e.target.value)} />
+        </div>
+        <ExecutionSettings value={exec} onChange={setExec} />
         {error !== null && <div className={css.modalError}>{error}</div>}
         <div className={css.modalActions}>
           <button type="button" className={css.btnGhost} onClick={() => { controller.setDraft(undefined); onClose() }}>{t('new.cancel')}</button>

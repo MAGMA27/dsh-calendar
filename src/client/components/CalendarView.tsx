@@ -1,4 +1,6 @@
-/** Calendar container: header (title / today / view switch / search) + body. */
+/** Calendar container: header + body; a task detail panel opens on the right
+ * when a task is selected.
+ */
 import { useSyncExternalStore, useState } from 'react'
 import type { CalenderClientController, CalenderView } from '../controller.ts'
 import { WeekGrid } from './WeekGrid.tsx'
@@ -6,6 +8,7 @@ import { MonthGrid } from './MonthGrid.tsx'
 import { MatrixPanel } from './MatrixPanel.tsx'
 import { AgendaPanel } from './AgendaPanel.tsx'
 import { CreateTaskModal } from './CreateTaskModal.tsx'
+import { TaskDetailPanel } from './TaskDetailPanel.tsx'
 import { t, type CalenderKey } from '../locales.ts'
 import css from '../calender.module.css'
 
@@ -32,6 +35,7 @@ export function CalendarView({ controller }: CalendarViewProps) {
       default: return <WeekGrid controller={controller} />
     }
   })()
+  const selected = snap.selectedTaskId !== undefined ? snap.snapshot.tasks.find(t => t.id === snap.selectedTaskId) : undefined
 
   return (
     <div className={css.calendarViewInner} data-dsh-calender-view-inner="">
@@ -54,10 +58,15 @@ export function CalendarView({ controller }: CalendarViewProps) {
         <input className={css.search} value={query} placeholder={t('board.search')} onChange={e => setQuery(e.target.value)} />
         <button type="button" className={css.btnPrimary} onClick={() => controller.setDraft({ start: Date.now(), end: Date.now() + 60_000 })}>{t('board.new')}</button>
       </div>
-      <div className={css.calendarBody}>
-        {snap.status === 'loading' && <div className={css.statusLine}>{t('status.loading')}</div>}
-        {snap.status === 'error' && <div className={css.statusLine}>{t('status.error', { error: snap.error ?? 'unknown' })}</div>}
-        {snap.status === 'ready' && body}
+      <div className={css.calendarBodyWithPanel}>
+        <div className={css.calendarBody}>
+          {snap.status === 'loading' && <div className={css.statusLine}>{t('status.loading')}</div>}
+          {snap.status === 'error' && <div className={css.statusLine}>{t('status.error', { error: snap.error ?? 'unknown' })}</div>}
+          {snap.status === 'ready' && body}
+        </div>
+        {snap.status === 'ready' && selected !== undefined && (
+          <TaskDetailPanel controller={controller} task={selected} onClose={() => controller.selectTask(undefined)} />
+        )}
       </div>
       {snap.draft !== undefined && snap.status === 'ready' && (
         <CreateTaskModal controller={controller} onClose={() => controller.setDraft(undefined)} />

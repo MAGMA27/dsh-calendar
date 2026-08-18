@@ -24,7 +24,7 @@
 
 - **头部**：标题（16px/700）· 视图切换（week / month / matrix / agenda，segmented 控件）· 今天 · 搜索 · 新建按钮（primary）。
 - **主体（M2 现状）**：整块日历区（无右侧常驻面板）；新建走浮层弹窗；选中任务通过 `controller.selectTask` 记录（供 M3 详情面板消费）。
-- **主体（M3 目标）**：左日历（flex:1）+ 右侧 320px **TaskDetailPanel**（选中任务时滑出；窄屏 <720px 降为 overlay、内部滚动、宽度 ≤ 视口）。M2 尚未实现，由 M3 落地。
+- **主体（M3 已实现）**：左日历（flex:1）+ 右侧 320px **TaskDetailPanel**（选中任务时展开于 calendarBodyWithPanel 右侧，flex 布局、内部滚动）。宽屏常驻、窄屏仍为右列面板（内置滚动，宽度 340px）。
 
 ## 3. 周视图（WeekGrid）**[M2 已实现]**
 
@@ -43,14 +43,14 @@
 | eliminate | 低优先 | `--dsw-alias-label-tertiary` | `--dsw-alias-bg-layer-2` | 丢弃 |
 
 - **矩阵面板（M2 已实现）**：2×2 象限格，边框用主色；按 `quadrantOf` 分组展示；点任务选中。
-- **象限拖拽改优先级（规划 M3）**：象限内 pointer 拖放任务 → dispatch `setQuadrant`。
+- **象限拖拽改优先级（M3 已实现）**：任务块 draggable，拖放到另一象限（dataTransfer 携带任务 id）→ dispatch setQuadrant；悬停象限高亮 matrixOver。
 
 ## 5. 组件细节
 
 ### 5.1 任务块徽标 **[M2 已实现]**
 小徽标行：子任务 `✓ 2/5`（12px tertiary）；可选 `provider·model`（`--dsw-alias-state-business-tertiary` 底，10-11px）；定时钟形（amber）。
 
-### 5.2 任务详情面板 TaskDetailPanel **[规划 M3]**
+### 5.2 任务详情面板 TaskDetailPanel **[M3 已实现；第 6/7 项增强]**
 选中任务滑出的右侧 320px 面板：
 1. 标题 + 完成勾选（`brand-primary` 勾选态）。
 2. 描述 / Prompt：只读展示 + 编辑入口。
@@ -61,8 +61,8 @@
 7. 执行记录 + 会话跳转（M4）：sessionId/起止/结果/错误；「查看会话」跳 transcript。
 8. 删除 / 归档（danger 按钮）。
 
-### 5.3 创建/编辑弹窗 CreateTaskModal **[M2 已实现]**
-拖选或"新建"触发的居中弹窗（`bg-layer-2` 底、`border-l2` 边、圆角 12px、阴影 `bg-mask-3`、Escape 关闭）：预填起止、标题、紧急/重要、创建/取消。M3 扩展为完整表单（描述/Prompt/子任务/执行设置/定时）。
+### 5.3 创建/编辑弹窗 CreateTaskModal **[M3 已实现]**
+拖选或"新建"触发的居中弹窗（`bg-layer-2` 底、`border-l2` 边、圆角 12px、阴影 `bg-mask-3`、Escape 关闭）：预填起止、标题、紧急/重要、创建/取消。已扩展为完整表单：标题、描述、Prompt、紧急/重要、子任务（回车添加）、定时（cron + 一次到时）、执行设置、创建/取消。
 
 ### 5.4 表单控件 / 按钮
 输入 `--dsw-specific-input-major` 底、`border-l2` 边、圆角 8px、focus `brand-primary` 2px 描边；选择器为下拉 + 徽标预览；primary = `button-primary-fill`（hover `-hover`）；ghost = 透明 + `border-l2`；danger = `state-error-primary`。

@@ -154,6 +154,14 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   overflow: auto;
 }
 
+.calendarBodyWithPanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
 .statusLine {
   padding: 24px;
   color: var(--dsw-alias-label-tertiary);
@@ -447,7 +455,89 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .agendaItem:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 .agendaTime { font-size: 12px; color: var(--dsw-alias-label-tertiary); flex: none; }
+.agendaProgress { font-size: 11px; color: var(--dsw-alias-label-secondary); flex: none; }
 .agendaText { font-size: 13px; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- matrix drag-over highlight ------------------------------------------------------ */
+
+.matrixOver { outline: 2px solid var(--dsw-static-deepseek-500); outline-offset: -2px; }
+
+/* --- task detail panel (right side) -------------------------------------------------- */
+
+.detailPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 340px;
+  flex: none;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+}
+
+.detailHeader { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.detailTitle { margin: 0; font-size: 15px; font-weight: 700; color: var(--dsw-alias-label-primary); }
+
+.detailSection { display: flex; flex-direction: column; gap: 8px; }
+
+.detailActions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+
+.btnDanger {
+  border: 1px solid var(--dsw-static-red-500);
+  background: transparent;
+  color: var(--dsw-static-red-500);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btnDanger:hover { background: var(--dsw-static-red-500); color: var(--dsw-alias-label-primary-foreground); }
+
+.textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 56px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  outline: none;
+  resize: vertical;
+}
+
+.subtaskCount { font-size: 11px; color: var(--dsw-alias-label-tertiary); font-weight: 500; }
+.subtaskList { display: flex; flex-direction: column; gap: 6px; }
+.subtaskRow { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.subtaskText { color: var(--dsw-alias-label-primary); flex: 1; min-width: 0; }
+.subtaskDone { color: var(--dsw-alias-label-tertiary); text-decoration: line-through; flex: 1; min-width: 0; }
+.subtaskRemove {
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.scheduleNext { font-size: 12px; color: var(--dsw-alias-state-success-primary); }
+
+.savedNote { font-size: 12px; color: var(--dsw-alias-state-success-primary); }
+
+.execSettings { display: flex; flex-direction: column; gap: 8px; }
+.execTitle { margin: 0; font-size: 13px; font-weight: 700; color: var(--dsw-alias-label-secondary); }
+
+.execList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.execRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.execTime { color: var(--dsw-alias-label-secondary); }
+.execResult { color: var(--dsw-alias-label-tertiary); text-transform: capitalize; }
+.execResult[data-result='succeeded'] { color: var(--dsw-alias-state-success-primary); }
+.execResult[data-result='failed'] { color: var(--dsw-alias-state-error-primary); }
+.execResult[data-result='cancelled'] { color: var(--dsw-alias-label-tertiary); }
 
 /* --- create modal ----------------------------------------------------------------- */
 

@@ -35,7 +35,7 @@
 
 - **Host 为权威**：账本/调度/结算全部在 Host；浏览器动作只提交 `action`（判别联合 + requestId 幂等），UI 状态 = 最近 Host snapshot。
 - **共享纯层**：`src/core/`（tasks/calendar/schedule/store）与 `src/protocol.ts` 为纯 TS，host/client 共用；client 不得值导入 host 包。
-- **执行**：手动/定时共用 host-runner；步骤：建/复用会话（sessionId 或 workspaceId 钉子 → 否则最近工作区）→ selectModel（provider 钉子，失败即关闭）→ agent 预设（空白会话）→ /permission → rename → prompt('queue') → 订阅 turnEnds 结算。重启对账：有 sessionId 继续观察，无则取消不重发。
+- **执行（host-runner）**：手动/定时共用 host-runner；步骤：`ledger.openExecution` 开记录 → 建/复用会话（sessionId 或 workspaceId 钉子 → 否则 `workspace.list` 首个工作区）→ `sessions.selectModel`（provider/model 钉子；缺一即失败关闭）→ `agentPresets.select`（复用且钉预设时）→ `/permission <id>` 斜杠命令 → `sessions.rename`（装饰性）→ `sessions.prompt('queue')` → **结算**。结算=轮询 `sessions.list`：会话消失→cancelled、停止且 `updatedAt>startedAt`（有 prompt 证据）→succeeded、超时→cancelled；写回 `ledger.settleExecution`（附带会话 id）并通知浏览器。路由 `kind:'run'` fire-and-forget 交给 runner。失败即关闭：任一钉子无法按任务声明应用即 fail，不发 Prompt。
 - **执行设置目录（/api/calender/options）**：Host 经 `ctx.apiProxy`（llm.models / workspace.list / sessions.list）组装 ExecutionCatalog 供浏览器下拉：工作区→会话二级分组、隐藏归档会话、provider→model 联动。**会话标题**从 `sessions.list` 的 `projections.values.title` 读取（真实持久标题，未命名回退 cwd 基名→id）。
 - **调度**：Host cron（30s tick + 立即 + 恢复）；nextRunAt<=now 触发；先滚动到下一匹配点、仅接受后持久化；已 running 跳过；错过不补跑；`enabled=false` 暂停。
 

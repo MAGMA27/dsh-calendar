@@ -27,7 +27,7 @@ function conversationColumn(): HTMLElement | undefined {
 }
 
 /** Mount the calendar React tree into the center column and bind visibility. */
-export function mountCalender(controller: CalenderClientController): () => void {
+export function mountCalender(controller: CalenderClientController, onOpenSession?: (sessionId: string) => void): () => void {
   let root: Root | undefined
   let container: HTMLDivElement | undefined
 
@@ -40,7 +40,7 @@ export function mountCalender(controller: CalenderClientController): () => void 
     container.className = css.calendarView
     column.appendChild(container)
     root = createRoot(container)
-    root.render(<CalendarView controller={controller} />)
+    root.render(<CalendarView controller={controller} onOpenSession={onOpenSession} />)
   }
 
   const waitObserver = new MutationObserver(() => { ensure() })

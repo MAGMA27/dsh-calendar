@@ -25,8 +25,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services. */
-export const inject = ['locale']
+/** Required services. `sessions` is injected only to perform the session
+ * jump (open an execution's session in the GUI); all domain state still comes
+ * from the Host over HTTP. */
+export const inject = ['locale', 'sessions']
 
 /** Client plugin body. */
 export function apply(ctx: ClientContext): void {
@@ -45,11 +47,22 @@ export function apply(ctx: ClientContext): void {
   // titles / LLM providers+models) is assembled on the Host and fetched here.
   void refreshCatalog(controller)
 
+  // Session jump: open an execution's session in the GUI. The session may not
+  // be in the list snapshot yet right after a run, so failures are ignored.
+  const openSession = (sessionId: string): void => {
+    const sessions = (ctx as unknown as { sessions?: { open(id: string): void } }).sessions
+    try {
+      sessions?.open(sessionId)
+    } catch {
+      // The session may not be listed yet; ignore and keep the panel open.
+    }
+  }
+
   let uiDisposer: (() => void) | undefined
   const disposers: Array<() => void> = []
   try {
     disposers.push(mountSidebarEntry(controller))
-    disposers.push(mountCalender(controller))
+    disposers.push(mountCalender(controller, openSession))
   } catch (error) {
     console.error('[dsh-calender] mount failed:', error)
   }

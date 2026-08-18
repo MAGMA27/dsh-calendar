@@ -16,9 +16,9 @@ import {
 import { dirname, join } from 'node:path'
 import { randomId, SCHEMA_VERSION, type CalenderAction, type CalenderActionResult, type CalenderActionEnvelope, type CalenderSnapshot } from './protocol.ts'
 import {
-  addSubtask, archiveTask, createTask, deleteTask, removeSubtask, restoreTask,
-  setNextRun, setQuadrant, setSchedule, setSubtaskDone, setTaskDone,
-  updateTask, type TaskRecord,
+  addSubtask, archiveTask, attachExecutionSession, createTask, deleteTask,
+  removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
+  setTaskDone, settleExecution, startExecution, updateTask, type TaskRecord,
 } from './core/tasks.ts'
 import { isValidCron, nextRunAtMs } from './core/schedule.ts'
 import { parseTasks } from './core/store.ts'
@@ -211,6 +211,67 @@ export class HostLedger {
     return { ok: true, snapshot }
   }
 
+  /** Return one task by id (undefined when missing). */
+  taskById(id: string): TaskRecord | undefined {
+    return this.state.tasks.find(t => t.id === id)
+  }
+
+  /**
+   * Open a fresh execution record on a task (Host-runner entry). Guards:
+   * the task must exist and must not already have an in-flight (unsettled)
+   * execution. Appends the running record, bumps the revision, persists, and
+   * notifies the browser so the view shows the run as started.
+   */
+  openExecution(taskId: string, executionId: string, now: number): boolean {
+    const task = this.taskById(taskId)
+    if (task === undefined) return false
+    if (task.executions.some(e => e.endedAt === undefined)) return false
+    this.state.tasks = this.state.tasks.map(t => {
+      if (t.id !== taskId) return t
+      return startExecution(t, now, executionId).task
+    })
+    this.commit()
+    return true
+  }
+
+  /**
+   * Settle a running execution (Host-runner exit): attach the session that
+   * ran it (once known) and record the outcome. No-op when the execution or
+   * task is missing or already settled. Always bumps revision + persists +
+   * notifies when something changed.
+   */
+  settleExecution(taskId: string, executionId: string, outcome: 'succeeded' | 'failed' | 'cancelled', now: number, error: string | undefined, sessionId?: string): boolean {
+    const task = this.taskById(taskId)
+    if (task === undefined) return false
+    if (!task.executions.some(e => e.id === executionId)) return false
+    let changed = false
+    this.state.tasks = this.state.tasks.map(t => {
+      if (t.id !== taskId) return t
+      const withSession = sessionId !== undefined && sessionId !== '' && !t.executions.some(e => e.id === executionId && e.sessionId !== undefined)
+        ? attachExecutionSession(t, executionId, sessionId, now)
+        : t
+      const next = settleExecution(withSession, executionId, outcome, now, error)
+      if (next !== withSession) changed = true
+      return next
+    })
+    if (!changed) return false
+    this.commit()
+    return true
+  }
+
+  /** Persist + bump revision + notify after a Host-side ledger mutation. */
+  private commit(): void {
+    this.state.revision += 1
+    this.persist.save({
+      schemaVersion: this.state.schemaVersion,
+      revision: this.state.revision,
+      tasks: this.state.tasks,
+      scheduler: this.state.scheduler,
+      recentRequests: this.state.recentRequests,
+    })
+    this.notify()
+  }
+
   private snapshot(): CalenderSnapshot {
     return {
       schemaVersion: this.state.schemaVersion,
@@ -296,9 +357,10 @@ export class HostLedger {
         return true
       }
       case 'run':
-        // Execution is a Host-side concern wired in M4; the ledger only marks
-        // the request valid. Returning true keeps the snapshot stable.
-        return true
+        // The Host runner is invoked after apply from the route handler (it
+        // opens + settles execution records itself). The ledger only marks the
+        // request valid and requires the task to exist.
+        return this.state.tasks.some(t => t.id === action.id)
       case 'import': {
         // Merge imported tasks (by id, browser-newer wins ties go to Host).
         for (const t of action.tasks) {

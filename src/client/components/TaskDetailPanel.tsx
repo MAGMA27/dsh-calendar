@@ -15,6 +15,8 @@ interface TaskDetailPanelProps {
   controller: CalenderClientController
   task: TaskRecord
   onClose: () => void
+  /** Open the GUI's session view for an execution's session id (session jump). */
+  onOpenSession?: (sessionId: string) => void
 }
 
 function quadKnobs(task: TaskRecord): Partial<ExecutionSettingsValue> {
@@ -24,7 +26,7 @@ function quadKnobs(task: TaskRecord): Partial<ExecutionSettingsValue> {
   }
 }
 
-export function TaskDetailPanel({ controller, task, onClose }: TaskDetailPanelProps) {
+export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: TaskDetailPanelProps) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [prompt, setPrompt] = useState(task.prompt)
@@ -175,6 +177,12 @@ export function TaskDetailPanel({ controller, task, onClose }: TaskDetailPanelPr
             <li key={e.id} className={css.execRow}>
               <span className={css.execTime}>{new Date(e.startedAt).toLocaleString()}</span>
               <span className={css.execResult} data-result={e.result ?? 'running'}>{e.result ?? 'running'}</span>
+              {e.sessionId !== undefined && e.sessionId !== '' && (
+                <button type="button" className={css.execSession} data-dsh-calender-exec-session=""
+                  onClick={() => onOpenSession?.(e.sessionId!)}>
+                  {t('detail.openSession')}
+                </button>
+              )}
             </li>
           ))}</ul>}
       </div>

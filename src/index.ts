@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-host-apiproxy'
 import { CalenderHostService } from './host-service.ts'
 import { mountCalenderRoutes } from './host-routes.ts'
 import { acquireLedgerLock } from './host-ledger.ts'
+import { HostExecutionRunner, type HostExecutionEnv } from './host-runner.ts'
 import { dshHome } from './dsh-home.ts'
 import type { CatalogApiFace } from './host-options.ts'
 
@@ -25,7 +26,10 @@ export function apply(ctx: Context): void {
 
   const service = new CalenderHostService()
   const api = ctx.apiProxy as unknown as CatalogApiFace
-  const disposers = mountCalenderRoutes(ctx.webServer, service.ledger, api)
+  // The real-execution runner drives dsh sessions through the same ApiProxy
+  // (sessions.create/selectModel/prompt, workspace.list, agentPresets.select).
+  const runner = new HostExecutionRunner(service.ledger, ctx.apiProxy as unknown as HostExecutionEnv)
+  const disposers = mountCalenderRoutes(ctx.webServer, service.ledger, api, runner)
 
   ctx.effect(() => {
     return () => {

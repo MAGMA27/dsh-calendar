@@ -1,7 +1,7 @@
 # dsh-calender 进度（Progress）
 
 ## 当前状态
-- **阶段**：**M0–M3 已完成并通过验收**，经历 9 轮验收反馈（修复 + 增强）；**76 单测全绿**。M4（真实执行）为下一步主目标。
+- **阶段**：**M0–M4 已完成并通过测试**，经历 9 轮验收反馈与 M4 真实执行落地；**92 单测全绿**。M5（Host cron 定时调度）为下一步主目标。
 - 计划已批准（Host 权威架构）。
 
 ## 已完成里程碑（均通过 ✓，已提交）
@@ -33,16 +33,22 @@
 | M1 领域+Host 骨架 | ✅ `fb36cf4`（45 单测） |
 | M2 日历 UI | ✅ `83e1599` + `213a43b` + 表头/重叠并排（`a1c7cc3`） |
 | M3 任务编辑 | ✅ 含 9 轮验收修复（全表单/详情/子任务/执行设置下拉/会话标题/归档/定时清除/象限拖拽） |
-| M4 真实执行 | 🔜 下一步（host-runner 真实执行 + 执行记录回写） |
+| M4 真实执行 | ✅ `M4` 提交（host-runner 真实执行 + 执行记录回写 + 会话跳转 + provider/运行徽标；92 单测） |
 | M5 定时调度 | 未开始 |
 | M6 完善 | 未开始 |
 | M7 日历 Tool | 🔜 已入计划；待 M6 后实施 |
 
+## M4 交付内容（真实执行）
+- **host-runner.ts**：打开执行记录 → 建/复用会话 → 应用钉子（provider+model 经 `sessions.selectModel`、agent 预设经 `agentPresets.select`、权限经 `/permission` 斜杠命令）→ rename → prompt('queue') → 结算执行记录。依赖注入的窄 ApiProxy face，测试用 fake 驱动。
+- **HostLedger** 新增 `openExecution`/`settleExecution`/`taskById`：运行中拒开第二条、结算附带会话 id、写回账本并通知浏览器；`run` action 现在要求任务存在。
+- **路由接线**：`POST /action` 遇到 `kind:'run'` 把任务交给 HostExecutionRunner（fire-and-forget，结算异步）。
+- **结算策略**：轮询 `sessions.list`；会话消失→cancelled、停止且带 prompt 证据→succeeded、超时→cancelled。
+- **UI**：任务块 **运行徽标**（有未结算执行时）+ provider/model 徽标（已有）；执行记录显示 **「打开会话」跳转**（`ctx.sessions.open`，客户端 `inject` 增加 `sessions`）。
+- **测试**：host-runner.spec（10）、host-ledger 执行记录、host-routes run→runner 接线；**92 单测全绿**（原 76 + 16）。
+
 ## 下一步
-1. 用户真实挂载验收 M3（重启 dsh web 后侧边栏「日历」→ 点任务开详情面板 / 全表单新建 / 矩阵拖拽）。
-2. M4：host-runner 真实执行（会话 + provider/model 选择 + 结算 + 执行记录 + 会话跳转）。
-3. M5：Host cron + 到期触发 + SSE 广播 + 重启对账 + v1 迁移。
-4. M6：设置卡 + SystemPrompt 段 + 设计打磨 + 文档 + scripts/dsh-calender.js。
+1. M5：Host cron + 到期触发 + SSE 广播 + 重启对账 + v1 迁移。
+2. M6：设置卡 + SystemPrompt 段 + 设计打磨 + 文档 + scripts/dsh-calender.js。
 
 ## 交付挂载（需用户环境）
 `dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calender/state` + 侧边栏入口 + 中间列日历。

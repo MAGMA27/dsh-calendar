@@ -61,7 +61,7 @@ interface TaskRecord {
 | **M1 领域+Host 骨架** | core 四模块 + protocol + host-ledger + host-routes + host-service 空转 | core 单测；state 冒烟；账本原子/损坏/幂等测试 |
 | **M2 日历 UI** ✅ | WeekGrid 拖选/移动/跨日/拉伸/表头/重叠并排 + MonthGrid + transport + 挂载 | GUI 拖选建任务；jsdom 挂载测试 |
 | **M3 任务编辑** ✅ | CreateTaskModal + TaskDetailPanel + MatrixPanel + AgendaPanel + ExecutionSettings | GUI 全表单/矩阵拖拽；tasks 状态机测试 |
-| **M4 真实执行** | host-runner（会话/provider/预设/权限 钉子 + 结算）+ 执行记录 + 会话跳转 | fake ApiProxy 测试（选择/失败关闭/结算） |
+| **M4 真实执行** ✅ | host-runner（会话/provider/预设/权限 钉子 + 结算）+ 执行记录 + 会话跳转 + 运行/会话徽标 | fake ApiProxy 测试（选择/失败关闭/结算）——92 单测 |
 | **M5 定时调度** | Host cron + 触发 + 重启对账 + SSE + v1 迁移 | host-service 测试；真机定时触发一次 |
 | **M6 完善** | 设置卡 + SystemPrompt 段 + 设计打磨 + 全量测试 + 文档 + CLI | 全量验证矩阵通过 |
 | **M7 日历 Tool** | 把日历暴露为对话中 LLM 可调用的 tool（创建/删除/修改/查询任务，含子任务与执行钉子）；Host 侧把 tool 调用映射到同一 HostLedger.apply | 对话中 LLM 或用户指令能建/改/删/查任务并即时反映到日历视图；共享账本与幂等 |

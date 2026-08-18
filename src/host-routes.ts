@@ -10,6 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { API_PREFIX, type CalenderActionEnvelope, type CalenderSnapshot } from './protocol.ts'
 import type { HostLedger } from './host-ledger.ts'
 import { buildCatalogFromApi, type CatalogApiFace } from './host-options.ts'
+import type { HostExecutionRunner } from './host-runner.ts'
 
 /** The body-size cap for a normal action (64 KiB) and an import (2 MiB). */
 export const MAX_ACTION_BYTES = 64 * 1024
@@ -64,7 +65,7 @@ function parseEnvelope(raw: string): CalenderActionEnvelope | null {
 /** Register the calender routes and return the disposers. */
 export function mountCalenderRoutes(webServer: {
   register(route: { kind: 'exact' | 'prefix'; path: string; handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void> }): () => void
-}, ledger: HostLedger, api: CatalogApiFace): Array<() => void> {
+}, ledger: HostLedger, api: CatalogApiFace, runner?: HostExecutionRunner): Array<() => void> {
   const disposers: Array<() => void> = []
 
   disposers.push(webServer.register({
@@ -109,6 +110,11 @@ export function mountCalenderRoutes(webServer: {
       if (!result.ok) {
         writeJson(res, 422, { error: result.error })
         return
+      }
+      // A real execution request is handed to the Host runner (fire-and-forget;
+      // it opens + settles execution records and pushes SSE updates).
+      if (envelope.action.kind === 'run' && runner !== undefined) {
+        void runner.run(envelope.action.id)
       }
       writeJson(res, 200, result.snapshot as unknown as CalenderSnapshot)
     },

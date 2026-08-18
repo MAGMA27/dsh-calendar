@@ -608,6 +608,16 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .execResult[data-result='succeeded'] { color: var(--dsw-alias-state-success-primary); }
 .execResult[data-result='failed'] { color: var(--dsw-alias-state-error-primary); }
 .execResult[data-result='cancelled'] { color: var(--dsw-alias-label-tertiary); }
+.execSession {
+  background: none;
+  border: 1px solid var(--dsw-alias-line-normal);
+  color: var(--dsw-alias-fg-link);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.execSession:hover { border-color: var(--dsw-alias-fg-link); }
 
 /* --- create modal ----------------------------------------------------------------- */
 

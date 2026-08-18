@@ -30,9 +30,9 @@ WeekGrid（拖选/移动/跨日/拉伸/表头/重叠并排）、MonthGrid、clie
 CreateTaskModal、TaskDetailPanel、MatrixPanel（象限拖拽）、AgendaPanel、ExecutionSettings。
 **验收**：✅ GUI 手测全表单与矩阵拖拽；tasks 状态机测试。
 
-### M4 真实执行
+### M4 真实执行 ✅ 已完成
 host-runner（会话/LLM provider/预设/权限 钉子 + 结算）、执行记录、会话跳转、provider 徽标。
-**验收**：host-runner fake ApiProxy 测试（会话选择/失败关闭/结算）。
+**验收**：✅ host-runner fake ApiProxy 测试（会话选择/失败关闭/结算）；92 单测全绿。
 
 ### M5 定时调度
 Host cron + 到期触发 + 重启对账 + SSE 广播 + v1 迁移。

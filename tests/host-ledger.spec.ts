@@ -76,6 +76,61 @@ describe('HostLedger', () => {
   })
 })
 
+
+describe('HostLedger execution records', () => {
+  it('opens an execution and settles it with a session, bumping revision', () => {
+    const { ledger } = makeLedger()
+    const c = ledger.apply(createEnvelope('r1'))
+    if (!c.ok) throw new Error('create failed')
+    const id = c.snapshot.tasks[0].id
+    const revBefore = c.snapshot.revision
+    expect(ledger.openExecution(id, 'ex-1', 1000)).toBe(true)
+    let t = ledger.taskById(id)!
+    expect(t.executions.length).toBe(1)
+    expect(t.executions[0].id).toBe('ex-1')
+    expect(t.executions[0].endedAt).toBeUndefined()
+    expect(t.executions[0].sessionId).toBeUndefined()
+    expect(ledger.getSnapshot().revision).toBe(revBefore + 1)
+    // settle succeeds and attaches the session
+    expect(ledger.settleExecution(id, 'ex-1', 'succeeded', 2000, undefined, 'session-9')).toBe(true)
+    t = ledger.taskById(id)!
+    expect(t.executions[0].sessionId).toBe('session-9')
+    expect(t.executions[0].result).toBe('succeeded')
+    expect(t.executions[0].endedAt).toBe(2000)
+    // double settle is a no-op
+    expect(ledger.settleExecution(id, 'ex-1', 'failed', 3000, 'x', 'session-9')).toBe(false)
+  })
+
+  it('refuses to open a second execution while one is in flight', () => {
+    const { ledger } = makeLedger()
+    const c = ledger.apply(createEnvelope('r1'))
+    if (!c.ok) throw new Error('create failed')
+    const id = c.snapshot.tasks[0].id
+    expect(ledger.openExecution(id, 'ex-1', 1000)).toBe(true)
+    expect(ledger.openExecution(id, 'ex-2', 1000)).toBe(false)
+    expect(ledger.taskById(id)!.executions.length).toBe(1)
+  })
+
+  it('refuses to open or settle for an unknown task', () => {
+    const { ledger } = makeLedger()
+    expect(ledger.openExecution('nope', 'ex-1', 1000)).toBe(false)
+    expect(ledger.settleExecution('nope', 'ex-1', 'succeeded', 1000, undefined)).toBe(false)
+  })
+
+  it('overwrites an unknown idempotent execution on a persisted reload', () => {
+    // a run that is in-flight survives a reload as 'running'
+    const persist = new MemoryPersist()
+    const a = new HostLedger(persist, () => 0, () => 'task-1')
+    const c = a.apply(createEnvelope('r1'))
+    if (!c.ok) throw new Error('create failed')
+    a.openExecution(c.snapshot.tasks[0].id, 'ex-1', 0)
+    const b = new HostLedger(persist, () => 0, () => 'task-1')
+    const t = b.taskById(c.snapshot.tasks[0].id)!
+    expect(t.executions[0].result).toBeUndefined()
+    expect(t.executions[0].endedAt).toBeUndefined()
+  })
+})
+
 describe('NoopLedgerPersist', () => {
   it('is safe', () => {
     const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 'id')

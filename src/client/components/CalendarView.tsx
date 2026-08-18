@@ -19,9 +19,13 @@ const VIEWS: Array<{ view: CalenderView; key: CalenderKey }> = [
   { view: 'agenda', key: 'view.agenda' },
 ]
 
-interface CalendarViewProps { controller: CalenderClientController }
+interface CalendarViewProps {
+  controller: CalenderClientController
+  /** Open the GUI's session view (session jump from an execution record). */
+  onOpenSession?: (sessionId: string) => void
+}
 
-export function CalendarView({ controller }: CalendarViewProps) {
+export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
   const snap = useSyncExternalStore(
     fn => controller.subscribe(fn),
     () => controller.getSnapshot(),
@@ -67,7 +71,7 @@ export function CalendarView({ controller }: CalendarViewProps) {
           {snap.status === 'ready' && body}
         </div>
         {snap.status === 'ready' && selected !== undefined && (
-          <TaskDetailPanel key={selected.id} controller={controller} task={selected} onClose={() => controller.selectTask(undefined)} />
+          <TaskDetailPanel key={selected.id} controller={controller} task={selected} onClose={() => controller.selectTask(undefined)} onOpenSession={onOpenSession} />
         )}
       </div>
       {snap.draft !== undefined && snap.status === 'ready' && (

@@ -8,6 +8,7 @@ import type { WeekStart } from '../core/calendar.ts'
 import type { TaskRecord } from '../core/tasks.ts'
 import type { CalenderAction, CalenderSnapshot } from '../protocol.ts'
 import type { CalenderHostTransport } from './host-api.ts'
+import type { ExecutionCatalog } from './exec-catalog.ts'
 
 /** The available calendar views. */
 export type CalenderView = 'week' | 'month' | 'matrix' | 'agenda'
@@ -23,6 +24,8 @@ export interface CalenderClientState {
   draft: { start: number; end: number } | undefined
   /** Whether the calendar panel is open (center-column takeover active). */
   open: boolean
+  /** Read endpoint option lists (workspaces/sessions/providers/models). */
+  catalog: ExecutionCatalog
   status: 'loading' | 'ready' | 'error'
   error: string | null
 }
@@ -94,6 +97,8 @@ export class CalenderClientController {
   setWeekStart(weekStart: WeekStart): void { this.set({ weekStart }) }
   selectTask(id: string | undefined): void { this.set({ selectedTaskId: id }) }
   setDraft(draft: { start: number; end: number } | undefined): void { this.set({ draft }) }
+  /** Replace the execution-settings option catalog (runtime data). */
+  setCatalog(catalog: ExecutionCatalog): void { this.set({ catalog }) }
 
   selectedTask(): TaskRecord | undefined {
     return this.state.snapshot.tasks.find(t => t.id === this.state.selectedTaskId)
@@ -115,6 +120,7 @@ export function initialState(cursor: number = Date.now(), weekStart: WeekStart =
     selectedTaskId: undefined,
     draft: undefined,
     open: false,
+    catalog: { workspaces: [], sessions: [], providers: [], modelsByProvider: {} },
     status: 'loading',
     error: null,
   }

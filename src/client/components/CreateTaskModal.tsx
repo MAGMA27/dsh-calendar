@@ -107,7 +107,7 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
           <input className={css.input} value={cron} placeholder={t('new.scheduleCron')} onChange={e => setCron(e.target.value)} />
           <input className={css.input} type="datetime-local" value={dueAt} onChange={e => setDueAt(e.target.value)} />
         </div>
-        <ExecutionSettings value={exec} onChange={setExec} />
+        <ExecutionSettings value={exec} catalog={controller.getSnapshot().catalog} onChange={setExec} />
         {error !== null && <div className={css.modalError}>{error}</div>}
         <div className={css.modalActions}>
           <button type="button" className={css.btnGhost} onClick={() => { controller.setDraft(undefined); onClose() }}>{t('new.cancel')}</button>

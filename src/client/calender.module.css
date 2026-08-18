@@ -309,6 +309,23 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   padding: 1px 4px;
 }
 
+.taskBlockEditing { z-index: 5; border-color: var(--dsw-static-deepseek-500); box-shadow: 0 4px 14px var(--dsw-alias-bg-mask-2); cursor: grabbing; }
+
+.resizeHandleTop,
+.resizeHandleBottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 6px;
+  z-index: 3;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.resizeHandleTop { top: 0; }
+.resizeHandleBottom { bottom: 0; }
+.resizeHandleTop:hover,
+.resizeHandleBottom:hover { background: var(--dsw-static-deepseek-500); opacity: 0.4; }
+
 .quadrantDo { border-left-color: var(--dsw-static-deepseek-500); }
 .quadrantSchedule { border-left-color: var(--dsw-static-blue-500); }
 .quadrantDelegate { border-left-color: var(--dsw-static-amber-500); }

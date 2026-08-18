@@ -83,15 +83,15 @@ describe('delete / archive / restore', () => {
     expect(tasks.length).toBe(0)
     expect(selectionCleared).toBe(true)
   })
-  it('archive only settles done tasks; restore brings them back', () => {
+  it('archives any task (even incomplete); restore brings it back; re-archive is a no-op', () => {
     const t = one()
-    const { archived } = archiveTask([t], 't1', 1)
-    expect(archived).toBe(false)
-    const d = { ...t, done: true }
-    const r = archiveTask([d], 't1', 2)
+    const r = archiveTask([t], 't1', 2)
     expect(r.archived).toBe(true)
     expect(r.tasks[0].archivedAt).toBe(2)
-    const rr = restoreTask(r.tasks, 't1', 3)
+    // already archived → no-op
+    const again = archiveTask(r.tasks, 't1', 3)
+    expect(again.archived).toBe(false)
+    const rr = restoreTask(r.tasks, 't1', 4)
     expect(rr.restored).toBe(true)
     expect(rr.tasks[0].archivedAt).toBeUndefined()
   })

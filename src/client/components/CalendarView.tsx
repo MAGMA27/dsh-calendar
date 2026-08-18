@@ -65,7 +65,7 @@ export function CalendarView({ controller }: CalendarViewProps) {
           {snap.status === 'ready' && body}
         </div>
         {snap.status === 'ready' && selected !== undefined && (
-          <TaskDetailPanel controller={controller} task={selected} onClose={() => controller.selectTask(undefined)} />
+          <TaskDetailPanel key={selected.id} controller={controller} task={selected} onClose={() => controller.selectTask(undefined)} />
         )}
       </div>
       {snap.draft !== undefined && snap.status === 'ready' && (

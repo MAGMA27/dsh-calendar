@@ -150,7 +150,7 @@ export function TaskDetailPanel({ controller, task, onClose }: TaskDetailPanelPr
       </div>
 
       <div className={css.detailSection}>
-        <ExecutionSettings value={exec} onChange={(p) => { setExec({ ...exec, ...p }); markDirty() }} />
+        <ExecutionSettings value={exec} catalog={controller.getSnapshot().catalog} onChange={(p) => { setExec({ ...exec, ...p }); markDirty() }} />
       </div>
 
       <div className={css.detailSection}>

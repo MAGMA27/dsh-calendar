@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { CalenderClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpCalenderHostTransport } from './host-api.ts'
+import { buildCatalogAsync } from './exec-catalog.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { mountCalender } from './calendar-mount.tsx'
@@ -40,6 +41,7 @@ export function apply(ctx: ClientContext): void {
   const transport = new HttpCalenderHostTransport(HTTP_PREFIX_DEFAULT)
   const controller = new CalenderClientController(transport, initialState(Date.now(), 0))
   void controller.start()
+  void hydrateCatalog(ctx, controller)
 
   let uiDisposer: (() => void) | undefined
   const disposers: Array<() => void> = []
@@ -58,3 +60,42 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => uiDisposer ?? (() => {}), 'dsh-calender: ui dispose')
 }
+
+/**
+ * Pull the live execution-settings catalog (workspaces / sessions / LLM
+ * providers+models) from ctx when the runtime services are available, and
+ * publish it to the controller. Best-effort: any gap degrades to free-text
+ * inputs inside the form.
+ */
+async function hydrateCatalog(
+  ctx: ClientContext,
+  controller: CalenderClientController,
+): Promise<void> {
+  try {
+    const connection = (ctx as unknown as { connection?: { api?: unknown } }).connection
+    const workspaces = (ctx as unknown as { workspaces?: { list?: unknown } }).workspaces?.list
+    const sessions = (ctx as unknown as { sessions?: { list?: unknown } }).sessions?.list
+
+    const api = connection?.api as
+      | { llm?: { models?: (r: unknown) => Promise<unknown> } }
+      | undefined
+
+    const wsSnap = (workspaces as { getSnapshot?: () => unknown } | undefined)?.getSnapshot?.()
+    const ssSnap = (sessions as { getSnapshot?: () => unknown } | undefined)?.getSnapshot?.()
+
+    const catalog = await buildCatalogAsync({
+      workspaces: wsSnap as never,
+      sessions: ssSnap as never,
+      models: api?.llm?.models !== undefined
+        ? async () => {
+            const res = await api!.llm!.models!({} as never)
+            return (res as { result?: unknown })?.result as never
+          }
+        : undefined,
+    })
+    controller.setCatalog(catalog)
+  } catch {
+    // Degrade to free-text inputs; never take the GUI down.
+  }
+}
+

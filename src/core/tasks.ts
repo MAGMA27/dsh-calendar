@@ -293,11 +293,11 @@ export function deleteTask(tasks: readonly TaskRecord[], selectedId: string | un
   return { tasks: next, selectionCleared: selectedId === id }
 }
 
-/** Archive a settled task (done). Running or unresolved tasks are refused. */
+/** Archive a task (already-archived tasks are no-ops). */
 export function archiveTask(tasks: readonly TaskRecord[], id: string, now: number): { tasks: TaskRecord[]; archived: boolean } {
   let archived = false
   const next = tasks.map(task => {
-    if (task.id !== id || task.archivedAt !== undefined || !task.done) return task
+    if (task.id !== id || task.archivedAt !== undefined) return task
     archived = true
     return { ...task, archivedAt: now, updatedAt: now }
   })

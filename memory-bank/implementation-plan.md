@@ -42,6 +42,10 @@ Host cron + 到期触发 + 重启对账 + SSE 广播 + v1 迁移。
 设置卡、SystemPrompt 段、设计打磨、全量测试、docs/DESIGN.md、README、scripts/dsh-calender.js。
 **验收**：全量验证矩阵通过；文档齐备。
 
+### M7（新增，用户提出）日历 Tool 集成
+把日历暴露为供对话中 LLM 直接调用的 **tool**：通过 dsh 的 tool/命令机制，让 agent 在对话里「创建 / 删除 / 修改 / 查询」任务（含子任务与执行钉子）。浏览器半边复用现有 action 协议，Host 半边把 tool 调用映射到同一 HostLedger.apply，保证与 UI 同一份账本与幂等。
+**验收**：对话中 LLM（或用户发指令）能创建/改/删/查任务，且变动即时反映到日历视图；与 UI 操作共享账本与幂等；tool schema 齐全、文档化。
+
 ## 验证矩阵
 - 单元：calendar/schedule/tasks/store（纯函数）
 - Host：host-ledger（串行/原子/锁/幂等/损坏）、protocol（校验/载荷）、host-service（tick/滚动/跳过/对账）、host-runner（fake ApiProxy）

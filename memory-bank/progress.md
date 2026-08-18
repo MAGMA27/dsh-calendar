@@ -1,7 +1,7 @@
 # dsh-calender 进度（Progress）
 
 ## 当前状态
-- **阶段**：**M3 任务编辑已完成并通过验收**（typecheck / build / 60 单测全绿）。M0/M1/M2/M3 已完成并提交。
+- **阶段**：**M3 任务编辑已完成并通过验收**；本轮修复 5 个问题（加载/归档/详情面板/拖拽编辑/执行设置下拉）+ 计划新增 M7 日历 Tool。**60 单测全绿（63 含新增）**。
 - 计划已批准（Host 权威架构）。
 
 ## 已完成里程碑（均通过 ✓，已提交）
@@ -36,6 +36,7 @@
 | M4 真实执行 | 未开始 |
 | M5 定时调度 | 未开始 |
 | M6 完善 | 未开始 |
+| M7 日历 Tool | 🔜 已入计划；待 M6 后实施 |
 
 ## 下一步
 1. 用户真实挂载验收 M3（重启 dsh web 后侧边栏「日历」→ 点任务开详情面板 / 全表单新建 / 矩阵拖拽）。
@@ -58,3 +59,10 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 - **修复**：`~/.dsh/profiles/web/pnpm-workspace.yaml` 三项 `allowBuilds` 设为 `false`。设 `true` 会触发 cpu-features 构建失败——勿改 true。
 - **遗留**：DSH 的 SSH 远程能力因无编译器受限（与插件无关）。
 - **待用户操作**：重启 dsh web 进程使插件上线。
+
+## 轮次修复（用户验收反馈，5 项）
+1. **详情面板切换标题不更新**：`TaskDetailPanel` 用 `useState(task.title)` 只在挂载初始化；切任务不重挂载 → 标题陈旧。修复：CalendarView 给 `<TaskDetailPanel key={task.id}>`，切任务强制重挂载。
+2. **provider/模型/工作区/会话要下拉**：新增 `src/client/exec-catalog.ts`（把运行时 workspaces/sessions/LLM 模型目录转成扁平下拉选项；容错回退自由文本），controller 持有 `catalog`，index.ts 从 `ctx.connection/workpaces/sessions` 异步装载；ExecutionSettings 有数据渲染 `<select>`（provider 联动 model），无则自由文本。
+3. **归档报 "unknown or rejected"**：`archiveTask` 原拒绝未完成任务（`!task.done`）→ 报错。改为任意任务可归档；更新 tasks.spec 对应断言。
+4. **周视图任务不能拖拽/调时间**：TaskBlock 加 top/bottom resize 把手 + move（`onEditStart`）；WeekGrid 增加 move / resize-start / resize-end 编辑（pointer capture、snap、按天约束、minimum 15min），release 后 dispatch update（startAt/endAt）；抑制拖后误触发的 select。
+5. **日历 Tool（M7）**：新增 M7 里程碑——把日历暴露为对话中 LLM 可调用的 tool（建/删/改/查任务），Host 侧映射到同一 HostLedger.apply。已写入 `memory-bank/implementation-plan.md` 与 `docs/development-plan.md`，不打乱 M4–M6。

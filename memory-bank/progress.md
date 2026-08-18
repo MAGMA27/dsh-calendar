@@ -91,3 +91,7 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 ### 复测反馈第七轮（1 项）
 会话标题仍不生效：实测 session.list 的 projections.values 其实携带真实会话标题（如首个 prompt 预览），之前结构化类型没读它。
 修复：Host /options 直接读 projections.values.title 作为会话名（真实标题 → cwd 目录名 → id），不再依赖浏览器运行时叠标题；浏览器端保留订阅刷新作为兜底。host-options.spec 新增「优先投影标题」用例；index.ts 顺手清理重复块并做反应式刷新。
+### 严重回归修复（第八轮）
+卸载后 dsh 无法进入：Failed to load plugins - cannot get property "sessions" without inject。
+根因：上一版为叠会话标题在客户端 apply 里读了 ctx.sessions，但客户端插件 inject 只声明 locale，未声明 sessions 服务 → Cordis 访问 ctx.sessions 抛错，整包加载失败。
+修复：Host 已在 /options 直接读 projections.values.title 得到真实会话标题（前一轮），浏览器端叠标题是冗余且危险的——彻底移除 ctx.sessions 访问与 overlay（连同其测试），客户端 refreshCatalog 直接 fetch Host 目录。71 单测通过。

@@ -11,7 +11,6 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { CalenderClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpCalenderHostTransport } from './host-api.ts'
-import { overlaySessionTitles } from '../core/exec-catalog.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { mountCalender } from './calendar-mount.tsx'
@@ -42,14 +41,9 @@ export function apply(ctx: ClientContext): void {
   const controller = new CalenderClientController(transport, initialState(Date.now(), 0))
   void controller.start()
 
-  // Hang the browser runtime's session titles (if reachable) off the catalog
-  // and keep them fresh: subscribe so late-arriving durable titles still apply.
-  void refreshCatalog(ctx, controller)
-  const sessions = (ctx as unknown as { sessions?: { list?: { subscribe?: (fn: () => void) => () => void } } }).sessions
-  let unsubTitles: (() => void) | undefined
-  if (sessions?.list?.subscribe !== undefined) {
-    unsubTitles = sessions.list.subscribe(() => { void refreshCatalog(ctx, controller) })
-  }
+  // The execution-settings catalog (workspaces / sessions with their real
+  // titles / LLM providers+models) is assembled on the Host and fetched here.
+  void refreshCatalog(controller)
 
   let uiDisposer: (() => void) | undefined
   const disposers: Array<() => void> = []
@@ -61,7 +55,6 @@ export function apply(ctx: ClientContext): void {
   }
 
   uiDisposer = () => {
-    unsubTitles?.()
     for (const dispose of disposers.splice(0)) dispose()
     controller.dispose()
     uiDisposer = undefined
@@ -72,34 +65,15 @@ export function apply(ctx: ClientContext): void {
 
 /**
  * Pull the execution-settings catalog (workspaces / sessions / LLM
- * providers+models) from the Host over HTTP, then overlay the real per-session
- * titles from the browser runtime (ctx.sessions owns the durable-title
- * projection the GUI itself shows). Best-effort: any gap degrades gracefully.
+ * providers+models) from the Host over HTTP. Best-effort: a failure degrades
+ * to free-text inputs inside the form.
  */
-async function refreshCatalog(ctx: ClientContext, controller: CalenderClientController): Promise<void> {
+async function refreshCatalog(controller: CalenderClientController): Promise<void> {
   try {
     const catalog = await controller.transportOptions()
-    const titles = runtimeSessionTitles(ctx)
-    controller.setCatalog(overlaySessionTitles(catalog, titles))
+    controller.setCatalog(catalog)
   } catch {
     // Degrade to free-text inputs; never take the GUI down.
-  }
-}
-
-/** Read session id → display title from the browser runtime, when available. */
-function runtimeSessionTitles(ctx: ClientContext): Map<string, string> | undefined {
-  try {
-    const sessions = (ctx as unknown as { sessions?: { list?: { getSnapshot?: () => { byId?: Record<string, { displayTitle?: string }> } } } }).sessions
-    const byId = sessions?.list?.getSnapshot?.()?.byId
-    if (byId === undefined) return undefined
-    const map = new Map<string, string>()
-    for (const id of Object.keys(byId)) {
-      const t = byId[id]?.displayTitle
-      if (t !== undefined && t !== '') map.set(id, t)
-    }
-    return map.size > 0 ? map : undefined
-  } catch {
-    return undefined
   }
 }
 

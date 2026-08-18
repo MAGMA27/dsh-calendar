@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import {
-  buildCatalog, buildCatalogAsync, EMPTY_CATALOG, overlaySessionTitles, uniquifyLabels,
-} from '../src/core/exec-catalog.ts'
-import type { ExecutionCatalog } from '../src/core/exec-catalog.ts'
+import { buildCatalog, buildCatalogAsync, EMPTY_CATALOG, uniquifyLabels } from '../src/core/exec-catalog.ts'
 
 describe('exec-catalog buildCatalog', () => {
   it('maps workspaces, sessions, and sync models into dropdown options', () => {
@@ -34,27 +31,13 @@ describe('exec-catalog buildCatalog', () => {
   })
 })
 
-describe('overlaySessionTitles', () => {
-  const base: ExecutionCatalog = {
-    workspaces: [{ id: 'w1', label: 'P' }],
-    sessions: [{ id: 's1', label: 'p' }, { id: 's2', label: 'p · abc123' }],
-    projects: [
-      { id: 'w1', label: 'P', sessions: [{ id: 's1', label: 'p' }, { id: 's2', label: 'p · abc123' }] },
-    ],
-    providers: [],
-    modelsByProvider: {},
-  }
-
-  it('overlays real durable titles and re-uniquifies', () => {
-    const titles = new Map<string, string>([['s1', 'My Session'], ['s2', 'My Session']])
-    const out = overlaySessionTitles(base, titles)
-    // Both projects sessions show the durable title.
-    expect(out.projects[0].sessions.map(s => s.label)).toEqual(['My Session', 'My Session · s2'])
-    expect(out.sessions.map(s => s.id)).toEqual(['s1', 's2'])
-  })
-
-  it('keeps original labels when no titles are given', () => {
-    const out = overlaySessionTitles(base, undefined)
-    expect(out.projects[0].sessions[0].label).toBe('p')
+describe('uniquifyLabels', () => {
+  it('appends a short id suffix to duplicate labels', () => {
+    const out = uniquifyLabels([
+      { id: 'aaaaaa111', label: 'p' },
+      { id: 'bbbbbb222', label: 'p' },
+    ])
+    expect(out[0].label).toBe('p')
+    expect(out[1].label).toBe('p · bbbbbb')
   })
 })

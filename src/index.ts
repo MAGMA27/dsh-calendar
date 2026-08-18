@@ -1,17 +1,32 @@
 /**
- * dsh-calender host half (node). Loader entry for the plugin's host face: the
- * Host owns the ledger, cron scheduler, execution runner, HTTP/SSE routes,
- * and the system-prompt announcement — the browser is a same-origin async view
- * over that service.
- *
- * M0 scaffold: the apply is intentionally minimal so the package mounts and
- * boots without error. The HostCalenderService (host-ledger / host-service /
- * host-runner / host-routes) and the SystemPrompt section land in M1 / M6.
+ * dsh-calender host half (node). Loader entry for the plugin's host face:
+ * owns the ledger + HTTP/SSE routes. The cron scheduler (M5) and the
+ * real-execution runner (M4) and the SystemPrompt announcement (M6) build on
+ * this service.
  */
 import type { Context } from '@deepseek-ai/cordis'
+// Type-only: pulls the web-server service's Context augmentation (ctx.webServer).
+import type {} from '@deepseek-ai/dsh-host-webserver'
+import { CalenderHostService } from './host-service.ts'
+import { mountCalenderRoutes } from './host-routes.ts'
+import { acquireLedgerLock } from './host-ledger.ts'
+import { dshHome } from './dsh-home.ts'
 
-/** Required services (empty for the scaffold; filled as host features land). */
-export const inject: string[] = []
+/** Required services: the web server to register the calender routes on. */
+export const inject = ['webServer']
 
-/** Host plugin body: nothing to mount yet in the scaffold. */
-export function apply(_ctx: Context): void {}
+/** Host plugin body. */
+export function apply(ctx: Context): void {
+  const releaseLock = acquireLedgerLock(dshHome())
+
+  const service = new CalenderHostService()
+  const disposers = mountCalenderRoutes(ctx.webServer, service.ledger)
+
+  ctx.effect(() => {
+    return () => {
+      for (const dispose of disposers.splice(0)) dispose()
+      service.dispose()
+      releaseLock()
+    }
+  }, 'dsh-calender: host dispose')
+}

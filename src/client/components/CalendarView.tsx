@@ -1,5 +1,5 @@
 /** Calendar container: header (title / today / view switch / search) + body. */
-import { useState } from 'react'
+import { useSyncExternalStore, useState } from 'react'
 import type { CalenderClientController, CalenderView } from '../controller.ts'
 import { WeekGrid } from './WeekGrid.tsx'
 import { MonthGrid } from './MonthGrid.tsx'
@@ -19,7 +19,10 @@ const VIEWS: Array<{ view: CalenderView; key: CalenderKey }> = [
 interface CalendarViewProps { controller: CalenderClientController }
 
 export function CalendarView({ controller }: CalendarViewProps) {
-  const snap = controller.getSnapshot()
+  const snap = useSyncExternalStore(
+    fn => controller.subscribe(fn),
+    () => controller.getSnapshot(),
+  )
   const [query, setQuery] = useState('')
   const body = ((): React.ReactNode => {
     switch (snap.view) {

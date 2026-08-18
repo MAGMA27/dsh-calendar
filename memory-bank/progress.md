@@ -35,7 +35,7 @@
 | M3 任务编辑 | ✅ 含 9 轮验收修复（全表单/详情/子任务/执行设置下拉/会话标题/归档/定时清除/象限拖拽） |
 | M4 真实执行 | ✅ `d3f8660`（host-runner 真实执行 + 执行记录回写 + 会话跳转 + provider/运行徽标；92 单测） |
 | M5 定时调度 | ✅ `660b6f5`（Host cron 到期触发 + 只接受后滚动 + 重启对账 + SSE 广播；105 单测） |
-| M6 完善 | ✅ `M6` 提交（设置卡 calender 命名空间 + SystemPrompt 段（可开关）+ scripts/dsh-calender.js CLI + 文档；105 单测） |
+| M6 完善 | ✅ `61f6f28`（设置卡 calender 命名空间 + SystemPrompt 段（可开关）+ scripts/dsh-calender.js CLI + 文档；105 单测） |
 | M7 日历 Tool | 🔜 已入计划；待 M6 后实施 |
 
 ## M4 交付内容（真实执行）

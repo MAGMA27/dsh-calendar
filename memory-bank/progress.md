@@ -85,3 +85,6 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 实现：ExecutionCatalog 新增 projects 分组字段；host-options buildCatalogFromApi 直接按 workspace 分组、跳过归档会话、用 cwd 末段命名；客户端 ExecutionSettings 新增 GroupedSessionSelect 渲染 <optgroup>。新增 exec-settings-ui 测试。
 ### 复测反馈第五轮（1 项）
 会话下拉的两个问题：① 选了工作区后仍显示所有工作区会话 → 加「级联」：选中工作区只显示该项目下的会话，并清除原会话选择；② 同一项目内所有会话名相同（sessions.list 只给 cwd，同项目共享目录）→ 对同项目内重名会话追加短 id 后缀（如 p · aaaaaa）保证可区分。
+### 复测反馈第六轮（1 项）
+会话下拉改用 DSH 会话标题：调查确认 wire session.list 不携带标题（会话标题是每会话 log/projection 的产物），但浏览器端 ctx.sessions.list 已投影出真实 displayTitle（优先用户重命名的持久标题）。
+实现：Host /options 继续提供项目分组/归档过滤/结构；客户端 index.ts 在 fetch 目录后调用 overlaySessionTitles 用 ctx.sessions.list 的 displayTitle 覆盖会话显示名（无标题时回退 cwd 目录名；同项目仍去重）。shared uniquifyLabels 从 host-options 移到 core/exec-catalog 复用。新增 overlay 单测。

@@ -100,3 +100,42 @@ function fillModelGroups(cat: ExecutionCatalog, groups: Array<{ id: string; name
     cat.modelsByProvider[g.id] = g.models.map(m => ({ id: m.id, label: m.name || m.id }))
   }
 }
+
+/** Append a short id suffix to labels that repeat within one project, so
+ * several sessions under the same workspace never display identically. */
+export function uniquifyLabels(items: Array<{ id: string; label: string }>): Array<{ id: string; label: string }> {
+  const seen = new Map<string, number>()
+  return items.map(item => {
+    const count = (seen.get(item.label) ?? 0) + 1
+    seen.set(item.label, count)
+    const shortId = item.id.length > 6 ? item.id.slice(0, 6) : item.id
+    return count === 1 ? item : { ...item, label: `${item.label} · ${shortId}` }
+  })
+}
+
+/** Overlay real per-session titles onto a catalog (when the runtime provides
+ * them), preferring the durable title; re-uniquifies labels within each
+ * project so ids never look identical. Returns a new catalog. */
+export function overlaySessionTitles(catalog: ExecutionCatalog, titles?: Map<string, string>): ExecutionCatalog {
+  const next: ExecutionCatalog = {
+    workspaces: catalog.workspaces,
+    sessions: [],
+    projects: [],
+    providers: catalog.providers,
+    modelsByProvider: catalog.modelsByProvider,
+  }
+  for (const project of catalog.projects) {
+    const sessions = uniquifyLabels(project.sessions.map(s => {
+      const t = titles?.get(s.id)
+      return t !== undefined && t !== '' ? { id: s.id, label: t } : s
+    }))
+    next.projects.push({ ...project, sessions })
+    next.sessions.push(...sessions)
+  }
+  // flat fallback list
+  next.sessions = uniquifyLabels(catalog.sessions.map(s => {
+    const t = titles?.get(s.id)
+    return t !== undefined && t !== '' ? { id: s.id, label: t } : s
+  }))
+  return next
+}

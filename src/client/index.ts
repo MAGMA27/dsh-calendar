@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { CalenderClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpCalenderHostTransport } from './host-api.ts'
+import { overlaySessionTitles } from '../core/exec-catalog.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
 import { mountCalender } from './calendar-mount.tsx'
@@ -40,7 +41,7 @@ export function apply(ctx: ClientContext): void {
   const transport = new HttpCalenderHostTransport(HTTP_PREFIX_DEFAULT)
   const controller = new CalenderClientController(transport, initialState(Date.now(), 0))
   void controller.start()
-  void refreshCatalog(controller)
+  void refreshCatalog(ctx, controller)
 
   let uiDisposer: (() => void) | undefined
   const disposers: Array<() => void> = []
@@ -62,15 +63,33 @@ export function apply(ctx: ClientContext): void {
 
 /**
  * Pull the execution-settings catalog (workspaces / sessions / LLM
- * providers+models) from the Host over HTTP and publish it to the controller.
- * Best-effort: a failure degrades to free-text inputs inside the form.
+ * providers+models) from the Host over HTTP, then overlay the real per-session
+ * titles from the browser runtime (ctx.sessions owns the durable-title
+ * projection the GUI itself shows). Best-effort: any gap degrades gracefully.
  */
-async function refreshCatalog(controller: CalenderClientController): Promise<void> {
+async function refreshCatalog(ctx: ClientContext, controller: CalenderClientController): Promise<void> {
   try {
     const catalog = await controller.transportOptions()
-    controller.setCatalog(catalog)
+    controller.setCatalog(overlaySessionTitles(catalog, runtimeSessionTitles(ctx)))
   } catch {
     // Degrade to free-text inputs; never take the GUI down.
+  }
+}
+
+/** Read session id → display title from the browser runtime, when available. */
+function runtimeSessionTitles(ctx: ClientContext): Map<string, string> | undefined {
+  try {
+    const sessions = (ctx as unknown as { sessions?: { list?: { getSnapshot?: () => { byId?: Record<string, { displayTitle?: string }> } } } }).sessions
+    const byId = sessions?.list?.getSnapshot?.()?.byId
+    if (byId === undefined) return undefined
+    const map = new Map<string, string>()
+    for (const id of Object.keys(byId)) {
+      const t = byId[id]?.displayTitle
+      if (t !== undefined && t !== '') map.set(id, t)
+    }
+    return map.size > 0 ? map : undefined
+  } catch {
+    return undefined
   }
 }
 

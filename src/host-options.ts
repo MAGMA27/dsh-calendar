@@ -17,6 +17,7 @@ import type {
   ModelProviderGroup,
 } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { ExecutionCatalog } from './core/exec-catalog.ts'
+import { uniquifyLabels } from './core/exec-catalog.ts'
 
 /** A minimal structural workspace row (extra fields on real objects are fine). */
 interface WsRow {
@@ -49,18 +50,6 @@ function sessionNameOf(cwd: string | undefined, sessionId: string): string {
   if (cwd === undefined || cwd === '') return sessionId
   const segments = cwd.replaceAll(/\\/g, '/').split('/').filter(Boolean)
   return segments.length === 0 ? sessionId : segments[segments.length - 1]
-}
-
-/** Append a short id suffix to labels that repeat within one project, so
- * several sessions under the same workspace never display identically. */
-function uniquifyLabels(items: Array<{ id: string; label: string }>): Array<{ id: string; label: string }> {
-  const seen = new Map<string, number>()
-  return items.map(item => {
-    const count = (seen.get(item.label) ?? 0) + 1
-    seen.set(item.label, count)
-    const shortId = item.id.length > 6 ? item.id.slice(0, 6) : item.id
-    return count === 1 ? item : { ...item, label: `${item.label} · ${shortId}` }
-  })
 }
 
 /** Build the catalog from the ApiProxy: providers+models, workspaces, and

@@ -1,22 +1,31 @@
-# dependencies
+# ── dependencies ───────────────────────────────────────────────
 node_modules/
 
-# build output
+# pnpm local content-addressable store (created at project root when the
+# default global store is unreachable/writable from this sandbox)
+.pnpm-store/
+
+# ── build output ─────────────────────────────────────────────────
 lib/
 dist/
+*.tsbuildinfo
 
-# DSH / pnpm
-.dsh/
-
-# test / coverage
+# ── bundle / test cache ──────────────────────────────────────────
 coverage/
 *.log
+.tmp/
 
-# OS / editor
+# ── DSH / pnpm runtime ───────────────────────────────────────────
+.dsh/
+.turbo/
+
+# ── OS / editor ──────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+Desktop.ini
 .vscode/
 .idea/
+*.swp
 
-# local scratch
+# ── local scratch ────────────────────────────────────────────────
 scratch/

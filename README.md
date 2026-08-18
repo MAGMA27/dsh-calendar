@@ -33,3 +33,8 @@ pnpm build   # → lib/index.js + lib/client.js + lib/types
 ## 目录结构
 
 见 `AGENTS.md`。
+## 开发进度
+M0–M6 已完成：日历 UI / 任务编辑 / 真实执行（host-runner）/ Host cron 定时调度（host-scheduler + SSE）/ 完善（设置卡 `calender` 命名空间 + SystemPrompt 段 + `scripts/dsh-calender.js` CLI）。
+
+## CLI
+`node scripts/dsh-calender.js status|mount|unmount [--profile P]`

@@ -38,9 +38,9 @@ host-runner（会话/LLM provider/预设/权限 钉子 + 结算）、执行记�
 Host cron + 到期触发（只接受后滚动）+ 重启对账 + SSE 广播 + v1 迁移。
 **验收**：✅ host-scheduler 测试（tick/滚动/跳过/对账）；host-routes SSE 广播测试；105 单测全绿。
 
-### M6 完善
-设置卡、SystemPrompt 段、设计打磨、全量测试、docs/DESIGN.md、README、scripts/dsh-calender.js。
-**验收**：全量验证矩阵通过；文档齐备。
+### M6 完善 ✅ 已完成
+设置卡（calender 命名空间 via installSettingsSection）、SystemPrompt 段（可开关）、设计打磨、全量测试、docs/DESIGN.md、README、scripts/dsh-calender.js。
+**验收**：✅ 全量验证矩阵通过（typecheck+build+105 单测）；文档齐备。
 
 ### M7（新增，用户提出）日历 Tool 集成
 把日历暴露为供对话中 LLM 直接调用的 **tool**：通过 dsh 的 tool/命令机制，让 agent 在对话里「创建 / 删除 / 修改 / 查询」任务（含子任务与执行钉子）。浏览器半边复用现有 action 协议，Host 半边把 tool 调用映射到同一 HostLedger.apply，保证与 UI 同一份账本与幂等。

@@ -1,7 +1,7 @@
 # dsh-calender 进度（Progress）
 
 ## 当前状态
-- **阶段**：**M0–M5 已完成并通过测试**，经历 9 轮验收反馈与 M4/M5（真实执行 + Host cron 定时调度）落地；**105 单测全绿**。M6（完善）为下一步主目标。
+- **阶段**：**M0–M6 已完成并通过测试**，经历 9 轮验收反馈与 M4/M5/M6（真实执行 + Host cron 定时调度 + 完善：设置卡/SystemPrompt/CLI/文档）落地；**105 单测全绿**。M7（日历 Tool）为下一步主目标。
 - 计划已批准（Host 权威架构）。
 
 ## 已完成里程碑（均通过 ✓，已提交）
@@ -35,7 +35,7 @@
 | M3 任务编辑 | ✅ 含 9 轮验收修复（全表单/详情/子任务/执行设置下拉/会话标题/归档/定时清除/象限拖拽） |
 | M4 真实执行 | ✅ `d3f8660`（host-runner 真实执行 + 执行记录回写 + 会话跳转 + provider/运行徽标；92 单测） |
 | M5 定时调度 | ✅ `660b6f5`（Host cron 到期触发 + 只接受后滚动 + 重启对账 + SSE 广播；105 单测） |
-| M6 完善 | 未开始 |
+| M6 完善 | ✅ `M6` 提交（设置卡 calender 命名空间 + SystemPrompt 段（可开关）+ scripts/dsh-calender.js CLI + 文档；105 单测） |
 | M7 日历 Tool | 🔜 已入计划；待 M6 后实施 |
 
 ## M4 交付内容（真实执行）
@@ -54,9 +54,15 @@
 - **runner.run 重构**：返回 `{accepted, settleFinished?}`，不阻塞结算（HTTP 路由与调度器 fire-and-forget），可 await settleFinished 观察。
 - **测试**：host-scheduler.spec（6）+ host-reconcile.spec（4）+ host-routes SSE（1）+ host-ledger advanceSchedule（2）；**105 单测全绿**（原 92 + 13）。
 
+## M6 交付内容（完善）
+- **设置卡**：Host 经 `installSettingsSection(ctx, settingsNamespace('calender'), Config, ...)` 注册 `calender` 设置命名空间（`announceToAgent`/`enabled` 两个布尔，schema 由 schemastery 定义），在 web 设置「插件」区呈现可编辑表单。
+- **SystemPrompt 段**：`ctx.systemPrompt.section('plugin:calender', order 160)` 向每个 agent 宣告日历能力；受设置开关实时门控（关 `announceToAgent`/`enabled` 即撤销段，无需重启）。参考 task-board 的 installSettingsSection + sync 模式。
+- **CLI `scripts/dsh-calender.js`**：`status` / `mount` / `unmount`（`--profile`），只依赖 Node stdlib；mount 用 `dsh plugin add link:<dir>`。
+- **host `apply(ctx, config?)` + Config schema**；文档（DESIGN/README/进度）补齐。
+- **验证**：typecheck + build + 105 单测全绿。
+
 ## 下一步
-1. M6：设置卡 + SystemPrompt 段 + 设计打磨 + 全量测试 + 文档 + scripts/dsh-calender.js。
-2. M7：日历 Tool（LLM 可调用建/改/删/查任务）。
+1. M7：日历 Tool —— 把日历暴露为对话中 LLM 可调用的 tool（建/改/删/查任务，含子任务与执行钉子），Host 侧映射到同一 HostLedger.apply。
 
 ## 交付挂载（需用户环境）
 `dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calender/state` + 侧边栏入口 + 中间列日历。

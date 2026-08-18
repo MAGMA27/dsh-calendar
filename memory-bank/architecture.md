@@ -39,6 +39,7 @@
 - **执行设置目录（/api/calender/options）**：Host 经 `ctx.apiProxy`（llm.models / workspace.list / sessions.list）组装 ExecutionCatalog 供浏览器下拉：工作区→会话二级分组、隐藏归档会话、provider→model 联动。**会话标题**从 `sessions.list` 的 `projections.values.title` 读取（真实持久标题，未命名回退 cwd 基名→id）。
 - **调度（HostScheduleService，M5）**：Host cron（30s tick + start 时立即 catch-up + 重启对账）；nextRunAt<=now 触发 → runner.run（fire-and-forget）→ **仅 run 被接受后** `advanceSchedule` 滚动到下一 cron 匹配点；已 running（被拒）保留到期槽下个 tick 重试；错过不补；`enabled=false` 暂停；单次 dueAt 触发即结束。index.ts 里 runner 与 scheduler 一并构造、start 于 apply、dispose 于卸载。
 - **SSE 广播（M5）**：`/api/calender/events` 经 `ledger.subscribe` 在账本变更（浏览器动作/定时触发/执行结算/滚动写回）时向每个已连 EventSource 推送 `{revision, ledgerId}`；浏览器收到提示即重拉 `/state`。
+- **设置卡 + SystemPrompt（M6）**：Host 经 `installSettingsSection(ctx, settingsNamespace('calender'), Config, ...)` 注册 `calender` 设置命名空间（`announceToAgent`/`enabled`，schemastery）；`ctx.systemPrompt.section('plugin:calender', order 160)` 向 agent 宣告日历，受设置实时门控（关开关即撤销段、无需重启）。host `apply(ctx, config?)` 带 Config schema。
 
 ## 4. 协议（protocol.ts）
 

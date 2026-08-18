@@ -41,7 +41,15 @@ export function apply(ctx: ClientContext): void {
   const transport = new HttpCalenderHostTransport(HTTP_PREFIX_DEFAULT)
   const controller = new CalenderClientController(transport, initialState(Date.now(), 0))
   void controller.start()
+
+  // Hang the browser runtime's session titles (if reachable) off the catalog
+  // and keep them fresh: subscribe so late-arriving durable titles still apply.
   void refreshCatalog(ctx, controller)
+  const sessions = (ctx as unknown as { sessions?: { list?: { subscribe?: (fn: () => void) => () => void } } }).sessions
+  let unsubTitles: (() => void) | undefined
+  if (sessions?.list?.subscribe !== undefined) {
+    unsubTitles = sessions.list.subscribe(() => { void refreshCatalog(ctx, controller) })
+  }
 
   let uiDisposer: (() => void) | undefined
   const disposers: Array<() => void> = []
@@ -53,6 +61,7 @@ export function apply(ctx: ClientContext): void {
   }
 
   uiDisposer = () => {
+    unsubTitles?.()
     for (const dispose of disposers.splice(0)) dispose()
     controller.dispose()
     uiDisposer = undefined
@@ -70,7 +79,8 @@ export function apply(ctx: ClientContext): void {
 async function refreshCatalog(ctx: ClientContext, controller: CalenderClientController): Promise<void> {
   try {
     const catalog = await controller.transportOptions()
-    controller.setCatalog(overlaySessionTitles(catalog, runtimeSessionTitles(ctx)))
+    const titles = runtimeSessionTitles(ctx)
+    controller.setCatalog(overlaySessionTitles(catalog, titles))
   } catch {
     // Degrade to free-text inputs; never take the GUI down.
   }

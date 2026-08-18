@@ -88,3 +88,6 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 ### 复测反馈第六轮（1 项）
 会话下拉改用 DSH 会话标题：调查确认 wire session.list 不携带标题（会话标题是每会话 log/projection 的产物），但浏览器端 ctx.sessions.list 已投影出真实 displayTitle（优先用户重命名的持久标题）。
 实现：Host /options 继续提供项目分组/归档过滤/结构；客户端 index.ts 在 fetch 目录后调用 overlaySessionTitles 用 ctx.sessions.list 的 displayTitle 覆盖会话显示名（无标题时回退 cwd 目录名；同项目仍去重）。shared uniquifyLabels 从 host-options 移到 core/exec-catalog 复用。新增 overlay 单测。
+### 复测反馈第七轮（1 项）
+会话标题仍不生效：实测 session.list 的 projections.values 其实携带真实会话标题（如首个 prompt 预览），之前结构化类型没读它。
+修复：Host /options 直接读 projections.values.title 作为会话名（真实标题 → cwd 目录名 → id），不再依赖浏览器运行时叠标题；浏览器端保留订阅刷新作为兜底。host-options.spec 新增「优先投影标题」用例；index.ts 顺手清理重复块并做反应式刷新。

@@ -30,6 +30,8 @@ interface WsRow {
 interface SsRow {
   sessionId: unknown
   cwd?: string
+  /** Real session title from the per-session projection (when known). */
+  projections?: { values?: { title?: string } }
 }
 
 /** The narrow ApiProxy faces the catalog needs. */
@@ -44,12 +46,19 @@ function req(): { rpcId: unknown; payload: object } {
   return { rpcId: `calender-options-${rpcSeq++}`, payload: {} }
 }
 
-/** A session's display name: the last non-empty path segment of its cwd
- * (the project directory), falling back to the session id. */
-function sessionNameOf(cwd: string | undefined, sessionId: string): string {
-  if (cwd === undefined || cwd === '') return sessionId
-  const segments = cwd.replaceAll(/\\/g, '/').split('/').filter(Boolean)
-  return segments.length === 0 ? sessionId : segments[segments.length - 1]
+/** A session's display name. Priority: the real durable title (from the
+ * per-session projection, i.e. the DSH "session title"), then the last
+ * non-empty path segment of its cwd (the project directory), then the
+ * session id. */
+function sessionNameOf(row: SsRow, sessionId: string): string {
+  const title = row.projections?.values?.title?.trim()
+  if (title !== undefined && title !== '') return title
+  const cwd = row.cwd
+  if (cwd !== undefined && cwd !== '') {
+    const segments = cwd.replaceAll(/\\/g, '/').split('/').filter(Boolean)
+    if (segments.length > 0) return segments[segments.length - 1]
+  }
+  return sessionId
 }
 
 /** Build the catalog from the ApiProxy: providers+models, workspaces, and
@@ -83,7 +92,7 @@ export async function buildCatalogFromApi(api: CatalogApiFace): Promise<Executio
   const nameById = new Map<string, string>()
   for (const s of ssItems ?? []) {
     const id = String(s.sessionId)
-    nameById.set(id, sessionNameOf(s.cwd, id))
+    nameById.set(id, sessionNameOf(s, id))
   }
 
   const catalog: ExecutionCatalog = { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} }
@@ -94,7 +103,7 @@ export async function buildCatalogFromApi(api: CatalogApiFace): Promise<Executio
     const raw = (w.sessionIds ?? [])
       .map(String)
       .filter(sid => !archived.has(sid))
-      .map(sid => ({ id: sid, label: nameById.get(sid) ?? sessionNameOf(undefined, sid) }))
+      .map(sid => ({ id: sid, label: nameById.get(sid) ?? sessionNameOf({ sessionId: sid }, sid) }))
     // Sessions in one project share the same cwd, so their cwd-basename labels
     // collide; disambiguate duplicates with a short id suffix.
     const sessions = uniquifyLabels(raw)

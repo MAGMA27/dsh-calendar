@@ -62,6 +62,13 @@ export interface RunnerLedgerFace {
   settleExecution(taskId: string, executionId: string, outcome: 'succeeded' | 'failed' | 'cancelled', now: number, error: string | undefined, sessionId?: string): boolean
 }
 
+/** The result of a runner attempt: whether the execution was opened and,
+ * when it was, the promise that settles the record (unknown duration). */
+export interface RunResult {
+  accepted: boolean
+  settleFinished?: Promise<void>
+}
+
 /** Tuning knobs; defaults are safe for real runs and cheap to fake in tests. */
 export interface HostExecutionRunnerOptions {
   now?: () => number
@@ -91,9 +98,9 @@ type SessionStatus = 'running' | 'stopped' | 'gone'
 /**
  * Host-runner: opens an execution, drives a real dsh session, and settles the
  * execution record. `run()` is async and resolves once the prompt is accepted
- * (settlement continues in a detached loop so the HTTP action handler returns
- * immediately); callers that only need to observe settlement drive the loop
- * directly.
+ * (settlement continues detached, so the HTTP action handler and scheduler
+ * return immediately); `reconcile()` settles executions left running across a
+ * Host restart.
  */
 export class HostExecutionRunner {
   private readonly now: () => number
@@ -114,13 +121,16 @@ export class HostExecutionRunner {
     this.sleep = options.sleep ?? defaultSleep
   }
 
-  /** Open an execution and run the task to prompt-accepted; settlement is detached. */
-  async run(taskId: string): Promise<boolean> {
+  /** Open an execution and run the task to prompt-accepted (does not block on
+   * settlement). Returns whether the run was accepted and, when it was, the
+   * detached promise that settles the execution record once the turn completes.
+   */
+  async run(taskId: string): Promise<RunResult> {
     const task = this.ledger.taskById(taskId)
-    if (task === undefined) return false
+    if (task === undefined) return { accepted: false }
     const executionId = this.uuid()
     const startedAt = this.now()
-    if (!this.ledger.openExecution(taskId, executionId, startedAt)) return false
+    if (!this.ledger.openExecution(taskId, executionId, startedAt)) return { accepted: false }
     let sessionId: string | undefined
     try {
       const { sessionId: sid, fresh } = await this.connectSession(task)
@@ -129,13 +139,41 @@ export class HostExecutionRunner {
       await this.sendPrompt(task, sessionId)
     } catch (error) {
       this.ledger.settleExecution(taskId, executionId, 'failed', this.now(), messageOf(error), sessionId)
-      return true
+      return { accepted: true }
     }
-    // Settlement continues until the session's turn completes. The route
-    // handler fires run() without awaiting it, so a long turn never blocks the
-    // HTTP response; awaiting run() still lets callers observe full settlement.
-    await this.settle(taskId, executionId, sessionId, startedAt)
-    return true
+    // Settlement runs detached so the caller (HTTP route or scheduler) never
+    // blocks on a long LLM turn. An await on settleFinished observes it.
+    const settleFinished = this.settle(taskId, executionId, sessionId, startedAt)
+    return { accepted: true, settleFinished }
+  }
+
+  /** Settle any execution left 'running' across a Host restart. A task whose
+   * latest execution has no endedAt and no session id is left untouched (there
+   * is nothing to reconcile). With a session id, the current session status
+   * decides: gone → cancelled; stopped with prompt evidence → succeeded;
+   * otherwise left running (a resumed agent may still be mid-turn). Returns
+   * true when something was settled.
+   */
+  async reconcile(taskId: string): Promise<boolean> {
+    const task = this.ledger.taskById(taskId)
+    if (task === undefined) return false
+    const execution = task.executions[task.executions.length - 1]
+    if (execution === undefined || execution.endedAt !== undefined) return false
+    if (execution.sessionId === undefined || execution.sessionId === '') return false
+    const sessionId = execution.sessionId
+    try {
+      const status = await this.readStatus(sessionId, execution.startedAt)
+      if (status === 'gone') {
+        return this.ledger.settleExecution(taskId, execution.id, 'cancelled', this.now(), 'execution session no longer exists after host restart', sessionId)
+      }
+      if (status === 'stopped') {
+        return this.ledger.settleExecution(taskId, execution.id, 'succeeded', this.now(), undefined, sessionId)
+      }
+    } catch {
+      // A transport failure must not corrupt a running record; leave it.
+      return false
+    }
+    return false
   }
 
   /** Connect (reuse or create) the execution session. */

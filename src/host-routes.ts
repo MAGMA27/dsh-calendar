@@ -129,12 +129,27 @@ export function mountCalenderRoutes(webServer: {
         'Cache-Control': 'no-cache',
         Connection: 'keep-alive',
       })
-      // A minimal SSE surface: M5 attaches real revision pushes. Keep the
-      // socket open with a heartbeat so a browser EventSource stays connected.
+      // Push a change hint whenever the ledger (browser action, scheduled run,
+      // execution settlement, roll-forward) mutates, so open EventSources re-pull.
+      let closed = false
+      const onLedgerChange = (): void => {
+        if (closed) return
+        try {
+          const snap = ledger.getSnapshot()
+          res.write(`data: ${JSON.stringify({ revision: snap.revision, ledgerId: snap.scheduler?.ledgerId })}\n\n`)
+        } catch {
+          // ignore malformed push
+        }
+      }
+      const unsubscribe = ledger.subscribe(onLedgerChange)
       const keepAlive = setInterval(() => {
-        res.write(': keep-alive\n\n')
+        if (!closed) res.write(': keep-alive\n\n')
       }, 15_000)
-      req.on('close', () => clearInterval(keepAlive))
+      req.on('close', () => {
+        closed = true
+        clearInterval(keepAlive)
+        unsubscribe()
+      })
     },
   }))
 

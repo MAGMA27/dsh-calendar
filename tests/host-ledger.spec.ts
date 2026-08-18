@@ -137,3 +137,29 @@ describe('NoopLedgerPersist', () => {
     expect(ledger.getSnapshot().tasks).toEqual([])
   })
 })
+
+describe('HostLedger advanceSchedule', () => {
+  it('rolls a task schedule forward and bumps revision', () => {
+    const { ledger } = makeLedger()
+    const c = ledger.apply({ requestId: 'c1', action: {
+      kind: 'setSchedule', id: (() => { const r = ledger.apply(createEnvelope('r0')); return r.ok ? r.snapshot.tasks[0].id : '' })(),
+      patch: { enabled: true, cron: '0 9 * * *' },
+    } })
+    if (!c.ok) throw new Error('setSchedule failed')
+    const id = c.snapshot.tasks[0].id
+    const revBefore = c.snapshot.revision
+    expect(ledger.advanceSchedule(id, 9999, 1234)).toBe(true)
+    const t = ledger.taskById(id)!
+    expect(t.schedule!.nextRunAt).toBe(9999)
+    expect(t.schedule!.lastTriggeredAt).toBe(1234)
+    expect(ledger.getSnapshot().revision).toBe(revBefore + 1)
+  })
+
+  it('is a no-op for an unknown or scheduling-less task', () => {
+    const { ledger } = makeLedger()
+    const r0 = ledger.apply(createEnvelope('r0'))
+    if (!r0.ok) throw new Error('create failed')
+    expect(ledger.advanceSchedule('nope', 1, 1)).toBe(false)
+    expect(ledger.advanceSchedule(r0.snapshot.tasks[0].id, 1, 1)).toBe(false) // no schedule set
+  })
+})

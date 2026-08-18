@@ -98,7 +98,8 @@ describe('HostExecutionRunner', () => {
     rows[0].running = false
     rows[0].updatedAt = 3000
     gates.shift()?.()
-    await p
+    const res = await p
+    await res.settleFinished
     const ex = ledger.taskById(id)!.executions[0]
     expect(ex.result).toBe('succeeded')
     expect(ex.sessionId).toBe('new-session')
@@ -115,7 +116,8 @@ describe('HostExecutionRunner', () => {
     rows[0].running = false
     rows[0].updatedAt = 3000
     gates.shift()?.()
-    await p
+    const res = await p
+    await res.settleFinished
     const ex = ledger.taskById(id)!.executions[0]
     expect(ex.sessionId).toBe('s-pinned')
     expect(ex.result).toBe('succeeded')
@@ -130,7 +132,8 @@ describe('HostExecutionRunner', () => {
     expect(calls.presetsSelect).toBe(1)
     rows[0].running = false; rows[0].updatedAt = 3000
     gates.shift()?.()
-    await p
+    const res = await p
+    await res.settleFinished
   })
 
   it('fails the run when the pinned session is busy', async () => {
@@ -187,7 +190,8 @@ describe('HostExecutionRunner', () => {
     const p = mkRunner(ledger, env, gates).run(id)
     await toSettleLoop()
     // settle's first read sees the session gone and returns without a sleep
-    await p
+    const res = await p
+    await res.settleFinished
     const ex = ledger.taskById(id)!.executions[0]
     expect(ex.result).toBe('cancelled')
     expect(ex.error).toContain('no longer exists')
@@ -208,7 +212,8 @@ describe('HostExecutionRunner', () => {
     // session stays running; advance clock past the deadline, then release
     nowRef.value = 1000 + 10_000 + 1
     gates.shift()?.()
-    await p
+    const res = await p
+    await res.settleFinished
     const ex = ledger.taskById(id)!.executions[0]
     expect(ex.result).toBe('cancelled')
     expect(ex.error).toContain('timed out')
@@ -220,7 +225,7 @@ describe('HostExecutionRunner', () => {
     expect(ledger.openExecution(id, 'already', 1000)).toBe(true)
     const { env, gates } = makeHarness()
     const ok = await mkRunner(ledger, env, gates).run(id)
-    expect(ok).toBe(false)
+    expect(ok.accepted).toBe(false)
     expect(ledger.taskById(id)!.executions.length).toBe(1)
   })
 })

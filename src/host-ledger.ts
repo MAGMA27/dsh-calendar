@@ -259,6 +259,18 @@ export class HostLedger {
     return true
   }
 
+  /** Roll a task's schedule forward (scheduler callback after an accepted
+   * run): set the next-run instant and the last-triggered instant. No-op when
+   * the task or its schedule is missing. Always persists + notifies. */
+  advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined): boolean {
+    const task = this.taskById(taskId)
+    if (task === undefined || task.schedule === undefined) return false
+    this.state.tasks = setNextRun(this.state.tasks, taskId, nextRunAt, lastTriggeredAt, this.now())
+    this.state.scheduler.nextRuns[taskId] = { nextRunAt, lastTriggeredAt }
+    this.commit()
+    return true
+  }
+
   /** Persist + bump revision + notify after a Host-side ledger mutation. */
   private commit(): void {
     this.state.revision += 1

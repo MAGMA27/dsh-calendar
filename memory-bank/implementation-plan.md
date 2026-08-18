@@ -34,9 +34,9 @@ CreateTaskModal、TaskDetailPanel、MatrixPanel（象限拖拽）、AgendaPanel�
 host-runner（会话/LLM provider/预设/权限 钉子 + 结算）、执行记录、会话跳转、provider 徽标。
 **验收**：✅ host-runner fake ApiProxy 测试（会话选择/失败关闭/结算）；92 单测全绿。
 
-### M5 定时调度
-Host cron + 到期触发 + 重启对账 + SSE 广播 + v1 迁移。
-**验收**：host-service 测试（tick/滚动/跳过/对账）；真机定时触发一次。
+### M5 定时调度 ✅ 已完成
+Host cron + 到期触发（只接受后滚动）+ 重启对账 + SSE 广播 + v1 迁移。
+**验收**：✅ host-scheduler 测试（tick/滚动/跳过/对账）；host-routes SSE 广播测试；105 单测全绿。
 
 ### M6 完善
 设置卡、SystemPrompt 段、设计打磨、全量测试、docs/DESIGN.md、README、scripts/dsh-calender.js。

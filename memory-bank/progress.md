@@ -1,7 +1,7 @@
 # dsh-calender 进度（Progress）
 
 ## 当前状态
-- **阶段**：**M0–M4 已完成并通过测试**，经历 9 轮验收反馈与 M4 真实执行落地；**92 单测全绿**。M5（Host cron 定时调度）为下一步主目标。
+- **阶段**：**M0–M5 已完成并通过测试**，经历 9 轮验收反馈与 M4/M5（真实执行 + Host cron 定时调度）落地；**105 单测全绿**。M6（完善）为下一步主目标。
 - 计划已批准（Host 权威架构）。
 
 ## 已完成里程碑（均通过 ✓，已提交）
@@ -34,7 +34,7 @@
 | M2 日历 UI | ✅ `83e1599` + `213a43b` + 表头/重叠并排（`a1c7cc3`） |
 | M3 任务编辑 | ✅ 含 9 轮验收修复（全表单/详情/子任务/执行设置下拉/会话标题/归档/定时清除/象限拖拽） |
 | M4 真实执行 | ✅ `d3f8660`（host-runner 真实执行 + 执行记录回写 + 会话跳转 + provider/运行徽标；92 单测） |
-| M5 定时调度 | 未开始 |
+| M5 定时调度 | ✅ `M5` 提交（Host cron 到期触发 + 只接受后滚动 + 重启对账 + SSE 广播；105 单测） |
 | M6 完善 | 未开始 |
 | M7 日历 Tool | 🔜 已入计划；待 M6 后实施 |
 
@@ -46,9 +46,17 @@
 - **UI**：任务块 **运行徽标**（有未结算执行时）+ provider/model 徽标（已有）；执行记录显示 **「打开会话」跳转**（`ctx.sessions.open`，客户端 `inject` 增加 `sessions`）。
 - **测试**：host-runner.spec（10）、host-ledger 执行记录、host-routes run→runner 接线；**92 单测全绿**（原 76 + 16）。
 
+## M5 交付内容（Host cron 定时调度）
+- **host-scheduler.ts（HostScheduleService）**：tick 扫描账本里 enabled 且 `nextRunAt<=now` 的调度 → 交给 host-runner 触发真实执行 → **只在 run 被接受后**才 `advanceSchedule` 滚动到下一 cron 匹配点（被拒绝=已在运行=保留下一个到期槽，下个 tick 重试，绝不漏跑）。错过不补、`enabled=false` 暂停、单次 dueAt 触发后结束。
+- **HostLedger.advanceSchedule**：滚动 nextRunAt/lastTriggeredAt 并写回账本 + 通知。
+- **重启对账**：`runner.reconcile(taskId)`（会话消失→cancelled / 停止且有 prompt 证据→succeeded / 仍在 run→保留）+ `scheduler.reconcileAll()` 在 start 时对被遗留为 running 的执行结算。
+- **SSE 广播**：`/events` 经 `ledger.subscribe` 在账本变更（动作/定时触发/执行结算/滚动）时推送 `{revision, ledgerId}`，浏览器 EventSource 收到即重拉 /state。
+- **runner.run 重构**：返回 `{accepted, settleFinished?}`，不阻塞结算（HTTP 路由与调度器 fire-and-forget），可 await settleFinished 观察。
+- **测试**：host-scheduler.spec（6）+ host-reconcile.spec（4）+ host-routes SSE（1）+ host-ledger advanceSchedule（2）；**105 单测全绿**（原 92 + 13）。
+
 ## 下一步
-1. M5：Host cron + 到期触发 + SSE 广播 + 重启对账 + v1 迁移。
-2. M6：设置卡 + SystemPrompt 段 + 设计打磨 + 文档 + scripts/dsh-calender.js。
+1. M6：设置卡 + SystemPrompt 段 + 设计打磨 + 全量测试 + 文档 + scripts/dsh-calender.js。
+2. M7：日历 Tool（LLM 可调用建/改/删/查任务）。
 
 ## 交付挂载（需用户环境）
 `dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calender/state` + 侧边栏入口 + 中间列日历。

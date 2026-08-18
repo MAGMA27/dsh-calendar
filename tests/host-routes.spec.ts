@@ -137,4 +137,29 @@ describe('calender routes', () => {
     expect(res.status).toBe(400)
     for (const d of disposers) d()
   })
+
+  it('broadcasts change hints over SSE when the ledger mutates', async () => {
+    const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 't1')
+    const { server, registered } = makeFakeServer()
+    const disposers = mountCalenderRoutes(server as never, ledger, {})
+    const eventsRoute = registered.find(r => r.path === '/api/calender/events')!
+    const res = fakeRes()
+    const closes: Array<() => void> = []
+    const req: any = { method: 'GET', destroyed: false }
+    req.on = (ev: string, cb: (c?: Buffer) => void) => {
+      if (ev === 'data') { /* ignore */ }
+      else if (ev === 'end') { cb() }
+      else if (ev === 'close') { closes.push(() => cb()) }
+    }
+    await eventsRoute.handler(req, res)
+    expect(res.status).toBe(200)
+    // a ledger mutation pushes a change hint to the open event stream
+    const c = ledger.apply({ requestId: 'c1', action: { kind: 'create', input: { title: 'T', description: '', prompt: '', startAt: 1, endAt: 2, urgency: 'high', importance: 'high' } } })
+    if (!c.ok) throw new Error('create failed')
+    expect(res.body).toContain('data:')
+    expect(res.body).toContain('"revision"')
+    // close the connection to clean up the interval + subscription
+    for (const cl of closes) cl()
+    for (const d of disposers) d()
+  })
 })

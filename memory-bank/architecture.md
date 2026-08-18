@@ -40,6 +40,7 @@
 - **调度（HostScheduleService，M5）**：Host cron（30s tick + start 时立即 catch-up + 重启对账）；nextRunAt<=now 触发 → runner.run（fire-and-forget）→ **仅 run 被接受后** `advanceSchedule` 滚动到下一 cron 匹配点；已 running（被拒）保留到期槽下个 tick 重试；错过不补；`enabled=false` 暂停；单次 dueAt 触发即结束。index.ts 里 runner 与 scheduler 一并构造、start 于 apply、dispose 于卸载。
 - **SSE 广播（M5）**：`/api/calender/events` 经 `ledger.subscribe` 在账本变更（浏览器动作/定时触发/执行结算/滚动写回）时向每个已连 EventSource 推送 `{revision, ledgerId}`；浏览器收到提示即重拉 `/state`。
 - **设置卡 + SystemPrompt（M6）**：Host 经 `installSettingsSection(ctx, settingsNamespace('calender'), Config, ...)` 注册 `calender` 设置命名空间（`announceToAgent`/`enabled`，schemastery）；`ctx.systemPrompt.section('plugin:calender', order 160)` 向 agent 宣告日历，受设置实时门控（关开关即撤销段、无需重启）。host `apply(ctx, config?)` 带 Config schema。
+- **日历 Tool（M7）**：`ctx.tools.register(defineCalendarTool(...))` 注册 `calender_task` tool（inject 增加 `tools`；`@deepseek-ai/dsh-tools` devDep）。单一 tool，`action` 枚举 create/get/list/update/setQuadrant/setDone/addSubtask/setSubtaskDone/removeSubtask/setSchedule/delete/archive/restore/run；参数 schema 化；每个动作以 minted requestId 映射到**同一 HostLedger.apply**（与浏览器共享账本与幂等），读走 snapshot，`run` 委托 host-runner。defineTool 在 execute 前做参数/枚举校验。
 
 ## 4. 协议（protocol.ts）
 

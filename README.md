@@ -38,3 +38,6 @@ M0–M6 已完成：日历 UI / 任务编辑 / 真实执行（host-runner）/ Ho
 
 ## CLI
 `node scripts/dsh-calender.js status|mount|unmount [--profile P]`
+
+## 日历 Tool（M7）
+`calender_task`：对话中 LLM 可直接建/查/改/删任务、管理子任务、设置 cron/一次到时、钉执行钉子或触发真实 run，与日历视图共享同一 authoritative ledger（HostLedger.apply，request-id 幂等）。依赖 `@deepseek-ai/dsh-tools`。

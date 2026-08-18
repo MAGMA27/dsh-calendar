@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-host-apiproxy'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from 'schemastery'
+import { defineCalendarTool } from './host-tool.ts'
 import { CalenderHostService } from './host-service.ts'
 import { mountCalenderRoutes } from './host-routes.ts'
 import { acquireLedgerLock } from './host-ledger.ts'
@@ -22,9 +23,10 @@ import type { CatalogApiFace } from './host-options.ts'
 /** Required services: the web server to register the calender routes on, and
  * the ApiProxy to read the live execution-settings catalog (workspaces,
  * sessions, LLM providers/models). The settings surface is attached through
- * installSettingsSection (its own settings inject), and the SystemPrompt
- * announcement is gated on it. */
-export const inject = ['webServer', 'apiProxy', 'systemPrompt']
+ * installSettingsSection (its own settings inject), the SystemPrompt
+ * announcement is gated on it, and the `tools` registry serves the
+ * model-callable calendar tool (M7). */
+export const inject = ['webServer', 'apiProxy', 'systemPrompt', 'tools']
 
 /** Settings namespace of the calender's announcement capability (the web
  * settings surface edits it; the browser half never depends on this Host
@@ -91,12 +93,19 @@ export function apply(ctx: Context, config?: Config): void {
   })
   sync()
 
+  // M7: expose the calendar as a real, model-callable tool on the same ledger.
+  const disposeTool = ctx.tools.register(defineCalendarTool({
+    ledger: service.ledger,
+    run: id => runner.run(id),
+  }))
+
   const disposers = mountCalenderRoutes(ctx.webServer, service.ledger, api, runner)
 
   ctx.effect(() => {
     return () => {
       scheduler.dispose()
       if (disposeSection !== undefined) disposeSection()
+      disposeTool()
       for (const dispose of disposers.splice(0)) dispose()
       service.dispose()
       releaseLock()

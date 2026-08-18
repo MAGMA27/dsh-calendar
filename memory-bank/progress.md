@@ -1,7 +1,7 @@
 # dsh-calender 进度（Progress）
 
 ## 当前状态
-- **阶段**：**M0–M6 已完成并通过测试**，经历 9 轮验收反馈与 M4/M5/M6（真实执行 + Host cron 定时调度 + 完善：设置卡/SystemPrompt/CLI/文档）落地；**105 单测全绿**。M7（日历 Tool）为下一步主目标。
+- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）落地；**113 单测全绿**。
 - 计划已批准（Host 权威架构）。
 
 ## 已完成里程碑（均通过 ✓，已提交）
@@ -36,7 +36,7 @@
 | M4 真实执行 | ✅ `d3f8660`（host-runner 真实执行 + 执行记录回写 + 会话跳转 + provider/运行徽标；92 单测） |
 | M5 定时调度 | ✅ `660b6f5`（Host cron 到期触发 + 只接受后滚动 + 重启对账 + SSE 广播；105 单测） |
 | M6 完善 | ✅ `61f6f28`（设置卡 calender 命名空间 + SystemPrompt 段（可开关）+ scripts/dsh-calender.js CLI + 文档；105 单测） |
-| M7 日历 Tool | 🔜 已入计划；待 M6 后实施 |
+| M7 日历 Tool | ✅ `M7` 提交（`calender_task` tool：建/查/改/删/子任务/执行钉子/run，经同一 HostLedger.apply；113 单测） |
 
 ## M4 交付内容（真实执行）
 - **host-runner.ts**：打开执行记录 → 建/复用会话 → 应用钉子（provider+model 经 `sessions.selectModel`、agent 预设经 `agentPresets.select`、权限经 `/permission` 斜杠命令）→ rename → prompt('queue') → 结算执行记录。依赖注入的窄 ApiProxy face，测试用 fake 驱动。
@@ -61,8 +61,15 @@
 - **host `apply(ctx, config?)` + Config schema**；文档（DESIGN/README/进度）补齐。
 - **验证**：typecheck + build + 105 单测全绿。
 
+## M7 交付内容（日历 Tool）
+- **`src/host-tool.ts`（defineCalendarTool → `calender_task`）**：单一 model-callable tool，action 枚举覆盖 create / get / list / update / setQuadrant / setDone / addSubtask / setSubtaskDone / removeSubtask / setSchedule / delete / archive / restore / run；参数 schema（defineTool 的 ValueSchemaSpec）含标题/描述/Prompt/起止/紧急·重要/执行钉子（workspace/session/provider/model/mode/permission）/子任务/cron/dueAt。
+- **同账本同幂等**：每个动作以 minted requestId 映射到**同一 HostLedger.apply**（与浏览器 share 同一 authoritative ledger + request-id 幂等）；读走 snapshot；`run` 委托给 host-runner。defineTool 对 enum/必填做参数校验（非法 action 在 execute 前拒绝）。
+- **注册**：host index `ctx.tools.register(...)`（inject 增加 `tools`），`apply` 里接线并 dispose。
+- **依赖**：追加 devDep `@deepseek-ai/dsh-tools@0.1.0-rc.6`（host 侧 bundle）。
+- **测试**：host-tool.spec（8）覆盖建/查/列/改/象限/完成/子任务/定时/归档恢复删除/run/非法输入；**113 单测全绿**（原 105 + 8）。
+
 ## 下一步
-1. M7：日历 Tool —— 把日历暴露为对话中 LLM 可调用的 tool（建/改/删/查任务，含子任务与执行钉子），Host 侧映射到同一 HostLedger.apply。
+全部里程碑（M0–M7）已完成。后续可按需：合并交付 / 更多 tool 细化（如按日期范围查询）/ 真实组合验证。
 
 ## 交付挂载（需用户环境）
 `dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calender/state` + 侧边栏入口 + 中间列日历。

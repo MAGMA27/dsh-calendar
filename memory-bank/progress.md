@@ -3,6 +3,7 @@
 ## 当前状态
 - **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）落地；**113 单测全绿**。
 - 计划已批准（Host 权威架构）。
+- 📋 **验收清单见 [acceptance-checklist.md](memory-bank/acceptance-checklist.md)**：基线 / 挂载 / M0–M7 逐项 GUI 与 Host·工具行为验收。
 
 ## 已完成里程碑（均通过 ✓，已提交）
 | 里程碑 | 提交 | 验收 |

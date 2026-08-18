@@ -1,4 +1,12 @@
-/** The 7-column × 24h time grid with drag-to-create and drag/resize edit. */
+/** The 7-column × 24h time grid with drag-to-create and drag/resize edit.
+ *
+ * Interaction model (fixed per acceptance):
+ *  - A plain click on a task block opens its detail panel (onClick).
+ *  - Dragging the block body moves it across days (x picks the day column,
+ *    y picks the time) — the drag only starts after a small movement threshold,
+ *    so clicks are never consumed by the move handling.
+ *  - Dragging the top/bottom edge resizes the block's start/end within its day.
+ */
 import { useRef, useState } from 'react'
 import type { CalenderClientController } from '../controller.ts'
 import {
@@ -12,18 +20,23 @@ import css from '../calender.module.css'
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h)
 const MIN_BLOCK_MS = 15 * 60_000
+const GUTTER_PX = 56
+const DRAG_THRESHOLD_PX = 4
 
 interface WeekGridProps {
   controller: CalenderClientController
   snapMinutes?: number
 }
 
-interface EditState {
+interface EditCandidate {
   taskId: string
   kind: TaskEditKind
   origStart: number
   origEnd: number
-  originY: number
+  startX: number
+  startY: number
+  pointerId: number
+  /** The block's own day (used to constrain a resize to that day). */
   dayCell: DayCell
 }
 
@@ -32,9 +45,10 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   const days = weekDays(snap.cursor, snap.weekStart)
   const dragOrigin = useRef<{ y: number; dayCell: DayCell } | undefined>(undefined)
   const [drag, setDrag] = useState<{ start: number; end: number } | undefined>(undefined)
-  const editRef = useRef<EditState | undefined>(undefined)
-  const [preview, setPreview] = useState<{ id: string; start: number; end: number } | undefined>(undefined)
+  const editRef = useRef<EditCandidate | undefined>(undefined)
+  const armedRef = useRef(false)
   const suppressSelectRef = useRef(false)
+  const [preview, setPreview] = useState<{ id: string; start: number; end: number; dayIdx: number } | undefined>(undefined)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
@@ -64,54 +78,84 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
     dragOrigin.current = undefined
   }
 
-  // --- task move / resize ----------------------------------------------------
+  // --- task move / resize (threshold-armed, cross-day move) ------------------
   const onEditStart = (task: TaskRecord) => (e: React.PointerEvent<HTMLElement>, kind: TaskEditKind): void => {
     const dayCell = days.find(d => dayKeyEquals(d, task.startAt)) ?? days[0]
-    editRef.current = { taskId: task.id, kind, origStart: task.startAt, origEnd: task.endAt, originY: e.clientY, dayCell }
-    setPreview({ id: task.id, start: task.startAt, end: task.endAt })
-    // Capture on the grid root so moves outside the block still track.
-    bodyRef.current?.setPointerCapture?.(e.pointerId)
-    e.preventDefault()
+    editRef.current = {
+      taskId: task.id, kind, origStart: task.startAt, origEnd: task.endAt,
+      startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, dayCell,
+    }
+    armedRef.current = false
+    suppressSelectRef.current = false
+    // Do NOT capture here — a plain click must still reach the block's onClick.
   }
 
   const selectTask = (id: string): void => {
-    // A drag/release edit already dispatched update; the trailing click on the
-    // block would also open the detail panel — suppress it.
     if (suppressSelectRef.current) { suppressSelectRef.current = false; return }
     controller.selectTask(id)
   }
 
-  const computeEdit = (y: number): { start: number; end: number } => {
+  const xToDayIndex = (x: number): number => {
+    const rect = bodyRef.current?.getBoundingClientRect()
+    if (rect === undefined) return 0
+    const colWidth = (rect.width - GUTTER_PX) / 7
+    const idx = Math.floor((x - rect.left - GUTTER_PX) / colWidth)
+    return Math.max(0, Math.min(6, idx))
+  }
+
+  const yToMinutes = (y: number): number => {
+    const rect = bodyRef.current?.getBoundingClientRect()
+    if (rect === undefined) return 0
+    const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
+    return Math.round(frac * 24 * 60)
+  }
+
+  /** Compute the edit result from a pointer position (x,y). */
+  const computeEdit = (x: number, y: number): { start: number; end: number; dayIdx: number } => {
     const edit = editRef.current!
+    const span = edit.origEnd - edit.origStart
+    if (edit.kind === 'move') {
+      const dayIdx = xToDayIndex(x)
+      const day = days[dayIdx]
+      const snappedMin = snapMinutes * Math.round(yToMinutes(y) / snapMinutes)
+      const start = day.dateMs + snappedMin * 60_000
+      return { start, end: start + span, dayIdx }
+    }
+    // resize: stay within the block's own day
     const dayStart = edit.dayCell.dateMs
     const dayEnd = dayStart + 24 * 60 * 60_000
-    const target = Math.min(dayEnd, Math.max(dayStart, snapFloor(yToMs(edit.dayCell, y), snapMinutes)))
-    if (edit.kind === 'move') {
-      const delta = target - snapFloor(yToMs(edit.dayCell, edit.originY), snapMinutes)
-      let start = edit.origStart + delta
-      let end = edit.origEnd + delta
-      const span = end - start
-      start = Math.min(dayEnd - span, Math.max(dayStart, start))
-      end = start + span
-      return { start, end }
-    }
-    if (edit.kind === 'resize-start') return { start: Math.min(edit.origEnd - MIN_BLOCK_MS, target), end: edit.origEnd }
-    return { start: edit.origStart, end: Math.max(edit.origStart + MIN_BLOCK_MS, target) }
+    const snappedMin = snapMinutes * Math.round(yToMinutes(y) / snapMinutes)
+    const target = Math.min(dayEnd, Math.max(dayStart, dayStart + snappedMin * 60_000))
+    const dayIdx = Math.max(0, Math.min(6, days.findIndex(d => d.key === edit.dayCell.key) ))
+    if (edit.kind === 'resize-start') return { start: Math.min(edit.origEnd - MIN_BLOCK_MS, target), end: edit.origEnd, dayIdx }
+    return { start: edit.origStart, end: Math.max(edit.origStart + MIN_BLOCK_MS, target), dayIdx }
   }
 
   const onEditMove = (e: React.PointerEvent): void => {
-    if (editRef.current === undefined) return
-    const next = computeEdit(e.clientY)
-    setPreview({ id: editRef.current.taskId, start: next.start, end: next.end })
+    const edit = editRef.current
+    if (edit === undefined) return
+    if (!armedRef.current) {
+      const dx = e.clientX - edit.startX
+      const dy = e.clientY - edit.startY
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
+      // Threshold crossed: capture for the rest of the gesture.
+      armedRef.current = true
+      bodyRef.current?.setPointerCapture?.(edit.pointerId)
+    }
+    const next = computeEdit(e.clientX, e.clientY)
+    setPreview({ id: edit.taskId, start: next.start, end: next.end, dayIdx: next.dayIdx })
   }
+
   const onEditUp = (): void => {
     const edit = editRef.current
+    const armed = armedRef.current
     const p = preview
     editRef.current = undefined
+    armedRef.current = false
+    suppressSelectRef.current = armed && p !== undefined && (p.start !== edit?.origStart || p.end !== edit?.origEnd)
     setPreview(undefined)
-    if (edit === undefined) return
+    if (edit === undefined || !armed) return
     if (p !== undefined && (p.start !== edit.origStart || p.end !== edit.origEnd)) {
-      suppressSelectRef.current = true
       void controller.dispatch({ kind: 'update', id: edit.taskId, patch: { startAt: p.start, endAt: p.end } })
     }
   }
@@ -146,8 +190,11 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
               )}
               {columnTasks.map(task => {
                 const editing = preview !== undefined && preview.id === task.id
-                const topMs = editing ? preview.start : task.startAt
-                const endMs = editing ? preview.end : task.endAt
+                // Only apply a live preview to the block that owns it and only if
+                // the preview still lies in this column (cross-day moves detach it).
+                const inColumn = preview !== undefined && preview.dayIdx === days.indexOf(day)
+                const topMs = editing && inColumn ? preview!.start : task.startAt
+                const endMs = editing && inColumn ? preview!.end : task.endAt
                 const topFrac = dayFraction(topMs)
                 const durationFrac = (endMs - topMs) / (24 * 60 * 60_000)
                 return (
@@ -160,7 +207,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
                     widthPct={100}
                     onSelect={selectTask}
                     onEditStart={onEditStart(task)}
-                    editing={editing}
+                    editing={editing && inColumn}
                   />
                 )
               })}
@@ -173,6 +220,18 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
             </div>
           )
         })}
+        {/* cross-day move preview: a floating block positioned by day column + time */}
+        {preview !== undefined && (
+          <div
+            className={css.movePreview}
+            style={{
+              left: `calc(${GUTTER_PX}px + ${preview.dayIdx} * (100% - ${GUTTER_PX}px) / 7)`,
+              top: dayFraction(preview.start) * 100 + '%',
+              height: Math.max((preview.end - preview.start) / (24 * 60 * 60_000) * 100, 1.6) + '%',
+            }}
+            data-dsh-calender-move-preview=""
+          />
+        )}
       </div>
     </div>
   )

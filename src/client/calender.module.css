@@ -263,6 +263,15 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   border-radius: 6px;
 }
 
+.movePreview {
+  position: absolute;
+  z-index: 4;
+  background: var(--dsw-static-deepseek-200);
+  border: 2px dashed var(--dsw-static-deepseek-500);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
 /* --- task blocks -------------------------------------------------------------- */
 
 .taskBlock {

@@ -1,56 +1,47 @@
 # dsh-calender 进度（Progress）
 
 ## 当前状态
-- **阶段**：**M1 领域 + Host 骨架已完成并通过验收**（typecheck/build/test 全绿，42→45 单测）。进入 **M2 日历 UI**。
-- 计划已批准（Host 权威架构）；文档已落盘（AGENTS.md + memory-bank + docs/DESIGN.md + docs/development-plan.md）。
+- **阶段**：**M2 日历 UI 已完成并通过验收**（typecheck / build / 56 单测全绿）。**已按用户要求暂停**，等待用户处理后再进入 M3。
+- 计划已批准（Host 权威架构）；M0/M1/M2 已完成并提交。
 
-## M0 验收结果（通过 ✓）
-- `pnpm typecheck` ✓（tsc --noEmit）
-- `pnpm build` ✓ → `lib/index.js`（ESM node 面）+ `lib/client.js`（browser bundle，`window.__ModuleLoader__.load({id:"dsh-calender"})`）+ `lib/types/*.d.ts`
-- `pnpm test` ✓（vitest 运行，暂无线索测试，passWithNoTests）
-- 挂载验收 ✓：scratch profile（`dsh plugin --profile calender-scratch add link:<本目录>`）后 `dsh --profile calender-scratch --dump-config` 显示 `# == dsh-calender` 层 + `id: ui-calender, name: dsh-calender`；scratch profile 已删除。
+## 已完成里程碑（均通过 ✓，已提交）
+| 里程碑 | 提交 | 验收 |
+|---|---|---|
+| M0 脚手架 | `5c24d69` | typecheck / build / vitest / scratch 挂载 `--dump-config` 出现 `ui-calender` 层 |
+| M1 领域+Host 骨架 | `fb36cf4` | 45 单测；host 半边含账本+HTTP 路由（29.94 kB） |
+| M2 日历 UI | 待提交（本次） | 56 单测；client bundle 含 React 视图（58.24 kB） |
 
-### M0 关键文件
-- package.json（双面包 + `dsh.bundle.patch` + `dsh.client`）、cordis.patch.yml（`insert: ui-calender`）
-- tsconfig.json / tsconfig.build.json（declaration → lib/types）
-- tsdown.config.ts（`clientBundle`）+ build/tsdown.client.ts（官方预设，修了一处单引号转义 bug）+ build/web-platform.ts（PLATFORM_MODULES）
-- src/index.ts（空 host apply）、src/client/index.ts（空 client apply）、src/invariant.ts、src/client/css-modules.d.ts
-- vitest.config.ts、pnpm-workspace.yaml（allowBuilds.esbuild: false）、.gitignore、README.md
+## M2 交付内容（client 接线 + React 视图）
+- **接线**：`host-api.ts`（Http/Memory transport + v1 迁移）、`controller.ts`（视图状态 + open 面板 + dispatch）、`apply-guard.ts`、`locales.ts`（zh/en）、`sidebar-entry.ts`（DOM 注入自愈）、`calendar-mount.tsx`（中间列接管 + dsh-panel-activate 互斥）、`calender.module.css`（基础 + 视图类，全部 `--dsw-*` token）、`index.ts`（apply 装配：locale + transport + controller + 双挂载）。
+- **视图组件**（`src/client/components/`）：TaskBlock、WeekGrid（拖选建任务/现在线/块）、MonthGrid（点日进周）、MatrixPanel（艾森豪威尔 2×2）、AgendaPanel（过期/今天/近期）、CalendarView（头部+视图切换+搜索+新建）、CreateTaskModal（draft 起止 + 紧急/重要 + 创建）。
+- **测试**：controller / host-api / apply-guard / center-column-css（M2 新增 4 个，共 56）。
 
-### M0 环境要点（后续沿用）
-- 沙箱限制：`pnpm run` / vitest(esbuild) 需 `danger-full-access` 才能真正执行（esbuild 需 spawn 原生进程，workspace-write 下 EPERM）；tsc/tsdown(rolldown) 在 workspace-write 即可。
-- build 中 `external` /`noExternal` 有 deprecation（新版 tsdown 用 `deps.neverBundle`/`deps.alwaysBundle`）——暂不处理。
-- pnpm 设置放在 `pnpm-workspace.yaml`（新版不读 package.json 的 `pnpm.` 字段）。
-
-## M1 验收结果（通过 ✓）
-- `pnpm typecheck` ✓；`pnpm build` ✓（host 半边 29.94 kB 已含账本+路由；client 0.58 kB 待 M2）
-- `pnpm test` ✓ **45/45**：tasks(12) calendar(11) schedule(7) store(5) host-ledger(7，幂等/分发/持久化) host-routes(3，GET state 空账本 + POST action + 400)
-- M1 期间修正的真实 bug：startOfWeek 周起始编码、snapFloor/Ceil 非法吸附默认 30、normalizeDrag 端点语义（双 floor+扩展）、store 逐条修复坏 execution 而非丢弃整行。
-
-### M1 文件
-- src/core/tasks.ts（任务模型+状态机+艾森豪威尔+子任务+执行迁移，纯函数）
-- src/core/calendar.ts（周/月网格数学 + 拖选吸附）、src/core/schedule.ts（cron+nextRun）、src/core/store.ts（账本解析/修复）
-- src/protocol.ts（action/snapshot 判别联合 + 幂等信封）
-- src/host-ledger.ts（原子 file persist + requestId 幂等 + action 分发 + 锁）、src/dsh-home.ts、src/host-routes.ts（state/action/events）、src/host-service.ts、src/index.ts（装配 + webServer 挂载）
-
-## 已确认决策
-- 架构：**Host 权威**（账本/cron/执行结算在 Host，浏览器为同源异步视图）。
-- 命名：包 `dsh-calender`、行 id `ui-calender`、命名空间 `calender`、账本 `$DSH_HOME/calender/ledger-v1.json`、DOM `data-dsh-calender-*`、面板事件 `calender`。
+## M2 期间决策/修正
+- 暂停了长时间无产出的 React 视图子代理，由主代理直接编写视图组件（更可靠）。
+- 修正：host-api readonly 数组、index ctx.effect 的 undefined disposer、center-column-css 测试的 new URL 在 vitest 下不工作（改 cwd 相对路径）。
 
 ## 里程碑进度
 | 里程碑 | 状态 |
 |---|---|
-| M0 脚手架 | ✅ 完成（验收通过，已提交） |
-| M1 领域+Host 骨架 | ✅ 完成（验收通过，待提交） |
-| M2 日历 UI | 进行中（下一项）：WeekGrid 拖选/移动/拉伸 + MonthGrid + client host-api transport + sidebar-entry + calendar-mount + CalendarView |
-| M3 任务编辑 | 未开始 |
+| M0 脚手架 | ✅ `5c24d69` |
+| M1 领域+Host 骨架 | ✅ `fb36cf4`（45 单测） |
+| M2 日历 UI | ✅ 验收通过（56 单测，待提交） |
+| M3 任务编辑 | ⏸ 暂停（用户要求停下处理） |
 | M4 真实执行 | 未开始 |
 | M5 定时调度 | 未开始 |
 | M6 完善 | 未开始 |
 
-## 下一步（M2）
-1. client host-api.ts（HTTP transport：state/action/bootstrap v1 迁移）。
-2. sidebar-entry.ts（DOM 注入侧边栏入口，MutationObserver 自愈）+ calendar-mount.tsx（中间列接管 + dsh-panel-activate 互斥）。
-3. 视图：CalendarView + WeekGrid（拖选建任务/块/现在线）+ MonthGrid。
-4. 设置卡接线 + locales。
-5. 验收：GUI 挂载后拖选建任务（依赖真实 web 挂载）+ jsdom DOM 测试 + core 复用。
+## 下一步（等用户处理后 → M3）
+1. 提交 M2（git）。
+2. 用户真实挂载验收：`dsh plugin --profile web add link:<本目录>` → 重启 dsh web → 侧边栏「日历」→ 中间列周视图 → 拖选建任务 / 切换视图 / 搜索。
+3. M3：CreateTaskModal 完整表单（描述/Prompt/**子任务**/**执行设置：工作区/会话/provider+model/预设/权限**/**定时**）+ TaskDetailPanel + 矩阵象限拖拽改优先级 + 议程详情。
+4. M4：host-runner 真实执行（会话 + selectModel provider 钉子 + 结算）；M5：Host cron + SSE + 重启对账；M6：设置卡 + SystemPrompt 段 + 设计打磨 + 文档。
+
+## 交付挂载（需用户环境）
+`dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calender/state` + 侧边栏入口 + 中间列日历。
+
+## 命名决策（已锁定）
+包 `dsh-calender` / 行 id `ui-calender` / 命名空间 `calender` / 账本 `$DSH_HOME/calender/ledger-v1.json` / DOM `data-dsh-calender-*` / 面板事件 `calender`。
+
+## 环境要点
+vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-write 即可；pnpm 设置放 `pnpm-workspace.yaml`。

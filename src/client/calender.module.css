@@ -1,0 +1,505 @@
+/**
+ * dsh-calender styles. Scoped by the plugin's own data attributes so nothing
+ * leaks into the rest of the GUI; colors ride the dsh --dsw-* tokens so the
+ * calendar follows the active theme (light/dark and skins).
+ */
+
+/* --- center-column takeover (global rules, attribute-scoped) ---------------- */
+
+[data-pane='conversation'],
+[class*='centerCol'] {
+  position: relative;
+}
+
+[data-dsh-calender-view] {
+  position: absolute;
+  inset: 0;
+  display: none;
+  z-index: 60;
+  background: var(--dsw-alias-bg-base);
+}
+
+html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [data-dsh-calender-view] {
+  display: block;
+}
+
+html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [data-pane='conversation'] > :not([data-dsh-calender-view]),
+html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [class*='centerCol'] > :not([data-dsh-calender-view]) {
+  display: none !important;
+}
+
+/* --- sidebar entry row ------------------------------------------------------- */
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.entry:hover {
+  background: var(--dsw-specific-sidebar-nav-item-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.entry[data-active] {
+  background: var(--dsw-specific-sidebar-nav-item-active);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.entryIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.entryLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-dsh-frame][data-sidebar-collapsed] .entry {
+  justify-content: center;
+  padding: 0;
+  width: 100%;
+}
+
+[data-dsh-frame][data-sidebar-collapsed] .entryLabel {
+  display: none;
+}
+
+/* --- calendar frame ---------------------------------------------------------- */
+
+.calendarViewInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 14px 16px 16px;
+  gap: 12px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family);
+}
+
+.calendarHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  flex-wrap: wrap;
+}
+
+.calendarTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+}
+
+.viewSwitcher {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+}
+
+.viewSwitchButton {
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.viewSwitchButton[data-active] {
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.search {
+  flex: 0 1 220px;
+  min-width: 120px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  outline: none;
+}
+
+.search::placeholder { color: var(--dsw-alias-label-tertiary); }
+
+.calendarBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.statusLine {
+  padding: 24px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+}
+
+/* --- buttons ---------------------------------------------------------------- */
+
+.btnPrimary {
+  border: none;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btnPrimary:hover { background: var(--dsw-alias-button-primary-hover); }
+
+.btnGhost {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btnGhost:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* --- week grid --------------------------------------------------------------- */
+
+.weekGrid {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.weekGridCells {
+  position: relative;
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+  min-width: 760px;
+}
+
+.weekGutter {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--dsw-alias-bg-base);
+  border-right: 1px solid var(--dsw-alias-border-l1);
+}
+
+.weekGutterLabel {
+  position: absolute;
+  right: 8px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  transform: translateY(-50%);
+}
+
+.weekColumn {
+  position: relative;
+  border-right: 1px solid var(--dsw-alias-border-l1);
+}
+
+.weekColumn[data-weekend='true'] { background: var(--dsw-alias-bg-layer-2); }
+
+.slotOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: crosshair;
+}
+
+.nowLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--dsw-static-red-500);
+  z-index: 2;
+}
+
+.selection {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  z-index: 2;
+  background: var(--dsw-static-deepseek-200);
+  border: 1px solid var(--dsw-static-deepseek-500);
+  border-radius: 6px;
+}
+
+/* --- task blocks -------------------------------------------------------------- */
+
+.taskBlock {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding: 3px 6px;
+  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-left-width: 3px;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--dsw-font-family);
+}
+
+.taskBlockTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.taskBlockTitle[data-done] { text-decoration: line-through; color: var(--dsw-alias-label-tertiary); }
+
+.taskBlockMeta {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.taskBadge {
+  font-size: 10px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-state-business-tertiary);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.quadrantDo { border-left-color: var(--dsw-static-deepseek-500); }
+.quadrantSchedule { border-left-color: var(--dsw-static-blue-500); }
+.quadrantDelegate { border-left-color: var(--dsw-static-amber-500); }
+.quadrantEliminate { border-left-color: var(--dsw-alias-label-tertiary); }
+
+/* --- month grid --------------------------------------------------------------- */
+
+.monthGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(84px, 1fr);
+  gap: 1px;
+  height: 100%;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  overflow: auto;
+  background: var(--dsw-alias-border-l1);
+}
+
+.monthCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+  background: var(--dsw-alias-bg-base);
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.monthCell[data-today] .monthCellDay {
+  background: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-label-primary-foreground);
+  border-radius: 50%;
+}
+
+.monthCellDay {
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.monthChips { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+
+.taskChip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-2);
+  border-left: 3px solid var(--dsw-alias-border-l2);
+  border-radius: 4px;
+  padding: 1px 4px;
+  display: block;
+}
+
+.taskChip.quadrantDo { border-left-color: var(--dsw-static-deepseek-500); }
+.taskChip.quadrantSchedule { border-left-color: var(--dsw-static-blue-500); }
+.taskChip.quadrantDelegate { border-left-color: var(--dsw-static-amber-500); }
+.taskChip.quadrantEliminate { border-left-color: var(--dsw-alias-label-tertiary); }
+
+.monthMore { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+
+/* --- matrix ------------------------------------------------------------------- */
+
+.matrixPanel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  gap: 12px;
+  height: 100%;
+}
+
+.matrixQuadrant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.matrixQuadrant.quadrantDo { border-color: var(--dsw-static-deepseek-500); }
+.matrixQuadrant.quadrantSchedule { border-color: var(--dsw-static-blue-500); }
+.matrixQuadrant.quadrantDelegate { border-color: var(--dsw-static-amber-500); }
+.matrixQuadrant.quadrantEliminate { border-top-color: var(--dsw-alias-label-tertiary); }
+
+.matrixQuadrantTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+}
+
+.matrixList { display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+
+.matrixItem {
+  border: none;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.matrixItem:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+/* --- agenda ------------------------------------------------------------------- */
+
+.agendaPanel { display: flex; flex-direction: column; gap: 16px; }
+
+.agendaGroup { display: flex; flex-direction: column; gap: 6px; }
+
+.agendaTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.agendaEmpty { font-size: 13px; color: var(--dsw-alias-label-tertiary); margin: 0; }
+
+.agendaItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.agendaItem:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+.agendaTime { font-size: 12px; color: var(--dsw-alias-label-tertiary); flex: none; }
+.agendaText { font-size: 13px; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- create modal ----------------------------------------------------------------- */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dsw-alias-bg-mask-2);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  padding: 16px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px var(--dsw-alias-bg-mask-2);
+}
+
+.formRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.formLabel { font-size: 12px; color: var(--dsw-alias-label-secondary); flex: none; }
+.formValue { font-size: 13px; color: var(--dsw-alias-label-primary); }
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  outline: none;
+}
+
+.select {
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+}
+
+.modalError { font-size: 12px; color: var(--dsw-alias-state-error-primary); }
+
+.modalActions { display: flex; justify-content: flex-end; gap: 8px; }

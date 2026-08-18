@@ -59,8 +59,8 @@ interface TaskRecord {
 |---|---|---|
 | **M0 脚手架** | package/tsconfig/tsdown+预设/cordis.patch.yml/invariant/空 host+client | typecheck+build 通过；lib 产物存在；scratch 挂载 `--dump-config` 出现 `ui-calender` |
 | **M1 领域+Host 骨架** | core 四模块 + protocol + host-ledger + host-routes + host-service 空转 | core 单测；state 冒烟；账本原子/损坏/幂等测试 |
-| **M2 日历 UI** | WeekGrid 拖选/移动/拉伸 + MonthGrid + transport + 挂载 | GUI 拖选建任务；jsdom 挂载测试 |
-| **M3 任务编辑** | CreateTaskModal + TaskDetailPanel + MatrixPanel + AgendaPanel + ExecutionSettings | GUI 全表单/矩阵拖拽；tasks 状态机测试 |
+| **M2 日历 UI** ✅ | WeekGrid 拖选/移动/跨日/拉伸/表头/重叠并排 + MonthGrid + transport + 挂载 | GUI 拖选建任务；jsdom 挂载测试 |
+| **M3 任务编辑** ✅ | CreateTaskModal + TaskDetailPanel + MatrixPanel + AgendaPanel + ExecutionSettings | GUI 全表单/矩阵拖拽；tasks 状态机测试 |
 | **M4 真实执行** | host-runner（会话/provider/预设/权限 钉子 + 结算）+ 执行记录 + 会话跳转 | fake ApiProxy 测试（选择/失败关闭/结算） |
 | **M5 定时调度** | Host cron + 触发 + 重启对账 + SSE + v1 迁移 | host-service 测试；真机定时触发一次 |
 | **M6 完善** | 设置卡 + SystemPrompt 段 + 设计打磨 + 全量测试 + 文档 + CLI | 全量验证矩阵通过 |

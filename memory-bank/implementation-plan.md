@@ -22,13 +22,13 @@ package.json（双面包 + dsh.bundle.patch + dsh.client）、tsconfig.json/tsco
 core（tasks/calendar/schedule/store）、protocol、host-ledger（原子+锁+幂等）、host-routes（state/action）、host-service 空转、dsh-home。
 **验收**：core 单测通过；API 冒烟（curl state 空账本）；账本原子/损坏/幂等测试通过。
 
-### M2 日历 UI
-WeekGrid（拖选/移动/拉伸/现在线）、MonthGrid、client host-api transport、sidebar-entry、calendar-mount、CalendarView。
-**验收**：GUI 手测拖选建任务；jsdom DOM 挂载测试。
+### M2 日历 UI ✅ 已完成
+WeekGrid（拖选/移动/跨日/拉伸/表头/重叠并排）、MonthGrid、client host-api transport、sidebar-entry、calendar-mount、CalendarView。
+**验收**：✅ GUI 手测拖选建任务；jsdom DOM 挂载测试。
 
-### M3 任务编辑
+### M3 任务编辑 ✅ 已完成
 CreateTaskModal、TaskDetailPanel、MatrixPanel（象限拖拽）、AgendaPanel、ExecutionSettings。
-**验收**：GUI 手测全表单与矩阵拖拽；tasks 状态机测试。
+**验收**：✅ GUI 手测全表单与矩阵拖拽；tasks 状态机测试。
 
 ### M4 真实执行
 host-runner（会话/LLM provider/预设/权限 钉子 + 结算）、执行记录、会话跳转、provider 徽标。

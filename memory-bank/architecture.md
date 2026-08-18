@@ -13,6 +13,7 @@
 ## 2. 运行时 API（rc.6 签名）
 
 - 浏览器：`ctx.sessions.list/binding(id).session.{rename,prompt,command,getSnapshot,subscribe}`、`ctx.workspaces.connectWorkspace`、`connection.api.sessions.{models,selectModel,history}`、`connection.api.agentPresets.{list,select}`。
+- **客户端防御规则（重点）**：客户端 `apply(ctx)` 只能使用 `inject` 声明的服务 + 纯 DOM/transport；访问未声明的服务（如 `ctx.sessions` 等）会抛 `cannot get property X without inject` 导致整包加载失败、GUI 无法进入。因此所有 DSH 域数据（会话标题、工作区、模型目录等）一律由 Host 半边读取并经 `/api/calender/*` HTTP 暴露，浏览器只 fetch。
 - Host（`ApiProxy` from `@deepseek-ai/dsh-host-apiproxy`）：`api.sessions.{list,create({workspaceId?,cwd?,sessionId?,agentPreset?}),prompt({sessionId,mode:'queue',content}),rename,models,selectModel({sessionId,provider,model,reasoningEffort?}),history}`、`api.workspaces.{list,create}`。
 - 模型目录：`api.sessions.models({sessionId})` → `SessionModels{current:ModelSelection,routable,groups}`；`selectModel` → `{selected:ModelSelection}`（`ModelSelection={provider,model,reasoningEffort?}`）。
 - UI 接缝：外部插件无可用槽位（sidebar/conversation 均单占），侧边栏入口与中间列接管走 **DOM 注入 + MutationObserver 自愈**；跨面板互斥用 `dsh-panel-activate` 事件。
@@ -35,13 +36,15 @@
 - **Host 为权威**：账本/调度/结算全部在 Host；浏览器动作只提交 `action`（判别联合 + requestId 幂等），UI 状态 = 最近 Host snapshot。
 - **共享纯层**：`src/core/`（tasks/calendar/schedule/store）与 `src/protocol.ts` 为纯 TS，host/client 共用；client 不得值导入 host 包。
 - **执行**：手动/定时共用 host-runner；步骤：建/复用会话（sessionId 或 workspaceId 钉子 → 否则最近工作区）→ selectModel（provider 钉子，失败即关闭）→ agent 预设（空白会话）→ /permission → rename → prompt('queue') → 订阅 turnEnds 结算。重启对账：有 sessionId 继续观察，无则取消不重发。
+- **执行设置目录（/api/calender/options）**：Host 经 `ctx.apiProxy`（llm.models / workspace.list / sessions.list）组装 ExecutionCatalog 供浏览器下拉：工作区→会话二级分组、隐藏归档会话、provider→model 联动。**会话标题**从 `sessions.list` 的 `projections.values.title` 读取（真实持久标题，未命名回退 cwd 基名→id）。
 - **调度**：Host cron（30s tick + 立即 + 恢复）；nextRunAt<=now 触发；先滚动到下一匹配点、仅接受后持久化；已 running 跳过；错过不补跑；`enabled=false` 暂停。
 
 ## 4. 协议（protocol.ts）
 
 - `GET /api/calender/state`（no-store）→ `Snapshot{schemaVersion,revision,tasks,scheduler}`
 - `GET /api/calender/events`（SSE）→ revision/scheduler 变更提示（断线重连+页面恢复可见重拉）
-- `POST /api/calender/action` → `{requestId, action}` → Snapshot；action：create/update/delete/archive/restore/setSchedule/run/import
+- `GET /api/calender/options` → 执行设置目录（工作区/会话(含标题,归档已滤)/provider+模型）
+- `POST /api/calender/action` → `{requestId, action}` → Snapshot；action：create/update/delete/archive/restore/setSchedule/run/import（`setSchedule` 的 cron/dueAt 用 `null` 清除、`undefined` 不动）
 - 安全：loopback 同源 + 严格校验；POST 仅 JSON；普通 ≤64KiB / import ≤2MiB；action 无命令/可执行路径/shell 文本
 
 ## 5. 命名约定

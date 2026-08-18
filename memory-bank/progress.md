@@ -45,3 +45,10 @@
 
 ## 环境要点
 vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-write 即可；pnpm 设置放 `pnpm-workspace.yaml`。
+
+## 挂载与环境记录（2026-08，已由主代理处理）
+- **已挂载到 web profile ✓**：`dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` 成功；`dsh.profile.bundles=[base,web-app,dsh-web-ui-all,dsh-calender]`；`--dump-config` 出现 `ui-calender` 层；node_modules/dsh-calender 可解析。
+- **根因**：web profile 既有原生依赖（cloudflared/cpu-features/ssh2，来自 dsh-web-ui-all / DSH 远程 SSH）从未做构建放行决策，pnpm 10 报 `IGNORED_BUILDS` 使任何 pnpm add（含挂载）退出非 0。
+- **修复**：`~/.dsh/profiles/web/pnpm-workspace.yaml` 三项 `allowBuilds` 设为 `false`（明确跳过构建；本机无 C++ 编译器，cpu-features 无法原生构建，此为公司既有工作状态）。设 `true` 会触发 cpu-features 构建失败——勿改 true。
+- **遗留**：DSH 的 SSH 远程能力因无编译器受限（与插件无关）；如日后需要，需另装 MSVC 工具链。
+- **待用户操作**：重启 dsh web 进程使插件上线（入口/视图/API 冒烟）。

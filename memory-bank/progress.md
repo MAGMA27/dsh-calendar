@@ -120,6 +120,7 @@
 1. **搜索栏真正可用**：原来 `query` state 只存不用，纯摆设。现在新增纯函数 `taskMatchesQuery(task, query)`（`src/core/tasks.ts`，大小写不敏感匹配 title/description/prompt，空串匹配全部），四个视图（周/月/矩阵/议程）都接上 `query` prop 过滤任务。改动：`CalendarView.tsx`（trim 后透传）+ `WeekGrid/MonthGrid/MatrixPanel/AgendaPanel`（过滤各自任务源）。
 2. **周/月日期导航**：原来只有「今天」按钮，无上一/下一期。新增 `DateNav` 组件（`CalendarView.tsx`）：`‹ 期标签 › + 今天`。core 新增 `addDays/addMonths/sameMonth/monthLabel/weekRangeLabel`（`src/core/calendar.ts`）——addMonths 按目标月天数钳制日（1月31日+1月→2月28/29）；周视图步进 ±7 天、月视图 ±1 月；标签带年份（如「2024年1月15日 – 1月21日」「2024年1月」）。`DateNav` 含 `aria-live` 标签。
 3. **月视图信息补全 + 区分相邻月**：原月视图无周几表头、无月份信息、上月/本月无区分。重构 `MonthGrid.tsx`：顶部 sticky 周几表头（随 weekStart 周一起始）、`sameMonth` 判当前月、相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、日期 `label-tertiary`、chips 半透明）、今天仍圆形高亮；外层包 `.monthWrap`（表头 + 可滚动 `.monthGrid`）。CSS 新增 `.dateNav*`、`.monthWrap/.monthWeekHeader/.monthWeekDay`、`.monthCell[data-outside]`。
+4. **月视图日期栏色条（commit `a003320`，用户复测追加）**：每个日期单元格的日期行加一条横穿整行的颜色条 `.monthCellBar`——当前月品牌色（今天实心、其余 70% 透明）、相邻月灰色（50% 透明），本月/上月/下月一眼可辨。改动：`MonthGrid.tsx`（日期行包 `.monthCellDateRow` + `.monthCellBar`）、`calendar.module.css`。
 - **测试**：`tests/calendar.spec.ts` 新增 date navigation 组（addDays/addMonths/sameMonth/monthLabel/weekRangeLabel）；`tests/tasks.spec.ts` 新增 taskMatchesQuery 组。**140 单测全绿**（21 文件）。
 
 ## 下一步

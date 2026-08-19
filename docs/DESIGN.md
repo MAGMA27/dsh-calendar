@@ -97,6 +97,7 @@
 - 日历页内执行记录「打开会话」（`onOpenSession` → index.ts `openSession`）先 `setCalendarOpen(false)` 再 `ctx.sessions.open`（commit `8d520ef`）；
 - 侧边栏点会话/新建会话（日历仍开着）由 `navigation-watch.ts` 处理，两层：`watchSessionNavigation` 订阅 `ctx.sessions.list` 的 `current`，变化即关日历（基线随每次打开重种）；`closeOnSessionOpen` 包装共享 `sessions.open`——**点当前会话**不改变 `current`，但任何 open 调用（含点当前会话）都关日历（dispose 还原）。提交 `139c42f` + `51ca679`。
 client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-conversation`）。
+**执行设置目录实时刷新（`catalog-refresh.ts`）**：目录在 apply 时拉一次，之后新建的会话要靠 `watchCatalogRefresh` 保持实时——订阅 `ctx.sessions.list`（任何变更防抖 300ms 重拉 `/api/calendar/options`）+ 日历关→开时也重拉（覆盖冷会话）。dispose 取消订阅与挂起计时器。
 
 ## 10. 视图增强（commit `c5ec7b1` 起）
 

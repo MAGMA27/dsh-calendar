@@ -33,8 +33,8 @@
 - [x] 归档/恢复/删除、定时清除（周视图定时徽标随之消失）
 
 ## 3. M4 真实执行
-- [ ] 任务块出现 **provider/model 徽标**；有未结算执行时出现**「执行中」徽标**
-- [ ] 详情面板「立即执行」真正驱动 host-runner（建/复用会话 → 应用钉子 → prompt）
+- [x] 任务块出现 **provider/model 徽标**；有未结算执行时出现**「执行中」徽标**
+- [x] 详情面板「立即执行」真正驱动 host-runner（建/复用会话 → 应用钉子 → prompt）
 - [ ] 执行钉子**失败即关闭**：无效会话忙碌 / provider 缺 model 等 → 记 enforced failed，不发 Prompt
 - [ ] **执行记录**写回任务（时间 + result: succeeded/failed/cancelled）并即时刷新视图
 - [ ] 执行记录里 **「打开会话」**跳转到对应 dsh 会话

@@ -130,6 +130,11 @@
 - **坑（修复前下拉仍为空）**：进程内 ApiProxy 域对象名是 **`agentPresets`（复数）**，而 HTTP wire 方法路径是 `agentPreset.list`（单数）——首次实现 face 用了单数 `agentPreset`，`api.agentPreset` 为 undefined，`?.` 短路 → modes 恒空。已修正为复数并在 face 注释里记录该差异。验证：直连 `POST /api/agentPreset.list`（wire 信封 `{type:'client-request',rpcId,method,payload}`）返回 4 个 preset（standard/code/minimal/cordis）。
 - **测试**：`tests/host-options.spec.ts` 断言 modes 映射（name 优先、broken 排除、空 roster 为 []）；`tests/exec-settings-ui.spec.tsx` 新增预设下拉渲染+选中派发用例；`tests/exec-catalog.spec.ts` 空目录 toEqual 兼容。**138 单测全绿**（21 文件）。
 
+## 会话目录实时刷新（启动后新建的会话要能出现在任务详情下拉里）
+- **问题**：执行设置 catalog（workspaces/sessions/providers/modes）只在 client apply 时 `refreshCatalog` 拉一次；之后新建的会话不会出现在任务详情的会话下拉，直到刷新页面。
+- **实现**：新增纯模块 `src/client/catalog-refresh.ts`（`watchCatalogRefresh`）——①订阅 `sessions.list` store，任何变更（新建/改名/归档）**防抖 300ms** 后重拉 `/api/calendar/options`；②日历从关→开时也重拉（覆盖 list store 不追踪的冷会话/持久化附加）。`src/client/index.ts` 经 `ctx.effect` 挂接，dispose 取消订阅与挂起计时器。已有 `refreshCatalog` 首拉保留。
+- **测试**：新增 `tests/catalog-refresh.spec.ts`（5 用例：列表变更重拉、突发合并为一次、关→开触发且持续开不重复、先开后装不误触发、dispose 清理）。**143 单测全绿**（22 文件）。
+
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 

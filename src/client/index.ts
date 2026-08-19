@@ -17,6 +17,7 @@ import { createCalendarOverlay } from './calendar-overlay.tsx'
 import { CalendarEntry } from './calendar-entry.tsx'
 import { isCalendarOpen, setCalendarOpen, subscribeCalendarOpen } from './root-open.ts'
 import { closeOnSessionOpen, watchSessionNavigation } from './navigation-watch.ts'
+import { watchCatalogRefresh } from './catalog-refresh.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { en, zh } from './locales.ts'
 
@@ -74,6 +75,17 @@ export function apply(ctx: ClientContext): void {
     sessions,
     () => setCalendarOpen(false),
   ), 'dsh-calendar: close calendar on any session open')
+
+  // The catalog is fetched once at boot; sessions created afterwards (or cold
+  // sessions attached from disk) must still appear in the task-detail session
+  // dropdown. Re-pull the catalog when the sessions list changes or the
+  // calendar opens (debounced; see catalog-refresh.ts).
+  ctx.effect(() => watchCatalogRefresh({
+    list: sessions.list,
+    subscribeOpen: subscribeCalendarOpen,
+    isOpen: isCalendarOpen,
+    refresh: () => { void refreshCatalog(controller) },
+  }), 'dsh-calendar: refresh catalog on session changes')
 
   // Session jump: opening an execution's session in the GUI is a deliberate
   // leave-the-calendar action, so the calendar overlay is closed first; the

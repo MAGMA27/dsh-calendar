@@ -65,6 +65,19 @@ describe('WeekGrid create-drag snapping', () => {
   function gridRect(top: number, height: number): DOMRect {
     return { top, height, bottom: top + height, left: 0, right: 100, width: 100, x: 0, y: top, toJSON: () => ({}) } as DOMRect
   }
+  // Simulate the real layout: a sticky weekday/date header (40px) above the time
+  // grid cells. Pointer→time mapping must use the CELLS rect, not the whole
+  // weekGrid — using the latter used to shift every click ~30 min later.
+  const HEADER = 40
+  const CELL_H = 24 * 48
+  const yAt = (h: number, m: number) => HEADER + ((h * 60 + m) / 1440) * CELL_H
+
+  function stubGridRect(host: HTMLElement): HTMLElement {
+    const cells = host.querySelector('[class*=weekGridCells]') as HTMLElement
+    expect(cells).toBeTruthy()
+    cells.getBoundingClientRect = () => gridRect(HEADER, CELL_H)
+    return cells
+  }
 
   it('floors a drag-create: click at 9:50, drag to 10:20 -> draft 9:30-10:00', async () => {
     const now = new Date(2026, 0, 12, 8, 0, 0) // a Monday
@@ -75,15 +88,11 @@ describe('WeekGrid create-drag snapping', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
 
-    const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
-    expect(grid).toBeTruthy()
-    grid.getBoundingClientRect = () => gridRect(0, 24 * 48) // full 24h at 48px/h
-
+    stubGridRect(host)
     const overlay = host.querySelector('[class*=slotOverlay]') as HTMLElement
     expect(overlay).toBeTruthy()
 
     const PE = G.PointerEvent as unknown as typeof MouseEvent
-    const yAt = (h: number, m: number) => ((h * 60 + m) / 1440) * 24 * 48
     const down = new PE('pointerdown', { bubbles: true, clientY: yAt(9, 50), clientX: 30, pointerId: 1 } as MouseEventInit)
     const move = new PE('pointermove', { bubbles: true, clientY: yAt(10, 20), clientX: 30, pointerId: 1 } as MouseEventInit)
     const up = new PE('pointerup', { bubbles: true, clientY: yAt(10, 20), clientX: 30, pointerId: 1 } as MouseEventInit)
@@ -101,7 +110,7 @@ describe('WeekGrid create-drag snapping', () => {
     await act(async () => { root.unmount(); host.remove() })
   })
 
-  it('a plain click at 9:50 still floors to 9:30', async () => {
+  it('a plain click at 9:50 still floors to 9:30 (header offset excluded)', async () => {
     const now = new Date(2026, 0, 12, 8, 0, 0)
     const transport = new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }, undefined)
     const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
@@ -110,13 +119,11 @@ describe('WeekGrid create-drag snapping', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
 
-    const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
-    grid.getBoundingClientRect = () => gridRect(0, 24 * 48)
+    stubGridRect(host)
     const overlay = host.querySelector('[class*=slotOverlay]') as HTMLElement
     const PE = G.PointerEvent as unknown as typeof MouseEvent
-    const y = ((9 * 60 + 50) / 1440) * 24 * 48
-    await act(async () => { overlay.dispatchEvent(new PE('pointerdown', { bubbles: true, clientY: y, clientX: 30, pointerId: 2 } as MouseEventInit)) })
-    await act(async () => { overlay.dispatchEvent(new PE('pointerup', { bubbles: true, clientY: y, clientX: 30, pointerId: 2 } as MouseEventInit)) })
+    await act(async () => { overlay.dispatchEvent(new PE('pointerdown', { bubbles: true, clientY: yAt(9, 50), clientX: 30, pointerId: 2 } as MouseEventInit)) })
+    await act(async () => { overlay.dispatchEvent(new PE('pointerup', { bubbles: true, clientY: yAt(9, 50), clientX: 30, pointerId: 2 } as MouseEventInit)) })
 
     const draft = controller.getSnapshot().draft
     expect(draft).toBeDefined()

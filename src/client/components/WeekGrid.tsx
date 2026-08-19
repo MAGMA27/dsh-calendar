@@ -59,6 +59,11 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   const suppressSelectRef = useRef(false)
   const [preview, setPreview] = useState<{ id: string; start: number; end: number; dayIdx: number } | undefined>(undefined)
   const bodyRef = useRef<HTMLDivElement>(null)
+  // The time grid area (excluding the sticky weekday/date header). Pointer→time
+  // mapping must use THIS rect: hour lines are positioned inside weekGridCells,
+  // so using bodyRef (which includes the header) shifted every click ~30 min
+  // later (a visual 9:50 landed at ~10:13 and floored to 10:00).
+  const cellsRef = useRef<HTMLDivElement>(null)
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
   const now = Date.now()
@@ -84,7 +89,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   }
 
   const yToMs = (dayCell: DayCell, y: number): number => {
-    const rect = bodyRef.current?.getBoundingClientRect()
+    const rect = cellsRef.current?.getBoundingClientRect()
     if (rect === undefined) return dayCell.dateMs + winStart * 60_000
     const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
     const mins = (winStart + Math.round(frac * winLength)) % 1440
@@ -141,7 +146,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   }
 
   const xToDayIndex = (x: number): number => {
-    const rect = bodyRef.current?.getBoundingClientRect()
+    const rect = cellsRef.current?.getBoundingClientRect()
     if (rect === undefined) return 0
     const colWidth = (rect.width - GUTTER_PX) / 7
     const idx = Math.floor((x - rect.left - GUTTER_PX) / colWidth)
@@ -149,7 +154,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   }
 
   const yToMinutes = (y: number): number => {
-    const rect = bodyRef.current?.getBoundingClientRect()
+    const rect = cellsRef.current?.getBoundingClientRect()
     if (rect === undefined) return winStart
     const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
     return (winStart + Math.round(frac * winLength)) % 1440
@@ -242,7 +247,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
           )
         })}
       </div>
-      <div className={css.weekGridCells} style={{ height: gridHeight }}>
+      <div className={css.weekGridCells} ref={cellsRef} style={{ height: gridHeight }}>
         <div className={css.weekGutter}>
           {gutterHours.map(h => {
             // Only suppress the 00:00 label when it sits exactly at the grid's

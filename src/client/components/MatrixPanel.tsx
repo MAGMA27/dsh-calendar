@@ -3,11 +3,11 @@
  * chips, subtask progress, done state.
  */
 import { useState } from 'react'
-import type { CalenderClientController } from '../controller.ts'
+import type { calendarClientController } from '../controller.ts'
 import { type Quadrant, type Urgency, type Importance, quadrantOf } from '../../core/tasks.ts'
-import { t, type CalenderKey } from '../locales.ts'
+import { t, type calendarKey } from '../locales.ts'
 import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
-import css from '../calender.module.css'
+import css from '../calendar.module.css'
 
 const QUADRANTS: Array<{ q: Quadrant; urgency: 'high' | 'low'; importance: 'high' | 'low' }> = [
   { q: 'do', urgency: 'high', importance: 'high' },
@@ -21,13 +21,13 @@ const ACCENT: Record<string, string> = {
   delegate: css.quadrantDelegate,
   eliminate: css.quadrantEliminate,
 }
-const LABEL: Record<Quadrant, CalenderKey> = {
+const LABEL: Record<Quadrant, calendarKey> = {
   do: 'quadrant.do', schedule: 'quadrant.schedule', delegate: 'quadrant.delegate', eliminate: 'quadrant.eliminate',
 }
 
-interface MatrixPanelProps { controller: CalenderClientController }
+interface MatrixPanelProps { controller: calendarClientController }
 
-const DRAG_KIND = 'application/x-dsh-calender-task'
+const DRAG_KIND = 'application/x-dsh-calendar-task'
 
 export function MatrixPanel({ controller }: MatrixPanelProps) {
   const snap = controller.getSnapshot()
@@ -42,7 +42,7 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
   }
 
   return (
-    <div className={css.matrixPanel} data-dsh-calender-matrix="">
+    <div className={css.matrixPanel} data-dsh-calendar-matrix="">
       {QUADRANTS.map(({ q, urgency, importance }) => {
         const tasks = snap.snapshot.tasks.filter(task => !task.archivedAt && task.urgency === urgency && task.importance === importance)
         return (

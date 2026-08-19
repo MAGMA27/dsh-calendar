@@ -1,13 +1,13 @@
 /**
- * The calender HTTP surface (same-origin, loopback-only by composition):
- *   GET  /api/calender/state   → the full ledger snapshot (Cache-Control: no-store)
- *   POST /api/calender/action  → { requestId, action } → fresh snapshot
- *   GET  /api/calender/events  → SSE change hints (revision/ledgerId)
+ * The calendar HTTP surface (same-origin, loopback-only by composition):
+ *   GET  /api/calendar/state   → the full ledger snapshot (Cache-Control: no-store)
+ *   POST /api/calendar/action  → { requestId, action } → fresh snapshot
+ *   GET  /api/calendar/events  → SSE change hints (revision/ledgerId)
  *
  * Handlers own the full response lifecycle (req/res from the Host web server).
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { API_PREFIX, type CalenderActionEnvelope, type CalenderSnapshot } from './protocol.ts'
+import { API_PREFIX, type calendarActionEnvelope, type calendarSnapshot } from './protocol.ts'
 import type { HostLedger } from './host-ledger.ts'
 import { buildCatalogFromApi, type CatalogApiFace } from './host-options.ts'
 import type { HostExecutionRunner } from './host-runner.ts'
@@ -45,7 +45,7 @@ function writeJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /** Structurally validate the POST envelope before it reaches the ledger. */
-function parseEnvelope(raw: string): CalenderActionEnvelope | null {
+function parseEnvelope(raw: string): calendarActionEnvelope | null {
   if (raw.trim() === '') return null
   let data: unknown
   try {
@@ -59,11 +59,11 @@ function parseEnvelope(raw: string): CalenderActionEnvelope | null {
   if (typeof d.action !== 'object' || d.action === null) return null
   const a = d.action as Record<string, unknown>
   if (typeof a.kind !== 'string' || a.kind === '') return null
-  return { requestId: d.requestId, action: a as unknown as CalenderActionEnvelope['action'] }
+  return { requestId: d.requestId, action: a as unknown as calendarActionEnvelope['action'] }
 }
 
-/** Register the calender routes and return the disposers. */
-export function mountCalenderRoutes(webServer: {
+/** Register the calendar routes and return the disposers. */
+export function mountcalendarRoutes(webServer: {
   register(route: { kind: 'exact' | 'prefix'; path: string; handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void> }): () => void
 }, ledger: HostLedger, api: CatalogApiFace, runner?: HostExecutionRunner): Array<() => void> {
   const disposers: Array<() => void> = []
@@ -116,7 +116,7 @@ export function mountCalenderRoutes(webServer: {
       if (envelope.action.kind === 'run' && runner !== undefined) {
         void runner.run(envelope.action.id)
       }
-      writeJson(res, 200, result.snapshot as unknown as CalenderSnapshot)
+      writeJson(res, 200, result.snapshot as unknown as calendarSnapshot)
     },
   }))
 

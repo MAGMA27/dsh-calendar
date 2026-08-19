@@ -1,5 +1,5 @@
 /**
- * dsh-calender build config — uses the official client-bundle preset
+ * dsh-calendar build config — uses the official client-bundle preset
  * (build/tsdown.client.ts) to emit the node-half `lib/index.js` plus the
  * browser bundle `lib/client.js` (closure-factory artifact for the GUI's
  * __ModuleLoader__, CSS Modules inlined with auto-injected <style data-plugin>).
@@ -10,7 +10,7 @@
  */
 import { clientBundle } from './build/tsdown.client.ts'
 
-export default clientBundle('dsh-calender', ['src/index.ts', 'src/invariant.ts'], {
+export default clientBundle('dsh-calendar', ['src/index.ts', 'src/invariant.ts'], {
   libExternal: [
     // Host-half services resolve at runtime from the dsh profile tree (never
     // from this repo's install), so they must stay external like @deepseek-ai/cordis.

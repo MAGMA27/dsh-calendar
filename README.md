@@ -1,4 +1,4 @@
-# dsh-calender
+# dsh-calendar
 
 一个可热插拔的 DeepSeek Harness (DSH) Web GUI 日历待办插件：侧边栏「日历」入口 → 中间列日历视图；**拖选时间段**建任务；**艾森豪威尔紧急/重要矩阵**；**子任务**；任务可**钉住执行会话与 LLM provider**；**定时让 LLM 响应**（Host 权威调度，浏览器关闭仍生效）。
 
@@ -34,10 +34,10 @@ pnpm build   # → lib/index.js + lib/client.js + lib/types
 
 见 `AGENTS.md`。
 ## 开发进度
-M0–M6 已完成：日历 UI / 任务编辑 / 真实执行（host-runner）/ Host cron 定时调度（host-scheduler + SSE）/ 完善（设置卡 `calender` 命名空间 + SystemPrompt 段 + `scripts/dsh-calender.js` CLI）。
+M0–M6 已完成：日历 UI / 任务编辑 / 真实执行（host-runner）/ Host cron 定时调度（host-scheduler + SSE）/ 完善（设置卡 `calendar` 命名空间 + SystemPrompt 段 + `scripts/dsh-calendar.js` CLI）。
 
 ## CLI
-`node scripts/dsh-calender.js status|mount|unmount [--profile P]`
+`node scripts/dsh-calendar.js status|mount|unmount [--profile P]`
 
 ## 日历 Tool（M7）
-`calender_task`：对话中 LLM 可直接建/查/改/删任务、管理子任务、设置 cron/一次到时、钉执行钉子或触发真实 run，与日历视图共享同一 authoritative ledger（HostLedger.apply，request-id 幂等）。依赖 `@deepseek-ai/dsh-tools`。
+`calendar_task`：对话中 LLM 可直接建/查/改/删任务、管理子任务、设置 cron/一次到时、钉执行钉子或触发真实 run，与日历视图共享同一 authoritative ledger（HostLedger.apply，request-id 幂等）。依赖 `@deepseek-ai/dsh-tools`。

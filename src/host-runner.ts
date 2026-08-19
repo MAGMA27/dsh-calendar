@@ -1,5 +1,5 @@
 /**
- * Host-side real-execution runner for dsh-calender (M4). Given a task, it
+ * Host-side real-execution runner for dsh-calendar (M4). Given a task, it
  * opens an execution record on the Host ledger, connects a real dsh session
  * (reusing a task-pinned session or creating a fresh one in the target or
  * recent workspace), applies the task's execution pins (provider+model via
@@ -90,7 +90,7 @@ function messageOf(error: unknown): string {
 
 let rpcSeq = 0
 function req<P extends object = Record<string, unknown>>(payload: P = {} as P): { rpcId: unknown; payload: P } {
-  return { rpcId: `calender-run-${rpcSeq++}`, payload }
+  return { rpcId: `calendar-run-${rpcSeq++}`, payload }
 }
 
 type SessionStatus = 'running' | 'stopped' | 'gone'

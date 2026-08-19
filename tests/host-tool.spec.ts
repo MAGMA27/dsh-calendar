@@ -15,7 +15,7 @@ async function exec(tool: { execute: AnyExec }, args: Record<string, unknown>): 
   return tool.execute(args, {})
 }
 
-describe('calender_task tool', () => {
+describe('calendar_task tool', () => {
   it('creates a task and returns its summary', async () => {
     const { tool, ledger } = mk()
     const r = await exec(tool, { action: 'create', title: 'Plan the launch', urgency: 'high', importance: 'high' })

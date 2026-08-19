@@ -8,12 +8,12 @@
  * skin precedent. The injection self-heals: a MutationObserver watches the
  * sidebar root and re-inserts the row whenever a React re-render displaces it.
  */
-import type { CalenderClientController } from './controller.ts'
+import type { calendarClientController } from './controller.ts'
 import { t } from './locales.ts'
-import css from './calender.module.css'
+import css from './calendar.module.css'
 
 /** Stable data attribute identifying the injected entry row. */
-export const ENTRY_SELECTOR = '[data-dsh-calender-entry]'
+export const ENTRY_SELECTOR = '[data-dsh-calendar-entry]'
 
 /** Inline icon (matches the shell's 16px nav-icon look). */
 const ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10.5" rx="1.5"/><path d="M1.5 6h13M5 1.5v3M11 1.5v3"/></svg>'
@@ -34,10 +34,10 @@ function newSessionButton(root: HTMLElement): HTMLButtonElement | undefined {
   return undefined
 }
 
-function createEntry(controller: CalenderClientController): HTMLButtonElement {
+function createEntry(controller: calendarClientController): HTMLButtonElement {
   const entry = document.createElement('button')
   entry.type = 'button'
-  entry.dataset.dshCalenderEntry = ''
+  entry.dataset.dshcalendarEntry = ''
   entry.className = css.entry
   entry.setAttribute('aria-label', t('entry.label'))
   entry.innerHTML = `<span class="${css.entryIcon}">${ICON}</span><span class="${css.entryLabel}">${t('entry.label')}</span>`
@@ -52,7 +52,7 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
     const row = button.closest('[class*="logoRow"]')
     const base = (row !== null && row.parentElement === root) ? row : button
     const family = Array.from(root.children).filter(
-      (el): el is HTMLElement => el instanceof HTMLElement && el.matches('[data-dsh-calender-entry], [data-dsh-taskboard-entry], [data-dsh-ssh-entry]'),
+      (el): el is HTMLElement => el instanceof HTMLElement && el.matches('[data-dsh-calendar-entry], [data-dsh-taskboard-entry], [data-dsh-ssh-entry]'),
     )
     const anchor = family.length > 0 ? family[0] : base.nextElementSibling
     root.insertBefore(entry, anchor)
@@ -61,7 +61,7 @@ function placeEntry(root: HTMLElement, entry: HTMLButtonElement): boolean {
 }
 
 /** Mount the sidebar entry, self-healing on React re-renders. */
-export function mountSidebarEntry(controller: CalenderClientController): () => void {
+export function mountSidebarEntry(controller: calendarClientController): () => void {
   if (typeof document !== 'undefined' && document.querySelector(ENTRY_SELECTOR) !== null) {
     return () => {}
   }

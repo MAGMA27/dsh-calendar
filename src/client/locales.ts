@@ -1,5 +1,5 @@
 /**
- * dsh-calender copy: zh-first dictionaries with an English fallback, selected
+ * dsh-calendar copy: zh-first dictionaries with an English fallback, selected
  * by the document language. Dependency-free so the DOM-injected entry row and
  * the standalone React tree share one tiny lookup.
  */
@@ -211,16 +211,16 @@ export const en: Record<keyof typeof zh, string> = {
 }
 
 /** The dictionary key union. */
-export type CalenderKey = keyof typeof zh
+export type calendarKey = keyof typeof zh
 
 /** Active dictionary, picked by the document language at call time. */
-export function dictionary(): Record<CalenderKey, string> {
+export function dictionary(): Record<calendarKey, string> {
   const lang = typeof document !== 'undefined' ? document.documentElement.lang : 'zh'
   return lang.toLowerCase().startsWith('en') ? en : zh
 }
 
 /** Translate a key with optional {name} template params. */
-export function t(key: CalenderKey, params?: Record<string, string | number>): string {
+export function t(key: calendarKey, params?: Record<string, string | number>): string {
   let text: string = dictionary()[key]
   if (params !== undefined) {
     for (const [name, value] of Object.entries(params)) {

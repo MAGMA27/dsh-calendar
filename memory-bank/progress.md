@@ -1,4 +1,4 @@
-# dsh-calender 进度（Progress）
+# dsh-calendar 进度（Progress）
 
 ## 当前状态
 - **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）落地；**113 单测全绿**。
@@ -8,7 +8,7 @@
 ## 已完成里程碑（均通过 ✓，已提交）
 | 里程碑 | 提交 | 验收 |
 |---|---|---|
-| M0 脚手架 | `5c24d69` | typecheck / build / vitest / scratch 挂载 `--dump-config` 出现 `ui-calender` 层 |
+| M0 脚手架 | `5c24d69` | typecheck / build / vitest / scratch 挂载 `--dump-config` 出现 `ui-calendar` 层 |
 | M1 领域+Host 骨架 | `fb36cf4` | 45 单测；host 半边含账本+HTTP 路由 |
 | M2 日历 UI | `83e1599` | 56 单测；日历周/月/矩阵/议程 + 拖选建任务 |
 | M2 加载中修复 | `213a43b` | CalendarView 改用 useSyncExternalStore 订阅控制器（离开 loading）；新增回归测试 |
@@ -36,8 +36,8 @@
 | M3 任务编辑 | ✅ 含 9 轮验收修复（全表单/详情/子任务/执行设置下拉/会话标题/归档/定时清除/象限拖拽） |
 | M4 真实执行 | ✅ `d3f8660`（host-runner 真实执行 + 执行记录回写 + 会话跳转 + provider/运行徽标；92 单测） |
 | M5 定时调度 | ✅ `660b6f5`（Host cron 到期触发 + 只接受后滚动 + 重启对账 + SSE 广播；105 单测） |
-| M6 完善 | ✅ `61f6f28`（设置卡 calender 命名空间 + SystemPrompt 段（可开关）+ scripts/dsh-calender.js CLI + 文档；105 单测） |
-| M7 日历 Tool | ✅ `15a5a6d`（`calender_task` tool：建/查/改/删/子任务/执行钉子/run，经同一 HostLedger.apply；113 单测） |
+| M6 完善 | ✅ `61f6f28`（设置卡 calendar 命名空间 + SystemPrompt 段（可开关）+ scripts/dsh-calendar.js CLI + 文档；105 单测） |
+| M7 日历 Tool | ✅ `15a5a6d`（`calendar_task` tool：建/查/改/删/子任务/执行钉子/run，经同一 HostLedger.apply；113 单测） |
 
 ## M4 交付内容（真实执行）
 - **host-runner.ts**：打开执行记录 → 建/复用会话 → 应用钉子（provider+model 经 `sessions.selectModel`、agent 预设经 `agentPresets.select`、权限经 `/permission` 斜杠命令）→ rename → prompt('queue') → 结算执行记录。依赖注入的窄 ApiProxy face，测试用 fake 驱动。
@@ -56,14 +56,14 @@
 - **测试**：host-scheduler.spec（6）+ host-reconcile.spec（4）+ host-routes SSE（1）+ host-ledger advanceSchedule（2）；**105 单测全绿**（原 92 + 13）。
 
 ## M6 交付内容（完善）
-- **设置卡**：Host 经 `installSettingsSection(ctx, settingsNamespace('calender'), Config, ...)` 注册 `calender` 设置命名空间（`announceToAgent`/`enabled` 两个布尔，schema 由 schemastery 定义），在 web 设置「插件」区呈现可编辑表单。
-- **SystemPrompt 段**：`ctx.systemPrompt.section('plugin:calender', order 160)` 向每个 agent 宣告日历能力；受设置开关实时门控（关 `announceToAgent`/`enabled` 即撤销段，无需重启）。参考 task-board 的 installSettingsSection + sync 模式。
-- **CLI `scripts/dsh-calender.js`**：`status` / `mount` / `unmount`（`--profile`），只依赖 Node stdlib；mount 用 `dsh plugin add link:<dir>`。
+- **设置卡**：Host 经 `installSettingsSection(ctx, settingsNamespace('calendar'), Config, ...)` 注册 `calendar` 设置命名空间（`announceToAgent`/`enabled` 两个布尔，schema 由 schemastery 定义），在 web 设置「插件」区呈现可编辑表单。
+- **SystemPrompt 段**：`ctx.systemPrompt.section('plugin:calendar', order 160)` 向每个 agent 宣告日历能力；受设置开关实时门控（关 `announceToAgent`/`enabled` 即撤销段，无需重启）。参考 task-board 的 installSettingsSection + sync 模式。
+- **CLI `scripts/dsh-calendar.js`**：`status` / `mount` / `unmount`（`--profile`），只依赖 Node stdlib；mount 用 `dsh plugin add link:<dir>`。
 - **host `apply(ctx, config?)` + Config schema**；文档（DESIGN/README/进度）补齐。
 - **验证**：typecheck + build + 105 单测全绿。
 
 ## M7 交付内容（日历 Tool）
-- **`src/host-tool.ts`（defineCalendarTool → `calender_task`）**：单一 model-callable tool，action 枚举覆盖 create / get / list / update / setQuadrant / setDone / addSubtask / setSubtaskDone / removeSubtask / setSchedule / delete / archive / restore / run；参数 schema（defineTool 的 ValueSchemaSpec）含标题/描述/Prompt/起止/紧急·重要/执行钉子（workspace/session/provider/model/mode/permission）/子任务/cron/dueAt。
+- **`src/host-tool.ts`（defineCalendarTool → `calendar_task`）**：单一 model-callable tool，action 枚举覆盖 create / get / list / update / setQuadrant / setDone / addSubtask / setSubtaskDone / removeSubtask / setSchedule / delete / archive / restore / run；参数 schema（defineTool 的 ValueSchemaSpec）含标题/描述/Prompt/起止/紧急·重要/执行钉子（workspace/session/provider/model/mode/permission）/子任务/cron/dueAt。
 - **同账本同幂等**：每个动作以 minted requestId 映射到**同一 HostLedger.apply**（与浏览器 share 同一 authoritative ledger + request-id 幂等）；读走 snapshot；`run` 委托给 host-runner。defineTool 对 enum/必填做参数校验（非法 action 在 execute 前拒绝）。
 - **注册**：host index `ctx.tools.register(...)`（inject 增加 `tools`），`apply` 里接线并 dispose。
 - **依赖**：追加 devDep `@deepseek-ai/dsh-tools@0.1.0-rc.6`（host 侧 bundle）。
@@ -73,16 +73,16 @@
 全部里程碑（M0–M7）已完成。后续可按需：合并交付 / 更多 tool 细化（如按日期范围查询）/ 真实组合验证。
 
 ## 交付挂载（需用户环境）
-`dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calender/state` + 侧边栏入口 + 中间列日历。
+`dsh plugin --profile web add link:D:\Dev\agents\dsh-calendar` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calendar/state` + 侧边栏入口 + 中间列日历。
 
 ## 命名决策（已锁定）
-包 `dsh-calender` / 行 id `ui-calender` / 命名空间 `calender` / 账本 `$DSH_HOME/calender/ledger-v1.json` / DOM `data-dsh-calender-*` / 面板事件 `calender`。
+包 `dsh-calendar` / 行 id `ui-calendar` / 命名空间 `calendar` / 账本 `$DSH_HOME/calendar/ledger-v1.json` / DOM `data-dsh-calendar-*` / 面板事件 `calendar`。
 
 ## 环境要点
 vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-write 即可；pnpm 设置放 `pnpm-workspace.yaml`。pwsh 里带 `2>&1` 的管道会触发 pnpm/node 的编码包装报错——改用重定向到文件或直接 `pnpm <cmd>; echo $LASTEXITCODE`。
 
 ## 挂载与环境记录（2026-08，已由主代理处理）
-- **已挂载到 web profile ✓**：`dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` 成功；`dsh.profile.bundles=[base,web-app,dsh-web-ui-all,dsh-calender]`；`--dump-config` 出现 `ui-calender` 层。
+- **已挂载到 web profile ✓**：`dsh plugin --profile web add link:D:\Dev\agents\dsh-calendar` 成功；`dsh.profile.bundles=[base,web-app,dsh-web-ui-all,dsh-calendar]`；`--dump-config` 出现 `ui-calendar` 层。
 - **根因**：web profile 既有原生依赖（cloudflared/cpu-features/ssh2）从未做构建放行决策，pnpm 10 报 `IGNORED_BUILDS` 使任何 pnpm add（含挂载）退出非 0。
 - **修复**：`~/.dsh/profiles/web/pnpm-workspace.yaml` 三项 `allowBuilds` 设为 `false`。设 `true` 会触发 cpu-features 构建失败——勿改 true。
 - **遗留**：DSH 的 SSH 远程能力因无编译器受限（与插件无关）。
@@ -104,7 +104,7 @@ vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-wr
 - 新增 `tests/weekgrid-interaction.spec.tsx`：断言「纯点击选中且不 dispatch update」（PointerEvent 已打 polyfill）。
 ### 复测反馈第二轮（2 项）
 1. 议程完成项仍留在过期栏：AgendaPanel 只按时间分组，未处理 done。修复：新增 agenda.done 组，完成任务归入「已完成」，不再混在过期/今天/近期。
-2. provider/模型/工作区/会话仍是填空框：客户端用 fragile 类型断言读 ctx 且只在 apply 跑一次，常静默失败 → 目录空 → 回退文本框。修复：改为 Host 权威——新增 Host 路由 GET /api/calender/options（经 ctx.apiProxy 读 LLM 模型目录/工作区/会话，buildCatalogFromApi 投影）；客户端 HttpCalenderHostTransport.options() fetch；exec-catalog.ts 移到 src/core（host/client 共享）；host index 注入 apiProxy。
+2. provider/模型/工作区/会话仍是填空框：客户端用 fragile 类型断言读 ctx 且只在 apply 跑一次，常静默失败 → 目录空 → 回退文本框。修复：改为 Host 权威——新增 Host 路由 GET /api/calendar/options（经 ctx.apiProxy 读 LLM 模型目录/工作区/会话，buildCatalogFromApi 投影）；客户端 HttpcalendarHostTransport.options() fetch；exec-catalog.ts 移到 src/core（host/client 共享）；host index 注入 apiProxy。
 ### 复测反馈第三轮（1 项）
 定时清除不生效：TaskDetailPanel 的 save 总是发 enabled:true，且 setSchedule 把 undefined 视作「不动该字段」，导致清空 cron/dueAt 后 schedule 仍 enabled、周视图定时徽标不消失。
 修复：setSchedule 引入 null 语义（null 清除字段、undefined 不动）；协议 SetScheduleAction.patch 与 host-ledger 校验相应放宽；save 在无 cron 且无 dueAt 时发 enabled:false + cron/dueAt 为 null；新增「清除定时」按钮。新增单测。

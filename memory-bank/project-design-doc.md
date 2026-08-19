@@ -1,4 +1,4 @@
-# dsh-calender 项目设计文档（Product & Design Doc）
+# dsh-calendar 项目设计文档（Product & Design Doc）
 
 > 状态：已批准（计划阶段）+ 伴随里程碑演进。本文件为产品需求的持久记忆；正式设计规范见 `docs/DESIGN.md`（含实现状态标注）。
 

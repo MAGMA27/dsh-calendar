@@ -1,4 +1,4 @@
-# dsh-calender bundle patch: inserts the dual-face plugin row into the web
+# dsh-calendar bundle patch: inserts the dual-face plugin row into the web
 # profile roster. Applied as a profile bundle layer (the `dsh.bundle.patch`
 # manifest field) over dsh-base; activate with
 # `dsh plugin --profile web add link:<path>`.
@@ -9,5 +9,5 @@
 # declaration in package.json makes the browser half (exports "./client",
 # served at /plugins/<id>/client.js) load in the web GUI.
 - insert:
-    - id: ui-calender
-      name: 'dsh-calender'
+    - id: ui-calendar
+      name: 'dsh-calendar'

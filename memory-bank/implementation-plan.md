@@ -1,4 +1,4 @@
-# dsh-calender 实施计划（Implementation Plan）
+# dsh-calendar 实施计划（Implementation Plan）
 
 > 状态：已批准。正式交付版见 `docs/development-plan.md`。本文件为执行进度与里程碑的持久记忆。
 
@@ -16,7 +16,7 @@
 
 ### M0 脚手架
 package.json（双面包 + dsh.bundle.patch + dsh.client）、tsconfig.json/tsconfig.build.json、tsdown.config.ts、build/tsdown.client.ts + build/web-platform.ts（官方预设）、cordis.patch.yml、src/invariant.ts、空 host+client apply、css-modules.d.ts、.gitignore、README 骨架。
-**验收**：`pnpm install && pnpm typecheck && pnpm build` 通过；产物 `lib/index.js`+`lib/client.js` 存在；挂载到 scratch profile 后 `--dump-config` 出现 `ui-calender`。
+**验收**：`pnpm install && pnpm typecheck && pnpm build` 通过；产物 `lib/index.js`+`lib/client.js` 存在；挂载到 scratch profile 后 `--dump-config` 出现 `ui-calendar`。
 
 ### M1 领域 + Host 骨架
 core（tasks/calendar/schedule/store）、protocol、host-ledger（原子+锁+幂等）、host-routes（state/action）、host-service 空转、dsh-home。
@@ -39,7 +39,7 @@ Host cron + 到期触发（只接受后滚动）+ 重启对账 + SSE 广播 + v1
 **验收**：✅ host-scheduler 测试（tick/滚动/跳过/对账）；host-routes SSE 广播测试；105 单测全绿。
 
 ### M6 完善 ✅ 已完成
-设置卡（calender 命名空间 via installSettingsSection）、SystemPrompt 段（可开关）、设计打磨、全量测试、docs/DESIGN.md、README、scripts/dsh-calender.js。
+设置卡（calendar 命名空间 via installSettingsSection）、SystemPrompt 段（可开关）、设计打磨、全量测试、docs/DESIGN.md、README、scripts/dsh-calendar.js。
 **验收**：✅ 全量验证矩阵通过（typecheck+build+105 单测）；文档齐备。
 
 ### M7（新增，用户提出）日历 Tool 集成 ✅ 已完成

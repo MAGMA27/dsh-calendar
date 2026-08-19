@@ -2,20 +2,20 @@
 import { describe, expect, it } from 'vitest'
 import { createRoot } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
-import { CalenderClientController, initialState } from '../src/client/controller.ts'
-import { MemoryCalenderHostTransport } from '../src/client/host-api.ts'
+import { calendarClientController, initialState } from '../src/client/controller.ts'
+import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
 import { CalendarView } from '../src/client/components/CalendarView.tsx'
-import type { CalenderAction, CalenderSnapshot } from '../src/protocol.ts'
+import type { calendarAction, calendarSnapshot } from '../src/protocol.ts'
 
 function makeTransport() {
-  let snap: CalenderSnapshot = { schemaVersion: 1, revision: 0, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }
-  const transport = new MemoryCalenderHostTransport(snap, (a: CalenderAction): CalenderSnapshot => snap)
+  let snap: calendarSnapshot = { schemaVersion: 1, revision: 0, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }
+  const transport = new MemorycalendarHostTransport(snap, (a: calendarAction): calendarSnapshot => snap)
   return transport
 }
 
 describe('CalendarView render', () => {
   it('transitions from loading to ready once the controller loads', async () => {
-    const controller = new CalenderClientController(makeTransport(), initialState(0, 0))
+    const controller = new calendarClientController(makeTransport(), initialState(0, 0))
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -29,7 +29,7 @@ describe('CalendarView render', () => {
 
     // Loading must be gone; the week grid must render.
     expect(host.textContent ?? '').not.toContain('加载中')
-    expect(host.querySelector('[data-dsh-calender-week]')).not.toBeNull()
+    expect(host.querySelector('[data-dsh-calendar-week]')).not.toBeNull()
 
     await act(async () => { root.unmount(); host.remove() })
   })

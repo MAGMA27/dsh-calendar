@@ -6,7 +6,7 @@ import type { TaskRecord } from '../../core/tasks.ts'
 import { completedSubtaskCount } from '../../core/tasks.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { t } from '../locales.ts'
-import css from '../calender.module.css'
+import css from '../calendar.module.css'
 
 /** "09:00–10:30" chip for a timed task block. */
 export function TaskTime({ task }: { task: TaskRecord }): ReactNode {

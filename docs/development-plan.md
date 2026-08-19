@@ -1,4 +1,4 @@
-# dsh-calender 开发计划（Development Plan）
+# dsh-calendar 开发计划（Development Plan）
 
 > 状态：已批准。架构选型：**Host 权威**（用户确认）。本文是执行本文件；进度跟踪见 `memory-bank/progress.md`。
 
@@ -17,7 +17,7 @@
 ## 3. 架构决策（已确认）
 
 Host 权威架构：
-- Host：任务账本（`$DSH_HOME/calender/ledger-v1.json`，原子+锁+幂等）、cron 调度、执行 runner、HTTP/SSE 路由、SystemPrompt 段、设置命名空间。
+- Host：任务账本（`$DSH_HOME/calendar/ledger-v1.json`，原子+锁+幂等）、cron 调度、执行 runner、HTTP/SSE 路由、SystemPrompt 段、设置命名空间。
 - 浏览器：同源异步视图（React 渲染 + HTTP transport + DOM 挂载），零业务逻辑，一切经 action 提交。
 - 共享纯层：`src/core/` + `src/protocol.ts`。
 - 执行：建/复用会话 → selectModel（provider 钉子，失败即关闭）→ agent 预设 → /permission → prompt('queue') → 结算；重启按会话现状对账。
@@ -25,7 +25,7 @@ Host 权威架构：
 ## 4. 包结构
 
 ```
-D:\Dev\agents\dsh-calender\
+D:\Dev\agents\dsh-calendar\
 ├── package.json  cordis.patch.yml  tsconfig.json  tsconfig.build.json  tsdown.config.ts
 ├── build/   tsdown.client.ts（官方预设）  web-platform.ts（PLATFORM_MODULES）
 ├── src/
@@ -33,8 +33,8 @@ D:\Dev\agents\dsh-calender\
 │   ├── host-ledger.ts  host-service.ts  host-runner.ts  host-routes.ts
 │   ├── core/   tasks.ts  calendar.ts  schedule.ts  store.ts
 │   └── client/ index.ts  apply-guard.ts  host-api.ts  sidebar-entry.ts  calendar-mount.tsx
-│              locales.ts  calender.module.css  components/*.tsx
-├── tests/   docs/   scripts/dsh-calender.js
+│              locales.ts  calendar.module.css  components/*.tsx
+├── tests/   docs/   scripts/dsh-calendar.js
 ```
 
 ## 5. 领域模型（TaskRecord 核心）
@@ -57,14 +57,14 @@ interface TaskRecord {
 
 | 里程碑 | 内容 | 验收 |
 |---|---|---|
-| **M0 脚手架** | package/tsconfig/tsdown+预设/cordis.patch.yml/invariant/空 host+client | typecheck+build 通过；lib 产物存在；scratch 挂载 `--dump-config` 出现 `ui-calender` |
+| **M0 脚手架** | package/tsconfig/tsdown+预设/cordis.patch.yml/invariant/空 host+client | typecheck+build 通过；lib 产物存在；scratch 挂载 `--dump-config` 出现 `ui-calendar` |
 | **M1 领域+Host 骨架** | core 四模块 + protocol + host-ledger + host-routes + host-service 空转 | core 单测；state 冒烟；账本原子/损坏/幂等测试 |
 | **M2 日历 UI** ✅ | WeekGrid 拖选/移动/跨日/拉伸/表头/重叠并排 + MonthGrid + transport + 挂载 | GUI 拖选建任务；jsdom 挂载测试 |
 | **M3 任务编辑** ✅ | CreateTaskModal + TaskDetailPanel + MatrixPanel + AgendaPanel + ExecutionSettings | GUI 全表单/矩阵拖拽；tasks 状态机测试 |
 | **M4 真实执行** ✅ | host-runner（会话/provider/预设/权限 钉子 + 结算）+ 执行记录 + 会话跳转 + 运行/会话徽标 | fake ApiProxy 测试（选择/失败关闭/结算）——92 单测 |
 | **M5 定时调度** ✅ | Host cron + 到期触发（只接受后滚动）+ 重启对账 + SSE 广播 + v1 迁移 | host-scheduler/runner 测试——105 单测 |
-| **M6 完善** ✅ | 设置卡（calender 命名空间）+ SystemPrompt 段（可开关）+ 设计打磨 + 全量测试 + 文档 + scripts/dsh-calender.js CLI | 全量验证矩阵通过——105 单测 |
-| **M7 日历 Tool** ✅ | 把日历暴露为对话中 LLM 可调用的 `calender_task` tool（创建/删除/修改/查询任务，含子任务与执行钉子）；Host 侧把 tool 调用映射到同一 HostLedger.apply | host-tool 测试（建/查/改/删/子任务/定时/run/非法输入）——113 单测 |
+| **M6 完善** ✅ | 设置卡（calendar 命名空间）+ SystemPrompt 段（可开关）+ 设计打磨 + 全量测试 + 文档 + scripts/dsh-calendar.js CLI | 全量验证矩阵通过——105 单测 |
+| **M7 日历 Tool** ✅ | 把日历暴露为对话中 LLM 可调用的 `calendar_task` tool（创建/删除/修改/查询任务，含子任务与执行钉子）；Host 侧把 tool 调用映射到同一 HostLedger.apply | host-tool 测试（建/查/改/删/子任务/定时/run/非法输入）——113 单测 |
 
 ## 7. 测试与验证
 

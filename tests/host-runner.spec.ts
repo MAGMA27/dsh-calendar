@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { HostLedger, NoopLedgerPersist } from '../src/host-ledger.ts'
 import { HostExecutionRunner, type HostExecutionEnv, type RunnerSessionRow } from '../src/host-runner.ts'
-import type { CalenderActionEnvelope } from '../src/protocol.ts'
+import type { calendarActionEnvelope } from '../src/protocol.ts'
 
 type SleepGate = () => void
 
 function mkLedger(overrides: Record<string, unknown> = {}) {
   const ledger = new HostLedger(new NoopLedgerPersist(), () => 1000, () => 'task-1')
-  const create: CalenderActionEnvelope = {
+  const create: calendarActionEnvelope = {
     requestId: 'c1',
     action: {
       kind: 'create',

@@ -1,5 +1,5 @@
 /**
- * Browser-side transport for the Host-authoritative calender service. The
+ * Browser-side transport for the Host-authoritative calendar service. The
  * browser never owns task state: it reads snapshots and submits idempotent
  * actions, and treats the Host snapshot as the only confirmed UI state.
  *
@@ -7,8 +7,8 @@
  */
 import {
   API_PREFIX, randomId,
-  type CalenderAction, type CalenderActionEnvelope, type CalenderEventPayload,
-  type CalenderSnapshot,
+  type calendarAction, type calendarActionEnvelope, type calendarEventPayload,
+  type calendarSnapshot,
 } from '../protocol.ts'
 import type { TaskRecord } from '../core/tasks.ts'
 import type { ExecutionCatalog } from '../core/exec-catalog.ts'
@@ -16,28 +16,28 @@ import type { ExecutionCatalog } from '../core/exec-catalog.ts'
 const REQUEST_TIMEOUT_MS = 15_000
 
 /** Legacy storage keys (v1 browser ledger before the Host-authoritative move). */
-export const LEGACY_KEY = 'dsh.calender.v1'
-const IMPORT_MARKER = 'dsh.calender.v1.hostImported'
-const SOURCE_KEY = 'dsh.calender.v1.sourceId'
-const IMPORT_REQUEST_KEY = 'dsh.calender.v1.importRequestId'
+export const LEGACY_KEY = 'dsh.calendar.v1'
+const IMPORT_MARKER = 'dsh.calendar.v1.hostImported'
+const SOURCE_KEY = 'dsh.calendar.v1.sourceId'
+const IMPORT_REQUEST_KEY = 'dsh.calendar.v1.importRequestId'
 
 async function readJson<T>(response: Response): Promise<T> {
   const body = await response.json() as T & { error?: string }
-  if (!response.ok) throw new Error(body.error ?? `calender request failed: ${response.status}`)
+  if (!response.ok) throw new Error(body.error ?? `calendar request failed: ${response.status}`)
   return body
 }
 
-/** The default same-origin base path for the calender API. */
+/** The default same-origin base path for the calendar API. */
 export const HTTP_PREFIX_DEFAULT = API_PREFIX
 
 /** The transport face the controller and tests consume. */
-export interface CalenderHostTransport {
-  state(): Promise<CalenderSnapshot>
-  action(action: CalenderAction): Promise<CalenderSnapshot>
+export interface calendarHostTransport {
+  state(): Promise<calendarSnapshot>
+  action(action: calendarAction): Promise<calendarSnapshot>
   /** Register a change listener; returns an unsubscribe. */
   subscribe(listener: () => void): () => void
   /** One-shot v1 localStorage import into the Host ledger. */
-  bootstrap(legacy: readonly TaskRecord[]): Promise<CalenderSnapshot>
+  bootstrap(legacy: readonly TaskRecord[]): Promise<calendarSnapshot>
   /** Read the execution-settings option catalog (workspaces/sessions/providers). */
   options(): Promise<ExecutionCatalog>
 }
@@ -51,7 +51,7 @@ function safeStorage(): Storage | undefined {
 }
 
 /** HTTP transport backed by the Host routes, with an SSE change stream. */
-export class HttpCalenderHostTransport implements CalenderHostTransport {
+export class HttpcalendarHostTransport implements calendarHostTransport {
   private readonly listeners = new Set<() => void>()
   private es: EventSource | undefined
   private pollTimer: ReturnType<typeof setInterval> | undefined
@@ -62,9 +62,9 @@ export class HttpCalenderHostTransport implements CalenderHostTransport {
     private readonly rng: () => string = randomId,
   ) {}
 
-  async state(): Promise<CalenderSnapshot> {
+  async state(): Promise<calendarSnapshot> {
     const res = await fetch(`${this.base}/state`, { cache: 'no-store', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-    return await readJson<CalenderSnapshot>(res)
+    return await readJson<calendarSnapshot>(res)
   }
 
   async options(): Promise<ExecutionCatalog> {
@@ -72,15 +72,15 @@ export class HttpCalenderHostTransport implements CalenderHostTransport {
     return await readJson<ExecutionCatalog>(res)
   }
 
-  async action(action: CalenderAction): Promise<CalenderSnapshot> {
-    const envelope: CalenderActionEnvelope = { requestId: this.rng(), action }
+  async action(action: calendarAction): Promise<calendarSnapshot> {
+    const envelope: calendarActionEnvelope = { requestId: this.rng(), action }
     const res = await fetch(`${this.base}/action`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(envelope),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
-    return await readJson<CalenderSnapshot>(res)
+    return await readJson<calendarSnapshot>(res)
   }
 
   subscribe(listener: () => void): () => void {
@@ -98,7 +98,7 @@ export class HttpCalenderHostTransport implements CalenderHostTransport {
    * hasn't imported into the current Host ledger generation, submit an import
    * action and remember the marker.
    */
-  async bootstrap(legacy: readonly TaskRecord[]): Promise<CalenderSnapshot> {
+  async bootstrap(legacy: readonly TaskRecord[]): Promise<calendarSnapshot> {
     const initial = await this.state()
     const ledgerId = initial.scheduler.ledgerId
     if (ledgerId === undefined || legacy.length === 0 || this.storage === undefined) return initial
@@ -133,7 +133,7 @@ export class HttpCalenderHostTransport implements CalenderHostTransport {
     // Push frames only hint a revision change; re-pull the full snapshot.
     const onHint = (event: MessageEvent): void => {
       try {
-        const payload = JSON.parse(event.data as string) as CalenderEventPayload
+        const payload = JSON.parse(event.data as string) as calendarEventPayload
         if (typeof payload.revision === 'number') this.notify()
       } catch {
         // ignore malformed frame
@@ -166,12 +166,12 @@ export class HttpCalenderHostTransport implements CalenderHostTransport {
 }
 
 /** In-memory transport for tests (and a no-network fallback). */
-export class MemoryCalenderHostTransport implements CalenderHostTransport {
-  constructor(private snap: CalenderSnapshot, private readonly applier?: (a: CalenderAction) => CalenderSnapshot) {
+export class MemorycalendarHostTransport implements calendarHostTransport {
+  constructor(private snap: calendarSnapshot, private readonly applier?: (a: calendarAction) => calendarSnapshot) {
     void this.applier
   }
   async state() { return this.snap }
-  async action(action: CalenderAction) {
+  async action(action: calendarAction) {
     // Apply simple create/update against the in-memory snapshot if a reducer is absent.
     if (this.applier !== undefined) { this.snap = this.applier(action); return this.snap }
     return this.snap

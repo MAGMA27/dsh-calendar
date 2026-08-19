@@ -8,7 +8,7 @@
 import { TASK_PERMISSIONS, type TaskPermission } from '../../core/tasks.ts'
 import type { ExecutionCatalog } from '../../core/exec-catalog.ts'
 import { t } from '../locales.ts'
-import css from '../calender.module.css'
+import css from '../calendar.module.css'
 
 /** The editable execution-target values (a subset of TaskRecord / patch). */
 export interface ExecutionSettingsValue {
@@ -115,7 +115,7 @@ export function ExecutionSettings({ value, catalog, onChange }: ExecutionSetting
   }
 
   return (
-    <div className={css.execSettings} data-dsh-calender-exec="">
+    <div className={css.execSettings} data-dsh-calendar-exec="">
       <h4 className={css.execTitle}>{t('exec.title')}</h4>
 
       {hasWorkspaces

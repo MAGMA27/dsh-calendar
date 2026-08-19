@@ -1,5 +1,5 @@
 {
-  "name": "dsh-calender",
+  "name": "dsh-calendar",
   "description": "Calendar todo plugin for the dsh web GUI: a sidebar entry plus a week/month calendar where you drag-select time ranges to create tasks, with Eisenhower urgency/importance quadrants, subtasks, pinned execution session + LLM provider, and host-authoritative cron-scheduled LLM runs through real dsh sessions. Host-authoritative ledger + scheduler; browser is a same-origin async view. Mounted via dsh plugin, no dsh source changes.",
   "version": "0.1.0",
   "type": "module",

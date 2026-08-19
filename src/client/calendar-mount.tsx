@@ -10,24 +10,24 @@
  * underneath stays mounted and stateful.
  */
 import { createRoot, type Root } from 'react-dom/client'
-import type { CalenderClientController } from './controller.ts'
+import type { calendarClientController } from './controller.ts'
 import { CalendarView } from './components/CalendarView.tsx'
-import css from './calender.module.css'
+import css from './calendar.module.css'
 
-export const CALENDER_VIEW_SELECTOR = '[data-dsh-calender-view]'
+export const calendar_VIEW_SELECTOR = '[data-dsh-calendar-view]'
 
 const CONVERSATION_COLUMN_SELECTOR = '[data-pane="conversation"], [class*="centerCol"]'
-const ACTIVE_ATTR = 'data-dsh-calender-active'
+const ACTIVE_ATTR = 'data-dsh-calendar-active'
 const OTHER_ACTIVE_ATTRS = ['data-dsh-taskboard-active', 'data-dsh-ssh-active']
 const ACTIVATE_EVENT = 'dsh-panel-activate'
-const PANEL_NAME = 'calender'
+const PANEL_NAME = 'calendar'
 
 function conversationColumn(): HTMLElement | undefined {
   return document.querySelector<HTMLElement>(CONVERSATION_COLUMN_SELECTOR) ?? undefined
 }
 
 /** Mount the calendar React tree into the center column and bind visibility. */
-export function mountCalender(controller: CalenderClientController, onOpenSession?: (sessionId: string) => void): () => void {
+export function mountcalendar(controller: calendarClientController, onOpenSession?: (sessionId: string) => void): () => void {
   let root: Root | undefined
   let container: HTMLDivElement | undefined
 
@@ -36,7 +36,7 @@ export function mountCalender(controller: CalenderClientController, onOpenSessio
     const column = conversationColumn()
     if (column === undefined) return
     container = document.createElement('div')
-    container.dataset.dshCalenderView = ''
+    container.dataset.dshcalendarView = ''
     container.className = css.calendarView
     column.appendChild(container)
     root = createRoot(container)

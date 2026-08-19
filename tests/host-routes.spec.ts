@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { HostLedger, NoopLedgerPersist } from '../src/host-ledger.ts'
-import { mountCalenderRoutes } from '../src/host-routes.ts'
+import { mountcalendarRoutes } from '../src/host-routes.ts'
 
 /** A minimal fake webServer + fake req/res to exercise the route handlers. */
 interface FakeRes {
@@ -57,14 +57,14 @@ function fakeReq(method: string, body?: unknown): any {
   return req
 }
 
-describe('calender routes', () => {
+describe('calendar routes', () => {
   it('registers state/action/events and serves GET state', async () => {
     const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 't1')
     const { server, registered } = makeFakeServer()
-    const disposers = mountCalenderRoutes(server as never, ledger, {})
-    expect(registered.map(r => r.path).sort()).toEqual(['/api/calender/action', '/api/calender/events', '/api/calender/options', '/api/calender/state'])
+    const disposers = mountcalendarRoutes(server as never, ledger, {})
+    expect(registered.map(r => r.path).sort()).toEqual(['/api/calendar/action', '/api/calendar/events', '/api/calendar/options', '/api/calendar/state'])
 
-    const stateRoute = registered.find(r => r.path === '/api/calender/state')!
+    const stateRoute = registered.find(r => r.path === '/api/calendar/state')!
     const res = fakeRes()
     await stateRoute.handler(fakeReq('GET'), res)
     expect(res.status).toBe(200)
@@ -79,8 +79,8 @@ describe('calender routes', () => {
   it('POSTs an action and returns the fresh snapshot', async () => {
     const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 't1')
     const { server, registered } = makeFakeServer()
-    const disposers = mountCalenderRoutes(server as never, ledger, {})
-    const actionRoute = registered.find(r => r.path === '/api/calender/action')!
+    const disposers = mountcalendarRoutes(server as never, ledger, {})
+    const actionRoute = registered.find(r => r.path === '/api/calendar/action')!
     const res = fakeRes()
     await actionRoute.handler(fakeReq('POST', {
       requestId: 'r1',
@@ -100,8 +100,8 @@ describe('calender routes', () => {
     const { server, registered } = makeFakeServer()
     let ran: string[] = []
     const fakeRunner = { run: async (id: string) => { ran.push(id); return true } }
-    const disposers = mountCalenderRoutes(server as never, ledger, {}, fakeRunner as never)
-    const actionRoute = registered.find(r => r.path === '/api/calender/action')!
+    const disposers = mountcalendarRoutes(server as never, ledger, {}, fakeRunner as never)
+    const actionRoute = registered.find(r => r.path === '/api/calendar/action')!
     // create a task first so the run action is valid
     const createRes = fakeRes()
     await actionRoute.handler(fakeReq('POST', { requestId: 'c1', action: { kind: 'create', input: { title: 'T', description: '', prompt: '', startAt: 1, endAt: 2, urgency: 'high', importance: 'high' } } }), createRes)
@@ -118,8 +118,8 @@ describe('calender routes', () => {
     const { server, registered } = makeFakeServer()
     let ran = 0
     const fakeRunner = { run: async (_id: string) => { ran++; return true } }
-    const disposers = mountCalenderRoutes(server as never, ledger, {}, fakeRunner as never)
-    const actionRoute = registered.find(r => r.path === '/api/calender/action')!
+    const disposers = mountcalendarRoutes(server as never, ledger, {}, fakeRunner as never)
+    const actionRoute = registered.find(r => r.path === '/api/calendar/action')!
     const res = fakeRes()
     await actionRoute.handler(fakeReq('POST', { requestId: 'r1', action: { kind: 'run', id: 'nope' } }), res)
     expect(res.status).toBe(422)
@@ -130,8 +130,8 @@ describe('calender routes', () => {
   it('rejects a malformed action with 400', async () => {
     const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 't1')
     const { server, registered } = makeFakeServer()
-    const disposers = mountCalenderRoutes(server as never, ledger, {})
-    const actionRoute = registered.find(r => r.path === '/api/calender/action')!
+    const disposers = mountcalendarRoutes(server as never, ledger, {})
+    const actionRoute = registered.find(r => r.path === '/api/calendar/action')!
     const res = fakeRes()
     await actionRoute.handler(fakeReq('POST', { requestId: '', action: {} }), res)
     expect(res.status).toBe(400)
@@ -141,8 +141,8 @@ describe('calender routes', () => {
   it('broadcasts change hints over SSE when the ledger mutates', async () => {
     const ledger = new HostLedger(new NoopLedgerPersist(), () => 0, () => 't1')
     const { server, registered } = makeFakeServer()
-    const disposers = mountCalenderRoutes(server as never, ledger, {})
-    const eventsRoute = registered.find(r => r.path === '/api/calender/events')!
+    const disposers = mountcalendarRoutes(server as never, ledger, {})
+    const eventsRoute = registered.find(r => r.path === '/api/calendar/events')!
     const res = fakeRes()
     const closes: Array<() => void> = []
     const req: any = { method: 'GET', destroyed: false }

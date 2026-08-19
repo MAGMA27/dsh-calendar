@@ -4,7 +4,7 @@
 import type { TaskRecord } from '../../core/tasks.ts'
 import { quadrantOf, completedSubtaskCount } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
-import css from '../calender.module.css'
+import css from '../calendar.module.css'
 
 export type TaskEditKind = 'move' | 'resize-start' | 'resize-end'
 
@@ -59,7 +59,7 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
     <button
       type="button"
       className={`${css.taskBlock} ${ACCENT[q]} ${editing ? css.taskBlockEditing : ''}`}
-      data-dsh-calender-block=""
+      data-dsh-calendar-block=""
       style={{ top: `${topPct}%`, height: `${heightPct}%`, left: `${leftPct}%`, width: `${widthPct}%` }}
       onClick={() => onSelect(task.id)}
       onPointerDown={editable ? startMove : undefined}

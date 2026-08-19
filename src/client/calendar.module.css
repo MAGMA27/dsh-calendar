@@ -1,5 +1,5 @@
 /**
- * dsh-calender styles. Scoped by the plugin's own data attributes so nothing
+ * dsh-calendar styles. Scoped by the plugin's own data attributes so nothing
  * leaks into the rest of the GUI; colors ride the dsh --dsw-* tokens so the
  * calendar follows the active theme (light/dark and skins).
  */
@@ -11,7 +11,7 @@
   position: relative;
 }
 
-[data-dsh-calender-view] {
+[data-dsh-calendar-view] {
   position: absolute;
   inset: 0;
   display: none;
@@ -19,12 +19,12 @@
   background: var(--dsw-alias-bg-base);
 }
 
-html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [data-dsh-calender-view] {
+html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [data-dsh-calendar-view] {
   display: block;
 }
 
-html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [data-pane='conversation'] > :not([data-dsh-calender-view]),
-html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [class*='centerCol'] > :not([data-dsh-calender-view]) {
+html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [data-pane='conversation'] > :not([data-dsh-calendar-view]),
+html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [class*='centerCol'] > :not([data-dsh-calendar-view]) {
   display: none !important;
 }
 

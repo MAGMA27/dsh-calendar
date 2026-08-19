@@ -1,5 +1,5 @@
 /**
- * dsh-calender host half (node). Loader entry for the plugin's host face:
+ * dsh-calendar host half (node). Loader entry for the plugin's host face:
  * owns the ledger + HTTP/SSE routes. The cron scheduler (M5) and the
  * real-execution runner (M4) and the SystemPrompt announcement (M6) build on
  * this service.
@@ -12,15 +12,15 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from 'schemastery'
 import { defineCalendarTool } from './host-tool.ts'
-import { CalenderHostService } from './host-service.ts'
-import { mountCalenderRoutes } from './host-routes.ts'
+import { calendarHostService } from './host-service.ts'
+import { mountcalendarRoutes } from './host-routes.ts'
 import { acquireLedgerLock } from './host-ledger.ts'
 import { HostExecutionRunner, type HostExecutionEnv } from './host-runner.ts'
 import { HostScheduleService } from './host-scheduler.ts'
 import { dshHome } from './dsh-home.ts'
 import type { CatalogApiFace } from './host-options.ts'
 
-/** Required services: the web server to register the calender routes on, and
+/** Required services: the web server to register the calendar routes on, and
  * the ApiProxy to read the live execution-settings catalog (workspaces,
  * sessions, LLM providers/models). The settings surface is attached through
  * installSettingsSection (its own settings inject), the SystemPrompt
@@ -28,14 +28,14 @@ import type { CatalogApiFace } from './host-options.ts'
  * model-callable calendar tool (M7). */
 export const inject = ['webServer', 'apiProxy', 'systemPrompt', 'tools']
 
-/** Settings namespace of the calender's announcement capability (the web
+/** Settings namespace of the calendar's announcement capability (the web
  * settings surface edits it; the browser half never depends on this Host
  * package and spells its own copy). */
-export const CALENDER_SETTINGS_NAMESPACE = settingsNamespace('calender')
+export const calendar_SETTINGS_NAMESPACE = settingsNamespace('calendar')
 
 /** Model-facing announcement: the calendar plugin's presence and capabilities. */
-export const CALENDER_GUIDANCE =
-  'The user has a calendar todo plugin (dsh-calender): tasks carry a start/end block, an Eisenhower urgency/importance quadrant, subtasks, pinned execution settings (workspace / session / provider+model / preset / permission) and an optional recurring cron or one-off due schedule. Scheduled tasks run automatically in the Host and settle their execution records. When the user asks about tasks, appointments or scheduling, the calendar is the source of truth.'
+export const calendar_GUIDANCE =
+  'The user has a calendar todo plugin (dsh-calendar): tasks carry a start/end block, an Eisenhower urgency/importance quadrant, subtasks, pinned execution settings (workspace / session / provider+model / preset / permission) and an optional recurring cron or one-off due schedule. Scheduled tasks run automatically in the Host and settle their execution records. When the user asks about tasks, appointments or scheduling, the calendar is the source of truth.'
 
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
@@ -56,7 +56,7 @@ const DEFAULT_ANNOUNCE = true
 export function apply(ctx: Context, config?: Config): void {
   const releaseLock = acquireLedgerLock(dshHome())
 
-  const service = new CalenderHostService()
+  const service = new calendarHostService()
   const api = ctx.apiProxy as unknown as CatalogApiFace
   // The real-execution runner drives dsh sessions through the same ApiProxy
   // (sessions.create/selectModel/prompt, workspace.list, agentPresets.select).
@@ -72,7 +72,7 @@ export function apply(ctx: Context, config?: Config): void {
   )
   scheduler.start()
 
-  // Settings card + SystemPrompt announcement, gated on the `calender`
+  // Settings card + SystemPrompt announcement, gated on the `calendar`
   // settings namespace (editable in the web settings Plugins section). The
   // section re-registers on settings change (live, no restart).
   let current: () => Config = () => config ?? {}
@@ -82,12 +82,12 @@ export function apply(ctx: Context, config?: Config): void {
     if ((current().enabled ?? true) === false) return
     if ((current().announceToAgent ?? DEFAULT_ANNOUNCE) === false) return
     disposeSection = ctx.systemPrompt.section({
-      name: 'plugin:calender',
+      name: 'plugin:calendar',
       order: 160,
-      text: CALENDER_GUIDANCE,
+      text: calendar_GUIDANCE,
     })
   }
-  installSettingsSection(ctx, CALENDER_SETTINGS_NAMESPACE, Config, config ?? {}, {
+  installSettingsSection(ctx, calendar_SETTINGS_NAMESPACE, Config, config ?? {}, {
     setSource: source => { current = source },
     onChange: sync,
   })
@@ -99,7 +99,7 @@ export function apply(ctx: Context, config?: Config): void {
     run: id => runner.run(id),
   }))
 
-  const disposers = mountCalenderRoutes(ctx.webServer, service.ledger, api, runner)
+  const disposers = mountcalendarRoutes(ctx.webServer, service.ledger, api, runner)
 
   ctx.effect(() => {
     return () => {
@@ -110,5 +110,5 @@ export function apply(ctx: Context, config?: Config): void {
       service.dispose()
       releaseLock()
     }
-  }, 'dsh-calender: host dispose')
+  }, 'dsh-calendar: host dispose')
 }

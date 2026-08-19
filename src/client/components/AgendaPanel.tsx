@@ -2,14 +2,14 @@
  * rich card: time range, quadrant stripe, status chips, description snippet
  * and a subtask progress track.
  */
-import type { CalenderClientController } from '../controller.ts'
+import type { calendarClientController } from '../controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { quadrantOf } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
-import css from '../calender.module.css'
+import css from '../calendar.module.css'
 
-interface AgendaPanelProps { controller: CalenderClientController }
+interface AgendaPanelProps { controller: calendarClientController }
 
 type Bucket = 'overdue' | 'today' | 'upcoming' | 'done'
 
@@ -46,7 +46,7 @@ export function AgendaPanel({ controller }: AgendaPanelProps) {
   }
   for (const g of groups) g.tasks.sort((a, b) => a.startAt - b.startAt)
   return (
-    <div className={css.agendaPanel} data-dsh-calender-agenda="">
+    <div className={css.agendaPanel} data-dsh-calendar-agenda="">
       {groups.map(g => (
         <section key={g.key} className={css.agendaGroup} data-group={g.key}>
           <div className={css.agendaGroupHeader}>

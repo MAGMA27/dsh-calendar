@@ -2,14 +2,14 @@
 import { describe, expect, it } from 'vitest'
 import { createRoot } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
-import { CalenderClientController, initialState } from '../src/client/controller.ts'
-import { MemoryCalenderHostTransport } from '../src/client/host-api.ts'
+import { calendarClientController, initialState } from '../src/client/controller.ts'
+import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
 import { TaskDetailPanel } from '../src/client/components/TaskDetailPanel.tsx'
 import { ExecutionSettings, type ExecutionSettingsValue } from '../src/client/components/ExecutionSettings.tsx'
-import type { CalenderAction, CalenderSnapshot } from '../src/protocol.ts'
+import type { calendarAction, calendarSnapshot } from '../src/protocol.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
 
-function snapshotWith(task: TaskRecord): CalenderSnapshot {
+function snapshotWith(task: TaskRecord): calendarSnapshot {
   return { schemaVersion: 1, revision: 1, tasks: [task], scheduler: { timeZone: 'Asia/Shanghai' } }
 }
 
@@ -22,18 +22,18 @@ function makeTask(over: Partial<TaskRecord> = {}): TaskRecord {
 }
 
 /** Transport records dispatched actions and returns a stable snapshot. */
-function recordTransport(initial: CalenderSnapshot) {
+function recordTransport(initial: calendarSnapshot) {
   let snap = initial
-  const dispatched: CalenderAction[] = []
-  const applier = (a: CalenderAction): CalenderSnapshot => { dispatched.push(a); return snap }
-  return { transport: new MemoryCalenderHostTransport(snap, applier), dispatched }
+  const dispatched: calendarAction[] = []
+  const applier = (a: calendarAction): calendarSnapshot => { dispatched.push(a); return snap }
+  return { transport: new MemorycalendarHostTransport(snap, applier), dispatched }
 }
 
 describe('TaskDetailPanel', () => {
   it('toggles a subtask; archival and delete dispatch', async () => {
     const task = makeTask({ subtasks: [{ id: 's1', title: 'Step one', done: false }] })
     const { transport, dispatched } = recordTransport(snapshotWith(task))
-    const controller = new CalenderClientController(transport, initialState(0, 0))
+    const controller = new calendarClientController(transport, initialState(0, 0))
     await controller.start()
     const host = document.createElement('div'); document.body.appendChild(host)
     const root = createRoot(host)
@@ -55,7 +55,7 @@ describe('TaskDetailPanel', () => {
   it('renders execution-target knobs when set (provider/model badges via exec settings)', async () => {
     const task = makeTask({ provider: 'deepseek', model: 'chat', workspaceId: 'w1', permission: 'workspace-write' })
     const { transport } = recordTransport(snapshotWith(task))
-    const controller = new CalenderClientController(transport, initialState(0, 0))
+    const controller = new calendarClientController(transport, initialState(0, 0))
     await controller.start()
     const host = document.createElement('div'); document.body.appendChild(host)
     const root = createRoot(host)

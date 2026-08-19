@@ -1,7 +1,7 @@
 /**
  * Host-authoritative task ledger: the single owner of task state on the Host
  * (not the browser). Holds the in-memory ledger, persists it atomically
- * (temp file + fsync + rename) to `$DSH_HOME/calender/ledger-v1.json`, and
+ * (temp file + fsync + rename) to `$DSH_HOME/calendar/ledger-v1.json`, and
  * applies every browser mutation (a strict discriminated union) dispatch to
  * the pure `core/tasks.ts` transitions with request-id idempotency so a Host
  * restart can never re-apply a retried action.
@@ -14,7 +14,7 @@ import {
   openSync, readFileSync, renameSync, unlinkSync, writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { randomId, SCHEMA_VERSION, type CalenderAction, type CalenderActionResult, type CalenderActionEnvelope, type CalenderSnapshot } from './protocol.ts'
+import { randomId, SCHEMA_VERSION, type calendarAction, type calendarActionResult, type calendarActionEnvelope, type calendarSnapshot } from './protocol.ts'
 import {
   addSubtask, archiveTask, attachExecutionSession, createTask, deleteTask,
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
@@ -22,7 +22,7 @@ import {
 } from './core/tasks.ts'
 import { isValidCron, nextRunAtMs } from './core/schedule.ts'
 import { parseTasks } from './core/store.ts'
-import { calenderDir, ledgerPath } from './dsh-home.ts'
+import { calendarDir, ledgerPath } from './dsh-home.ts'
 
 export const MAX_REQUEST_CACHE = 256
 
@@ -120,7 +120,7 @@ export class NoopLedgerPersist implements HostLedgerPersist {
 
 /** The ledger lock: an exclusive file so two Host processes never write together. */
 export function acquireLedgerLock(home: string): () => void {
-  const dir = calenderDir(home)
+  const dir = calendarDir(home)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   const lockPath = join(dir, 'ledger-v1.lock')
   let fd: number | undefined
@@ -129,7 +129,7 @@ export function acquireLedgerLock(home: string): () => void {
     writeFileSync(fd, String(process.pid))
   } catch {
     // Another process holds the lock; fail closed (second Host refuses to run).
-    throw new Error('calender ledger is locked by another dsh process')
+    throw new Error('calendar ledger is locked by another dsh process')
   }
   return () => {
     try { if (fd !== undefined) closeSync(fd) } catch { /* ignore */ }
@@ -137,7 +137,7 @@ export function acquireLedgerLock(home: string): () => void {
   }
 }
 
-function fingerprintOf(envelope: CalenderActionEnvelope): string {
+function fingerprintOf(envelope: calendarActionEnvelope): string {
   return createHash('sha256').update(JSON.stringify(envelope)).digest('hex')
 }
 
@@ -168,7 +168,7 @@ export class HostLedger {
       : emptyState(timeZone())
   }
 
-  getSnapshot(): CalenderSnapshot {
+  getSnapshot(): calendarSnapshot {
     return this.snapshot()
   }
 
@@ -185,7 +185,7 @@ export class HostLedger {
    * Apply a browser action. Idempotent per requestId: a fingerprint already
    * recorded short-circuits to the current snapshot without re-applying.
    */
-  apply(envelope: CalenderActionEnvelope): CalenderActionResult {
+  apply(envelope: calendarActionEnvelope): calendarActionResult {
     const { requestId, action } = envelope
     const fingerprint = fingerprintOf(envelope)
     const dup = this.state.recentRequests.find(r => r.requestId === requestId)
@@ -284,7 +284,7 @@ export class HostLedger {
     this.notify()
   }
 
-  private snapshot(): CalenderSnapshot {
+  private snapshot(): calendarSnapshot {
     return {
       schemaVersion: this.state.schemaVersion,
       revision: this.state.revision,
@@ -297,7 +297,7 @@ export class HostLedger {
   }
 
   /** Dispatch one action; returns false when rejected (state untouched on false). */
-  private dispatch(action: CalenderAction): boolean {
+  private dispatch(action: calendarAction): boolean {
     const now = this.now()
     switch (action.kind) {
       case 'create': {
@@ -421,6 +421,6 @@ function computeNextRun(s: NonNullable<TaskRecord['schedule']>, now: number): nu
 }
 
 /** Human copy for an action that was rejected. */
-export function actionError(action: CalenderAction): string {
-  return `unknown or rejected calender action of kind "${action.kind}"`
+export function actionError(action: calendarAction): string {
+  return `unknown or rejected calendar action of kind "${action.kind}"`
 }

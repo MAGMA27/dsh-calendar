@@ -3,16 +3,16 @@
  * view its execution records; run / delete / archive from here.
  */
 import { useState } from 'react'
-import type { CalenderClientController } from '../controller.ts'
+import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
 import type { TaskRecord, Urgency, Importance } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
-import { t, type CalenderKey } from '../locales.ts'
-import css from '../calender.module.css'
+import { t, type calendarKey } from '../locales.ts'
+import css from '../calendar.module.css'
 
 interface TaskDetailPanelProps {
-  controller: CalenderClientController
+  controller: calendarClientController
   task: TaskRecord
   onClose: () => void
   /** Open the GUI's session view for an execution's session id (session jump). */
@@ -92,7 +92,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   const doneSubtasks = task.subtasks.filter(s => s.done).length
 
   return (
-    <aside className={css.detailPanel} data-dsh-calender-detail="" role="complementary" aria-label={t('detail.title')}>
+    <aside className={css.detailPanel} data-dsh-calendar-detail="" role="complementary" aria-label={t('detail.title')}>
       <div className={css.detailHeader}>
         <h3 className={css.detailTitle}>{t('detail.title')}</h3>
         <button type="button" className={css.btnGhost} onClick={onClose}>{t('detail.close')}</button>
@@ -109,11 +109,11 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
       <div className={css.formRow}>
         <label className={css.formLabel}>{t('detail.urgency')}</label>
         <select className={css.select} value={task.urgency} onChange={e => void controller.dispatch({ kind: 'setQuadrant', id: task.id, urgency: e.target.value as Urgency, importance: task.importance })}>
-          {(['high', 'medium', 'low'] as const).map(u => <option key={u} value={u}>{t(`urgency.${u}` as CalenderKey)}</option>)}
+          {(['high', 'medium', 'low'] as const).map(u => <option key={u} value={u}>{t(`urgency.${u}` as calendarKey)}</option>)}
         </select>
         <label className={css.formLabel}>{t('detail.importance')}</label>
         <select className={css.select} value={task.importance} onChange={e => void controller.dispatch({ kind: 'setQuadrant', id: task.id, urgency: task.urgency, importance: e.target.value as Importance })}>
-          {(['high', 'medium', 'low'] as const).map(i => <option key={i} value={i}>{t(`importance.${i}` as CalenderKey)}</option>)}
+          {(['high', 'medium', 'low'] as const).map(i => <option key={i} value={i}>{t(`importance.${i}` as calendarKey)}</option>)}
         </select>
       </div>
 
@@ -178,7 +178,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
               <span className={css.execTime}>{new Date(e.startedAt).toLocaleString()}</span>
               <span className={css.execResult} data-result={e.result ?? 'running'}>{e.result ?? 'running'}</span>
               {e.sessionId !== undefined && e.sessionId !== '' && (
-                <button type="button" className={css.execSession} data-dsh-calender-exec-session=""
+                <button type="button" className={css.execSession} data-dsh-calendar-exec-session=""
                   onClick={() => onOpenSession?.(e.sessionId!)}>
                   {t('detail.openSession')}
                 </button>

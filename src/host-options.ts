@@ -9,7 +9,7 @@
  *
  * Serving from the Host keeps the data source authoritative and avoids the
  * browser reaching into runtime internals; the client fetches it over HTTP
- * like every other calender resource.
+ * like every other calendar resource.
  */
 // Type-only imports keep the ApiProxy shapes available without pulling the
 // host-apiproxy value runtime into this bundle.
@@ -43,7 +43,7 @@ export interface CatalogApiFace {
 
 let rpcSeq = 0
 function req(): { rpcId: unknown; payload: object } {
-  return { rpcId: `calender-options-${rpcSeq++}`, payload: {} }
+  return { rpcId: `calendar-options-${rpcSeq++}`, payload: {} }
 }
 
 /** A session's display name. Priority: the real durable title (from the

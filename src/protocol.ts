@@ -1,5 +1,5 @@
 /**
- * Host↔browser transport protocol for dsh-calender: the snapshot shape the
+ * Host↔browser transport protocol for dsh-calendar: the snapshot shape the
  * browser renders, the strict discriminated-union of mutations the browser is
  * allowed to submit, and the HTTP/SSE envelope. Type-only and runtime-free so
  * both the Host half and the browser half share it (the client bundle inlines
@@ -12,15 +12,15 @@ import type {
 /** Ledger schema version this build reads/writes. */
 export const SCHEMA_VERSION = 1
 
-/** Base path of the calender API surface (same-origin, under the web server). */
-export const API_PREFIX = '/api/calender'
+/** Base path of the calendar API surface (same-origin, under the web server). */
+export const API_PREFIX = '/api/calendar'
 
 /** A task in the snapshot (stripped to what the view needs is unnecessary; keep the full record). */
 export type { TaskRecord } from './core/tasks.ts'
 export type { ExecutionRecord, ScheduleRule, SubtaskRecord } from './core/tasks.ts'
 
 /** Scheduler mirror in the snapshot. */
-export interface CalenderSchedulerSnapshot {
+export interface calendarSchedulerSnapshot {
   /** Host-local ledger generation; changes force a browser v1 re-import. */
   ledgerId?: string
   /** Local IANA zone the Host schedules in. */
@@ -28,16 +28,16 @@ export interface CalenderSchedulerSnapshot {
 }
 
 /** The full ledger snapshot the browser receives. */
-export interface CalenderSnapshot {
+export interface calendarSnapshot {
   schemaVersion: number
   /** Monotonic ledger revision; increments on every write. */
   revision: number
   tasks: import('./core/tasks.ts').TaskRecord[]
-  scheduler: CalenderSchedulerSnapshot
+  scheduler: calendarSchedulerSnapshot
 }
 
 /** A change hint pushed over SSE (the browser reloads /state on it). */
-export interface CalenderEventPayload {
+export interface calendarEventPayload {
   revision: number
   ledgerId?: string
 }
@@ -108,7 +108,7 @@ export interface ImportAction {
 }
 
 /** The discriminated union of every mutation the browser may submit. */
-export type CalenderAction =
+export type calendarAction =
   | CreateTaskAction
   | UpdateTaskAction
   | SetQuadrantAction
@@ -124,23 +124,23 @@ export type CalenderAction =
   | ImportAction
 
 /** The envelope for a POST /action: a client request id + one action. */
-export interface CalenderActionEnvelope {
+export interface calendarActionEnvelope {
   requestId: string
-  action: CalenderAction
+  action: calendarAction
 }
 
 /** A rejected action (protocol/validation failure), not an HTTP-level error. */
-export interface CalenderErrorResult {
+export interface calendarErrorResult {
   ok: false
   error: string
   // The action never applied, so no snapshot follows.
 }
 
 /** The response to a successful action: the fresh full snapshot. */
-export type CalenderActionResult = { ok: true; snapshot: CalenderSnapshot } | CalenderErrorResult
+export type calendarActionResult = { ok: true; snapshot: calendarSnapshot } | calendarErrorResult
 
-/** Guard: is an unknown value structurally a CalenderAction? (Host validates deeper with schemas.) */
-export function isCalenderAction(value: unknown): value is CalenderAction {
+/** Guard: is an unknown value structurally a calendarAction? (Host validates deeper with schemas.) */
+export function iscalendarAction(value: unknown): value is calendarAction {
   if (typeof value !== 'object' || value === null) return false
   return typeof (value as { kind?: unknown }).kind === 'string'
 }

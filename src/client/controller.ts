@@ -6,12 +6,12 @@
  */
 import type { WeekStart } from '../core/calendar.ts'
 import type { TaskRecord } from '../core/tasks.ts'
-import type { CalenderAction, CalenderSnapshot } from '../protocol.ts'
-import type { CalenderHostTransport } from './host-api.ts'
+import type { calendarAction, calendarSnapshot } from '../protocol.ts'
+import type { calendarHostTransport } from './host-api.ts'
 import type { ExecutionCatalog } from '../core/exec-catalog.ts'
 
 /** The available calendar views. */
-export type CalenderView = 'week' | 'month' | 'matrix' | 'agenda'
+export type calendarView = 'week' | 'month' | 'matrix' | 'agenda'
 
 /**
  * The visible time window of the week grid, in minutes since local midnight.
@@ -25,7 +25,7 @@ export interface DayWindow {
   end: number
 }
 
-const DAY_WINDOW_KEY = 'dsh.calender.dayWindow'
+const DAY_WINDOW_KEY = 'dsh.calendar.dayWindow'
 
 function defaultDayWindow(): DayWindow {
   return { start: 0, end: 1440 }
@@ -58,11 +58,11 @@ function saveDayWindow(win: DayWindow): void {
   }
 }
 
-export interface CalenderClientState {
-  snapshot: CalenderSnapshot
+export interface calendarClientState {
+  snapshot: calendarSnapshot
   /** The calendar cursor (a ms epoch); week view centers on its week. */
   cursor: number
-  view: CalenderView
+  view: calendarView
   weekStart: WeekStart
   selectedTaskId: string | undefined
   /** A pending drag selection (week grid) — surfaced to the create flow. */
@@ -78,25 +78,25 @@ export interface CalenderClientState {
 }
 
 /** The reactive controller (framework-free so tests drive it without React). */
-export class CalenderClientController {
-  private state: CalenderClientState
+export class calendarClientController {
+  private state: calendarClientState
   private readonly listeners = new Set<() => void>()
   private readonly disposeSub: () => void
   private loaded = false
 
-  constructor(private readonly transport: CalenderHostTransport, initial: CalenderClientState) {
+  constructor(private readonly transport: calendarHostTransport, initial: calendarClientState) {
     this.state = initial
     this.disposeSub = transport.subscribe(() => { void this.pull() })
   }
 
-  getSnapshot(): CalenderClientState { return this.state }
+  getSnapshot(): calendarClientState { return this.state }
 
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn)
     return () => { this.listeners.delete(fn) }
   }
 
-  private set(patch: Partial<CalenderClientState>): void {
+  private set(patch: Partial<calendarClientState>): void {
     this.state = { ...this.state, ...patch }
     for (const fn of [...this.listeners]) fn()
   }
@@ -124,7 +124,7 @@ export class CalenderClientController {
   }
 
   /** Submit an action; on success the returned snapshot becomes the state. */
-  async dispatch(action: CalenderAction): Promise<void> {
+  async dispatch(action: calendarAction): Promise<void> {
     try {
       const snap = await this.transport.action(action)
       this.set({ snapshot: snap, status: 'ready', error: null })
@@ -139,7 +139,7 @@ export class CalenderClientController {
   toggleOpen(): void { this.set({ open: !this.state.open }) }
 
   // --- view state -----------------------------------------------------------
-  setView(view: CalenderView): void { this.set({ view }) }
+  setView(view: calendarView): void { this.set({ view }) }
   setCursor(ms: number): void { this.set({ cursor: ms }) }
   setWeekStart(weekStart: WeekStart): void { this.set({ weekStart }) }
   selectTask(id: string | undefined): void { this.set({ selectedTaskId: id }) }
@@ -169,7 +169,7 @@ export class CalenderClientController {
 }
 
 /** Fresh initial state at a given cursor. */
-export function initialState(cursor: number = Date.now(), weekStart: WeekStart = 0): CalenderClientState {
+export function initialState(cursor: number = Date.now(), weekStart: WeekStart = 0): calendarClientState {
   return {
     snapshot: { schemaVersion: 1, revision: 0, tasks: [], scheduler: { timeZone: '' } },
     cursor,

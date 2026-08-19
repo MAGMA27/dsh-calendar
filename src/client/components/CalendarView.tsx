@@ -2,17 +2,17 @@
  * when a task is selected.
  */
 import { useSyncExternalStore, useState } from 'react'
-import type { CalenderClientController, CalenderView } from '../controller.ts'
+import type { calendarClientController, calendarView } from '../controller.ts'
 import { WeekGrid } from './WeekGrid.tsx'
 import { MonthGrid } from './MonthGrid.tsx'
 import { MatrixPanel } from './MatrixPanel.tsx'
 import { AgendaPanel } from './AgendaPanel.tsx'
 import { CreateTaskModal } from './CreateTaskModal.tsx'
 import { TaskDetailPanel } from './TaskDetailPanel.tsx'
-import { t, type CalenderKey } from '../locales.ts'
-import css from '../calender.module.css'
+import { t, type calendarKey } from '../locales.ts'
+import css from '../calendar.module.css'
 
-const VIEWS: Array<{ view: CalenderView; key: CalenderKey }> = [
+const VIEWS: Array<{ view: calendarView; key: calendarKey }> = [
   { view: 'week', key: 'view.week' },
   { view: 'month', key: 'view.month' },
   { view: 'matrix', key: 'view.matrix' },
@@ -23,7 +23,7 @@ const VIEWS: Array<{ view: CalenderView; key: CalenderKey }> = [
 const HOUR_OPTIONS = Array.from({ length: 25 }, (_, h) => h * 60)
 
 interface CalendarViewProps {
-  controller: CalenderClientController
+  controller: calendarClientController
   /** Open the GUI's session view (session jump from an execution record). */
   onOpenSession?: (sessionId: string) => void
 }
@@ -45,7 +45,7 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
   const selected = snap.selectedTaskId !== undefined ? snap.snapshot.tasks.find(t => t.id === snap.selectedTaskId) : undefined
 
   return (
-    <div className={css.calendarViewInner} data-dsh-calender-view-inner="">
+    <div className={css.calendarViewInner} data-dsh-calendar-view-inner="">
       <div className={css.calendarHeader}>
         <h2 className={css.calendarTitle}>{t('board.title')}</h2>
         <div className={css.viewSwitcher} role="tablist" aria-label={t('board.title')}>
@@ -86,7 +86,7 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
 }
 
 /** Compact control to pick the visible minutes-of-day window of the week grid. */
-function DayWindowControl(props: { controller: CalenderClientController; start: number; end: number }) {
+function DayWindowControl(props: { controller: calendarClientController; start: number; end: number }) {
   const { controller, start, end } = props
   const onStart = (raw: string): void => controller.setDayWindow({ start: Number(raw), end })
   const onEnd = (raw: string): void => controller.setDayWindow({ start, end: Number(raw) })

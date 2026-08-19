@@ -8,7 +8,7 @@
  *  - Dragging the top/bottom edge resizes the block's start/end within its day.
  */
 import { useRef, useState } from 'react'
-import type { CalenderClientController } from '../controller.ts'
+import type { calendarClientController } from '../controller.ts'
 import {
   blockOnDay, dayKey, dayWindowFraction, dayWindowLength, inDayWindow, layoutDayTasks,
   normalizeDrag, snapFloor, weekDays,
@@ -17,7 +17,7 @@ import {
 import type { TaskRecord } from '../../core/tasks.ts'
 import { TaskBlock, type TaskEditKind } from './TaskBlock.tsx'
 import { t } from '../locales.ts'
-import css from '../calender.module.css'
+import css from '../calendar.module.css'
 
 const MIN_BLOCK_MS = 15 * 60_000
 const GUTTER_PX = 56
@@ -26,7 +26,7 @@ const DRAG_THRESHOLD_PX = 4
 const HOURLY_PX = 48
 
 interface WeekGridProps {
-  controller: CalenderClientController
+  controller: calendarClientController
   snapMinutes?: number
 }
 
@@ -185,12 +185,12 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   const todayKey = dayKey(todayStart.getTime())
 
   return (
-    <div className={css.weekGrid} ref={bodyRef} data-dsh-calender-week=""
+    <div className={css.weekGrid} ref={bodyRef} data-dsh-calendar-week=""
       onPointerMove={onEditMove}
       onPointerUp={onEditUp}
       onPointerCancel={onEditUp}>
       {/* sticky weekday/date header */}
-      <div className={css.weekHeader} data-dsh-calender-week-header="">
+      <div className={css.weekHeader} data-dsh-calendar-week-header="">
         <div className={css.weekHeaderCorner} />
         {days.map(day => {
           const isToday = day.key === todayKey
@@ -283,7 +283,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
               top: winFrac(preview.start) * 100 + '%',
               height: Math.max((winFrac(preview.end) - winFrac(preview.start)) * 100, 1.6) + '%',
             }}
-            data-dsh-calender-move-preview=""
+            data-dsh-calendar-move-preview=""
           />
         )}
       </div>

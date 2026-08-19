@@ -1,4 +1,4 @@
-# dsh-calender 设计规范（Design Spec）
+# dsh-calendar 设计规范（Design Spec）
 
 > 现代、美观、克制。嵌入 DSH 聊天 GUI 的效率工具，全量使用 DSH `--dsw-*` 语义 token，无第三方 UI 框架。
 > 实现状态标注：**[M2 已实现]** = 已落地；**[规划 M3+]** = 设计已定、待对应里程碑实现。文档与代码以此保持对齐。
@@ -83,4 +83,4 @@
 
 ## 8. 样式归属
 
-所有样式在 `src/client/calender.module.css`（CSS Modules，build 预设内联注入 `<style data-plugin>`）；全局规则仅限中间列接管（`[data-dsh-calender-view]`、`html[data-dsh-calender-active]` 遮蔽对话子树），以插件自有 data 属性作用域，不泄漏。
+所有样式在 `src/client/calendar.module.css`（CSS Modules，build 预设内联注入 `<style data-plugin>`）；全局规则仅限中间列接管（`[data-dsh-calendar-view]`、`html[data-dsh-calendar-active]` 遮蔽对话子树），以插件自有 data 属性作用域，不泄漏。

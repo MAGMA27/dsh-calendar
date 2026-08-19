@@ -2,16 +2,16 @@
  * prompt, quick subtasks, optional schedule, and execution settings.
  */
 import { useState } from 'react'
-import type { CalenderClientController } from '../controller.ts'
+import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
 import type { SubtaskRecord, Urgency, Importance } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
-import { t, type CalenderKey } from '../locales.ts'
-import css from '../calender.module.css'
+import { t, type calendarKey } from '../locales.ts'
+import css from '../calendar.module.css'
 
 interface CreateTaskModalProps {
-  controller: CalenderClientController
+  controller: calendarClientController
   onClose: () => void
 }
 
@@ -85,10 +85,10 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
         <div className={css.formRow}>
           <label className={css.formLabel}>{t('quadrant.placeholder')}</label>
           <select className={css.select} value={urgency} onChange={e => setUrgency(e.target.value as Urgency)}>
-            {(['high', 'medium', 'low'] as const).map(u => <option key={u} value={u}>{t(`urgency.${u}` as CalenderKey)}</option>)}
+            {(['high', 'medium', 'low'] as const).map(u => <option key={u} value={u}>{t(`urgency.${u}` as calendarKey)}</option>)}
           </select>
           <select className={css.select} value={importance} onChange={e => setImportance(e.target.value as Importance)}>
-            {(['high', 'medium', 'low'] as const).map(i => <option key={i} value={i}>{t(`importance.${i}` as CalenderKey)}</option>)}
+            {(['high', 'medium', 'low'] as const).map(i => <option key={i} value={i}>{t(`importance.${i}` as calendarKey)}</option>)}
           </select>
         </div>
         <div className={css.formRow}>

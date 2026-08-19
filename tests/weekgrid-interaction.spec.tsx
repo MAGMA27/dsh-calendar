@@ -2,10 +2,10 @@
 import { describe, expect, it } from 'vitest'
 import { createRoot } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
-import { CalenderClientController, initialState } from '../src/client/controller.ts'
-import { MemoryCalenderHostTransport } from '../src/client/host-api.ts'
+import { calendarClientController, initialState } from '../src/client/controller.ts'
+import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
 import { WeekGrid } from '../src/client/components/WeekGrid.tsx'
-import type { CalenderAction, CalenderSnapshot } from '../src/protocol.ts'
+import type { calendarAction, calendarSnapshot } from '../src/protocol.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
 
 // jsdom has no PointerEvent; a minimal polyfill backed by MouseEvent.
@@ -21,7 +21,7 @@ if (typeof G.PointerEvent === 'undefined') {
   G.PointerEvent = MiniPointerEvent as unknown as typeof Event
 }
 
-function snapWith(task: TaskRecord): CalenderSnapshot {
+function snapWith(task: TaskRecord): calendarSnapshot {
   return { schemaVersion: 1, revision: 1, tasks: [task], scheduler: { timeZone: 'Asia/Shanghai' } }
 }
 
@@ -34,15 +34,15 @@ describe('WeekGrid interaction', () => {
       urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [],
       createdAt: 0, updatedAt: 0,
     }
-    const dispatched: CalenderAction[] = []
-    const transport = new MemoryCalenderHostTransport(snapWith(task), (a) => { dispatched.push(a); return snapWith(task) })
-    const controller = new CalenderClientController(transport, initialState(now.getTime(), 0))
+    const dispatched: calendarAction[] = []
+    const transport = new MemorycalendarHostTransport(snapWith(task), (a) => { dispatched.push(a); return snapWith(task) })
+    const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
     await controller.start()
     const host = document.createElement('div'); document.body.appendChild(host)
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
 
-    const block = host.querySelector('[data-dsh-calender-block]') as HTMLElement
+    const block = host.querySelector('[data-dsh-calendar-block]') as HTMLElement
     expect(block).toBeTruthy()
 
     const PE = G.PointerEvent as unknown as typeof MouseEvent
@@ -70,8 +70,8 @@ describe('WeekGrid day window', () => {
       urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [],
       createdAt: 0, updatedAt: 0,
     }
-    const transport = new MemoryCalenderHostTransport(snapWith(task), undefined)
-    const controller = new CalenderClientController(transport, initialState(now.getTime(), 0))
+    const transport = new MemorycalendarHostTransport(snapWith(task), undefined)
+    const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
     // Show only 08:00-12:00; 10:00 sits exactly in the middle.
     controller.setDayWindow({ start: 480, end: 720 })
     await controller.start()
@@ -80,7 +80,7 @@ describe('WeekGrid day window', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
 
-    const block = host.querySelector('[data-dsh-calender-block]') as HTMLElement
+    const block = host.querySelector('[data-dsh-calendar-block]') as HTMLElement
     expect(block).toBeTruthy()
     // 10:00 maps to (600-480)/(720-480) = 0.5, so the block sits at 50%.
     expect(block.style.top).toBe('50%')
@@ -100,8 +100,8 @@ describe('WeekGrid day window', () => {
       urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [],
       createdAt: 0, updatedAt: 0,
     }
-    const transport = new MemoryCalenderHostTransport(snapWith(task), undefined)
-    const controller = new CalenderClientController(transport, initialState(now.getTime(), 0))
+    const transport = new MemorycalendarHostTransport(snapWith(task), undefined)
+    const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
     // start > end: the window wraps past midnight, length = 3h.
     controller.setDayWindow({ start: 23 * 60, end: 2 * 60 })
     await controller.start()
@@ -110,7 +110,7 @@ describe('WeekGrid day window', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
 
-    const block = host.querySelector('[data-dsh-calender-block]') as HTMLElement
+    const block = host.querySelector('[data-dsh-calendar-block]') as HTMLElement
     expect(block).toBeTruthy()
     // 23:30 is at (23.5-23)/3 = 1/6 of the wrapped window.
     expect(Number.parseFloat(block.style.top)).toBeCloseTo(1 / 6 * 100, 1)
@@ -128,18 +128,18 @@ describe('WeekGrid header', () => {
     const now = new Date(2026, 0, 12, 10, 0, 0) // a Monday
     const a: TaskRecord = { id: 'a', title: 'A', description: '', prompt: '', startAt: now.getTime(), endAt: now.getTime() + 60 * 60_000, urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [], createdAt: 0, updatedAt: 0 }
     const b: TaskRecord = { id: 'b', title: 'B', description: '', prompt: '', startAt: now.getTime() + 10 * 60_000, endAt: now.getTime() + 50 * 60_000, urgency: 'low', importance: 'high', done: false, subtasks: [], executions: [], createdAt: 0, updatedAt: 0 }
-    const snap2: CalenderSnapshot = { schemaVersion: 1, revision: 2, tasks: [a, b], scheduler: { timeZone: 'Asia/Shanghai' } }
-    const c2 = new CalenderClientController(new MemoryCalenderHostTransport(snap2, undefined), initialState(now.getTime(), 0))
+    const snap2: calendarSnapshot = { schemaVersion: 1, revision: 2, tasks: [a, b], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const c2 = new calendarClientController(new MemorycalendarHostTransport(snap2, undefined), initialState(now.getTime(), 0))
     await c2.start()
     const host = document.createElement('div'); document.body.appendChild(host)
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={c2} />) })
 
-    const header = host.querySelector('[data-dsh-calender-week-header]')
+    const header = host.querySelector('[data-dsh-calendar-week-header]')
     expect(header).toBeTruthy()
     expect(header!.querySelectorAll('[class*=weekHeaderCell]').length).toBe(7)
 
-    const blocks = [...host.querySelectorAll('[data-dsh-calender-block]')] as HTMLElement[]
+    const blocks = [...host.querySelectorAll('[data-dsh-calendar-block]')] as HTMLElement[]
     expect(blocks.length).toBe(2)
     const lefts = blocks.map(b => b.style.left)
     expect(lefts[0]).not.toBe(lefts[1])

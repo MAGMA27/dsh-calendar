@@ -1,7 +1,7 @@
 /**
  * M7: the calendar exposed as a real, model-callable tool.
  *
- * A single `calender_task` tool performs the common calendar write/read
+ * A single `calendar_task` tool performs the common calendar write/read
  * operations: create / get / list / update / setQuadrant / setDone / add- &
  * toggle- & remove-subtask / setSchedule / delete / archive / restore / run.
  * Every mutation is mapped onto the SAME HostLedger.apply the browser uses
@@ -12,7 +12,7 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { randomId } from './protocol.ts'
-import type { CalenderAction, CalenderActionEnvelope } from './protocol.ts'
+import type { calendarAction, calendarActionEnvelope } from './protocol.ts'
 import type { NewTaskInput, TaskRecord } from './core/tasks.ts'
 import type { HostLedger } from './host-ledger.ts'
 
@@ -51,8 +51,8 @@ interface CalendarToolDeps {
 
 type AnyAction = { kind: string; [k: string]: unknown }
 
-function envelope(action: AnyAction): CalenderActionEnvelope {
-  return { requestId: randomId(), action: action as unknown as CalenderAction }
+function envelope(action: AnyAction): calendarActionEnvelope {
+  return { requestId: randomId(), action: action as unknown as calendarAction }
 }
 
 function applyOk(ledger: HostLedger, id: string | undefined, action: AnyAction): Record<string, unknown> {
@@ -74,7 +74,7 @@ function taskSummary(task: TaskRecord): Record<string, unknown> {
 /** Define the model-callable calendar tool. */
 export function defineCalendarTool(deps: CalendarToolDeps) {
   return defineTool({
-    name: 'calender_task',
+    name: 'calendar_task',
     description: 'Manage calendar todo tasks: create, list, get, update, set Eisenhower urgency/importance, mark done, manage subtasks, set a cron/one-off schedule, archive/restore/delete, or trigger a real run. Times are ms epochs. Same authoritative ledger as the calendar view.',
     parameters,
     output: {
@@ -115,7 +115,7 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
         permission: a.permission === 'read-only' || a.permission === 'workspace-write' || a.permission === 'danger-full-access' ? a.permission : undefined,
         subtasks: Array.isArray(a.subtasks) ? a.subtasks.filter((s): s is string => typeof s === 'string').map(t => ({ id: randomId(), title: t, done: false })) : undefined,
       }
-      const r = ledger.apply({ requestId: randomId(), action: { kind: 'create', input, schedule: undefined } as CalenderAction })
+      const r = ledger.apply({ requestId: randomId(), action: { kind: 'create', input, schedule: undefined } as calendarAction })
       if (!r.ok) return { ok: false, error: r.error }
       const created = r.snapshot.tasks[r.snapshot.tasks.length - 1]
       return { ok: true, task: taskSummary(created) }
@@ -176,7 +176,7 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
       return applyOk(ledger, id, { kind: action, id })
     case 'run':
       if (id === undefined) return { ok: false, error: 'id is required' }
-      { const r = ledger.apply({ requestId: randomId(), action: { kind: 'run', id } as CalenderAction }); if (!r.ok) return { ok: false, error: r.error }; if (deps.run) void deps.run(id); return { ok: true } }
+      { const r = ledger.apply({ requestId: randomId(), action: { kind: 'run', id } as calendarAction }); if (!r.ok) return { ok: false, error: r.error }; if (deps.run) void deps.run(id); return { ok: true } }
     default:
       return { ok: false, error: 'unknown action (expected one of: ' + ACTIONS.join(', ') + ')' }
   }

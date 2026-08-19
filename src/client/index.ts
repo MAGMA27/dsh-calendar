@@ -1,5 +1,5 @@
 /**
- * dsh-calender client half (browser). Wires the same-origin transport to the
+ * dsh-calendar client half (browser). Wires the same-origin transport to the
  * view controller and mounts the two DOM surfaces — the sidebar entry row and
  * the calendar view in the center column.
  *
@@ -9,19 +9,19 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
-import { CalenderClientController, initialState } from './controller.ts'
-import { HTTP_PREFIX_DEFAULT, HttpCalenderHostTransport } from './host-api.ts'
+import { calendarClientController, initialState } from './controller.ts'
+import { HTTP_PREFIX_DEFAULT, HttpcalendarHostTransport } from './host-api.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { mountSidebarEntry } from './sidebar-entry.ts'
-import { mountCalender } from './calendar-mount.tsx'
+import { mountcalendar } from './calendar-mount.tsx'
 import { en, zh } from './locales.ts'
 
 /** Locale namespace this plugin owns. */
-const NS = 'calender'
+const NS = 'calendar'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    'calender': Record<string, string>
+    'calendar': Record<string, string>
   }
 }
 
@@ -33,14 +33,14 @@ export const inject = ['locale', 'sessions']
 /** Client plugin body. */
 export function apply(ctx: ClientContext): void {
   if (!claimApply()) return
-  ctx.effect(() => releaseApply, 'dsh-calender: apply claim')
+  ctx.effect(() => releaseApply, 'dsh-calendar: apply claim')
 
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-calender: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-calendar: dictionaries')
 
   // The transport + controller are wired eagerly so the sidebar entry can open
   // the panel as soon as the frame mounts.
-  const transport = new HttpCalenderHostTransport(HTTP_PREFIX_DEFAULT)
-  const controller = new CalenderClientController(transport, initialState(Date.now(), 0))
+  const transport = new HttpcalendarHostTransport(HTTP_PREFIX_DEFAULT)
+  const controller = new calendarClientController(transport, initialState(Date.now(), 0))
   void controller.start()
 
   // The execution-settings catalog (workspaces / sessions with their real
@@ -62,9 +62,9 @@ export function apply(ctx: ClientContext): void {
   const disposers: Array<() => void> = []
   try {
     disposers.push(mountSidebarEntry(controller))
-    disposers.push(mountCalender(controller, openSession))
+    disposers.push(mountcalendar(controller, openSession))
   } catch (error) {
-    console.error('[dsh-calender] mount failed:', error)
+    console.error('[dsh-calendar] mount failed:', error)
   }
 
   uiDisposer = () => {
@@ -73,7 +73,7 @@ export function apply(ctx: ClientContext): void {
     uiDisposer = undefined
   }
 
-  ctx.effect(() => uiDisposer ?? (() => {}), 'dsh-calender: ui dispose')
+  ctx.effect(() => uiDisposer ?? (() => {}), 'dsh-calendar: ui dispose')
 }
 
 /**
@@ -81,7 +81,7 @@ export function apply(ctx: ClientContext): void {
  * providers+models) from the Host over HTTP. Best-effort: a failure degrades
  * to free-text inputs inside the form.
  */
-async function refreshCatalog(controller: CalenderClientController): Promise<void> {
+async function refreshCatalog(controller: calendarClientController): Promise<void> {
   try {
     const catalog = await controller.transportOptions()
     controller.setCatalog(catalog)

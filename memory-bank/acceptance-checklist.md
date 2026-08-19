@@ -1,4 +1,4 @@
-# dsh-calender 验收清单（Acceptance Checklist）
+# dsh-calendar 验收清单（Acceptance Checklist）
 
 > 用途：一项功能/一个里程碑交付后，按本清单逐项验收。验收基线、挂载、GUI 与 Host/工具行为全部列出；每项通过打 ✓ 并记日期。
 > 里程碑代码：M0 脚手架 / M1 领域+Host 骨架 / M2 日历 UI / M3 任务编辑 / M4 真实执行 / M5 Host cron 定时调度 / M6 完善 / M7 日历 Tool。
@@ -13,13 +13,13 @@
 - [x] 工作树 git 干净，提交信息遵循 Conventional Commits
 
 ## 1. 挂载 / 生效 / 数据位置
-- [x] `dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` 成功（自动对账 dsh.profile.bundles）
-- [x] `dsh --profile web --dump-config` 出现 ui-calender 层
+- [x] `dsh plugin --profile web add link:D:\Dev\agents\dsh-calendar` 成功（自动对账 dsh.profile.bundles）
+- [x] `dsh --profile web --dump-config` 出现 ui-calendar 层
 - [x] **重启 dsh web 进程**后插件上线（页面刷新不够；host/client 改动都需重启）
 - [x] 侧边栏出现「日历」入口，点击后中间列切换为日历视图
-- [x] 卸载（`dsh plugin --profile web remove dsh-calender`）后 GUI 恢复原状、无崩溃
-- [x] 账本 $DSH_HOME/calender/ledger-v1.json 存在且随操作更新
-- [x] API 冒烟：GET /api/calender/state 返回带 schemaVersion/revision/tasks/scheduler 的 snapshot
+- [x] 卸载（`dsh plugin --profile web remove dsh-calendar`）后 GUI 恢复原状、无崩溃
+- [x] 账本 $DSH_HOME/calendar/ledger-v1.json 存在且随操作更新
+- [x] API 冒烟：GET /api/calendar/state 返回带 schemaVersion/revision/tasks/scheduler 的 snapshot
 
 ## 2. M0–M3 日历与任务编辑（GUI 手测）
 - [x] 周视图**拖选时间段**新建任务，起止自动预填
@@ -46,14 +46,14 @@
 - [ ] 账本变更经 **SSE 广播**（/events），打开的日历视图 /state 自动刷新（含定时触发与执行结算）
 
 ## 5. M6 完善
-- [ ] 设置里出现「插件」区 **calender 设置卡**（announceToAgent / enabled 两个开关）
+- [ ] 设置里出现「插件」区 **calendar 设置卡**（announceToAgent / enabled 两个开关）
 - [ ] 关闭 announceToAgent 后 **SystemPrompt 段实时消失**（无需重启）
-- [ ] agent system prompt 能看到 plugin:calender 宣告段
-- [ ] `node scripts/dsh-calender.js status|mount|unmount` 可用
+- [ ] agent system prompt 能看到 plugin:calendar 宣告段
+- [ ] `node scripts/dsh-calendar.js status|mount|unmount` 可用
 - [ ] README / DESIGN / 进度 / 架构文档与当前实现一致
 
 ## 6. M7 日历 Tool
-- [ ] Host 已注册 calender_task tool（ctx.tools.register），命令区/对话中 agent 可见 schema
+- [ ] Host 已注册 calendar_task tool（ctx.tools.register），命令区/对话中 agent 可见 schema
 - [ ] 对话里让 agent（或用户指令）**创建任务** → 日历视图即时出现（账本同步）
 - [ ] 查（list/get）、改（update/优先级/完成）、**子任务**增改删、**定时**（cron/一次到时）
 - [ ] 执行钉子（provider/model/预设/权限）随 create/update 生效

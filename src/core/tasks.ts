@@ -1,5 +1,5 @@
 /**
- * dsh-calender domain model: the task record shape, the Eisenhower
+ * dsh-calendar domain model: the task record shape, the Eisenhower
  * urgency/importance model, subtasks, scheduled-run rules, execution records,
  * and the pure transition functions the Host ledger, the HTTP protocol and the
  * browser view share.

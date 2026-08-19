@@ -1,5 +1,5 @@
 /**
- * Host-side service container for dsh-calender: owns the ledger and the
+ * Host-side service container for dsh-calendar: owns the ledger and the
  * lifecycle of the Host half. M1 carries no scheduler/execution yet — the
  * cron scheduler (M5) and the real-execution runner (M4) mount here.
  */
@@ -11,8 +11,8 @@ export interface HostServiceOptions {
   clock?: () => number
 }
 
-/** The Host side of dsh-calender. */
-export class CalenderHostService {
+/** The Host side of dsh-calendar. */
+export class calendarHostService {
   readonly ledger: HostLedger
   private disposed = false
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { HostLedger, NoopLedgerPersist, type HostLedgerPersist } from '../src/host-ledger.ts'
-import type { CalenderActionEnvelope, CalenderSnapshot } from '../src/protocol.ts'
+import type { calendarActionEnvelope, calendarSnapshot } from '../src/protocol.ts'
 
 class MemoryPersist implements HostLedgerPersist {
   doc: Parameters<HostLedgerPersist['save']>[0] | undefined
@@ -15,7 +15,7 @@ function makeLedger() {
   return { ledger, setNow: (n: number) => { now = n } }
 }
 
-function createEnvelope(req: string): CalenderActionEnvelope {
+function createEnvelope(req: string): calendarActionEnvelope {
   return {
     requestId: req,
     action: {
@@ -70,7 +70,7 @@ describe('HostLedger', () => {
   it('exposes a typed snapshot', () => {
     const { ledger } = makeLedger()
     ledger.apply(createEnvelope('r1'))
-    const snap: CalenderSnapshot = ledger.getSnapshot()
+    const snap: calendarSnapshot = ledger.getSnapshot()
     expect(snap.schemaVersion).toBe(1)
     expect(typeof snap.scheduler.timeZone).toBe('string')
   })

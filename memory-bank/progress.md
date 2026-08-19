@@ -135,6 +135,11 @@
 - **实现**：新增纯模块 `src/client/catalog-refresh.ts`（`watchCatalogRefresh`）——①订阅 `sessions.list` store，任何变更（新建/改名/归档）**防抖 300ms** 后重拉 `/api/calendar/options`；②日历从关→开时也重拉（覆盖 list store 不追踪的冷会话/持久化附加）。`src/client/index.ts` 经 `ctx.effect` 挂接，dispose 取消订阅与挂起计时器。已有 `refreshCatalog` 首拉保留。
 - **测试**：新增 `tests/catalog-refresh.spec.ts`（5 用例：列表变更重拉、突发合并为一次、关→开触发且持续开不重复、先开后装不误触发、dispose 清理）。**143 单测全绿**（22 文件）。
 
+## 一次定时完成后清除定时（one-shot 跑完不再残留"默认定时"）
+- **问题**：一次性 dueAt 定时触发并执行后，`advanceSchedule` 只把 `nextRunAt` 置 undefined，`schedule` 规则原样保留（`enabled:true` + 过期的 `dueAt`）→ 任务块 🕐「定时」徽标、详情面板「清除定时」按钮、已过期的到时时间一直显示，看起来像还有个默认定时没清掉。
+- **实现**：`src/host-ledger.ts` `advanceSchedule` 增加 one-shot 完结分支——`nextRunAt === undefined` 且任务无 cron（纯 dueAt）时**整体删除 schedule 规则**（`schedule: undefined`）并移除 `scheduler.nextRuns` 镜像；有 cron 的任务照旧滚进下一次 cron 匹配（即便同时残留过期 dueAt 也保留 cron 规则）。scheduler 侧行为不变（仍以 `undefined` 回调）。
+- **测试**：`tests/host-ledger.spec.ts` 新增 2 用例——one-shot 完结后 `schedule` 为 undefined；cron+dueAt 并存时滚进 cron 且 dueAt 保留。**145 单测全绿**（22 文件）。
+
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 

@@ -162,4 +162,37 @@ describe('HostLedger advanceSchedule', () => {
     expect(ledger.advanceSchedule('nope', 1, 1)).toBe(false)
     expect(ledger.advanceSchedule(r0.snapshot.tasks[0].id, 1, 1)).toBe(false) // no schedule set
   })
+
+  it('removes a completed one-shot dueAt schedule entirely', () => {
+    const { ledger, setNow } = makeLedger()
+    setNow(500)
+    const c = ledger.apply({ requestId: 'c1', action: {
+      kind: 'setSchedule',
+      id: (() => { const r = ledger.apply(createEnvelope('r0')); return r.ok ? r.snapshot.tasks[0].id : '' })(),
+      patch: { enabled: true, dueAt: 1000 },
+    } })
+    if (!c.ok) throw new Error('setSchedule failed')
+    const id = c.snapshot.tasks[0].id
+    expect(ledger.taskById(id)!.schedule?.nextRunAt).toBe(1000)
+
+    // The accepted one-shot run has no cron to roll forward to: the schedule
+    // must be cleared, not left enabled with a stale due time.
+    expect(ledger.advanceSchedule(id, undefined, 1000)).toBe(true)
+    expect(ledger.taskById(id)!.schedule).toBeUndefined()
+  })
+
+  it('keeps a cron schedule when the run rolls forward (even with a stale dueAt)', () => {
+    const { ledger } = makeLedger()
+    const c = ledger.apply({ requestId: 'c2', action: {
+      kind: 'setSchedule',
+      id: (() => { const r = ledger.apply(createEnvelope('r0')); return r.ok ? r.snapshot.tasks[0].id : '' })(),
+      patch: { enabled: true, cron: '0 9 * * *', dueAt: 1000 },
+    } })
+    if (!c.ok) throw new Error('setSchedule failed')
+    const id = c.snapshot.tasks[0].id
+    expect(ledger.advanceSchedule(id, 9999, 1000)).toBe(true)
+    const t = ledger.taskById(id)!
+    expect(t.schedule?.nextRunAt).toBe(9999)
+    expect(t.schedule?.dueAt).toBe(1000)
+  })
 })

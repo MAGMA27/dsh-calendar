@@ -260,13 +260,24 @@ export class HostLedger {
   }
 
   /** Roll a task's schedule forward (scheduler callback after an accepted
-   * run): set the next-run instant and the last-triggered instant. No-op when
-   * the task or its schedule is missing. Always persists + notifies. */
+   * run): set the next-run instant and the last-triggered instant. A one-shot
+   * dueAt schedule (no cron) whose run was accepted has no next run — the
+   * schedule has served its purpose and is REMOVED entirely, so the task stops
+   * reading as scheduled (no 🕐 badge, no stale due time, no "clear schedule"
+   * affordance). No-op when the task or its schedule is missing. Always
+   * persists + notifies. */
   advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined): boolean {
     const task = this.taskById(taskId)
     if (task === undefined || task.schedule === undefined) return false
-    this.state.tasks = setNextRun(this.state.tasks, taskId, nextRunAt, lastTriggeredAt, this.now())
-    this.state.scheduler.nextRuns[taskId] = { nextRunAt, lastTriggeredAt }
+    const hasCron = task.schedule.cron !== undefined && task.schedule.cron.trim() !== ''
+    if (nextRunAt === undefined && !hasCron) {
+      // One-shot completed: drop the schedule rule and its mirror.
+      this.state.tasks = this.state.tasks.map(t => (t.id === taskId ? { ...t, schedule: undefined, updatedAt: this.now() } : t))
+      delete this.state.scheduler.nextRuns[taskId]
+    } else {
+      this.state.tasks = setNextRun(this.state.tasks, taskId, nextRunAt, lastTriggeredAt, this.now())
+      this.state.scheduler.nextRuns[taskId] = { nextRunAt, lastTriggeredAt }
+    }
     this.commit()
     return true
   }

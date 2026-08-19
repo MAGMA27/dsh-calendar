@@ -219,7 +219,7 @@ describe('HostLedger repeat materialization', () => {
       schedule: { enabled: true, repeat: repeat as never },
     } })
     if (!r.ok) throw new Error('create failed')
-    return r.snapshot.tasks[0].id
+    return r.snapshot.tasks[r.snapshot.tasks.length - 1].id
   }
 
   it('materializes daily copies from the day after the template through the horizon', () => {
@@ -293,5 +293,112 @@ describe('HostLedger repeat materialization', () => {
     const id = r.snapshot.tasks[0].id
     const s = ledger.apply({ requestId: 's', action: { kind: 'shiftRepeatTimes', id, startDelta: 1, endDelta: 1 } })
     expect(s.ok).toBe(false)
+  })
+
+  it('clearing the repeat rule (setSchedule repeat:null) deletes the bound copies', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(3)
+    const r = ledger.apply({ requestId: 'clear', action: { kind: 'setSchedule', id, patch: { enabled: false, repeat: null, dueAt: null } } })
+    expect(r.ok).toBe(true)
+    expect(ledger.taskById(id)!.schedule?.repeat).toBeUndefined()
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(0) // copies gone
+    expect(ledger.taskById(id)).toBeDefined() // the original task itself stays
+  })
+
+  it('prunes orphaned copies at load when the template no longer has a repeat rule', () => {
+    const persist = new MemoryPersist()
+    const a = new HostLedger(persist, () => at(2025, 1, 6, 8), () => 'copy')
+    const id = createWithRepeat(a, { kind: 'daily' })
+    a.materializeRepeats(at(2025, 1, 6, 8), 3)
+    // Clear the rule while "the Host is down" by editing the persisted doc.
+    persist.doc!.tasks = persist.doc!.tasks.map(t => t.id === id ? { ...t, schedule: { enabled: false } } : t)
+    const b = new HostLedger(persist, () => at(2025, 1, 6, 8), () => 'copy')
+    expect(b.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(0)
+    expect(b.taskById(id)).toBeDefined()
+    expect(persist.doc!.tasks.length).toBe(1) // pruned state persisted
+  })
+
+  it('syncs template content + pins to bound copies; times/done stay per-instance', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    const r = ledger.apply({ requestId: 'u', action: { kind: 'update', id, patch: { title: 'New title', model: 'm2', startAt: 12345, endAt: 23456 } } })
+    expect(r.ok).toBe(true)
+    const snap = ledger.getSnapshot().tasks
+    expect(ledger.taskById(id)!.title).toBe('New title')
+    expect(ledger.taskById(id)!.model).toBe('m2')
+    for (const c of snap.filter(t => t.originTaskId === id)) {
+      expect(c.title).toBe('New title') // content synced
+      expect(c.model).toBe('m2') // pins synced
+      expect(c.startAt).not.toBe(12345) // times NOT synced
+    }
+    // Editing a copy stays local.
+    const u2 = ledger.apply({ requestId: 'u2', action: { kind: 'update', id: copy.id, patch: { title: 'Copy only' } } })
+    expect(u2.ok).toBe(true)
+    expect(ledger.taskById(copy.id)!.title).toBe('Copy only')
+    expect(ledger.taskById(id)!.title).toBe('New title')
+    // Marking the template done does not propagate.
+    const d = ledger.apply({ requestId: 'd', action: { kind: 'setDone', id, done: true } })
+    expect(d.ok).toBe(true)
+    expect(ledger.taskById(id)!.done).toBe(true)
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).every(c => c.done === false)).toBe(true)
+  })
+
+  it('propagates quadrant and subtask structure from the template, not done-state', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    expect(ledger.apply({ requestId: 'q', action: { kind: 'setQuadrant', id, urgency: 'low', importance: 'high' } }).ok).toBe(true)
+    expect(ledger.apply({ requestId: 'a', action: { kind: 'addSubtask', id, subtaskId: 's1', title: 'step' } }).ok).toBe(true)
+    const snap = ledger.getSnapshot().tasks
+    for (const c of snap.filter(t => t.originTaskId === id)) {
+      expect(c.urgency).toBe('low')
+      expect(c.importance).toBe('high')
+      expect(c.subtasks.some(s => s.id === 's1' && s.title === 'step')).toBe(true)
+      expect(c.subtasks.some(s => s.id === 's1' && s.done)).toBe(false)
+    }
+    // Checking the subtask off on the template stays local.
+    expect(ledger.apply({ requestId: 'sd', action: { kind: 'setSubtaskDone', id, subtaskId: 's1', done: true } }).ok).toBe(true)
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).every(c => !c.subtasks[0].done)).toBe(true)
+    expect(ledger.taskById(id)!.subtasks[0].done).toBe(true)
+    // Removing the subtask removes it everywhere.
+    expect(ledger.apply({ requestId: 'r', action: { kind: 'removeSubtask', id, subtaskId: 's1' } }).ok).toBe(true)
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).every(c => c.subtasks.length === 0)).toBe(true)
+  })
+
+  it('shiftRepeatTimes also works when initiated from the template', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const r = ledger.apply({ requestId: 'shift', action: { kind: 'shiftRepeatTimes', id, startDelta: 30 * 60_000, endDelta: 30 * 60_000 } })
+    expect(r.ok).toBe(true)
+    expect(ledger.taskById(id)!.startAt).toBe(at(2025, 1, 6, 9, 30))
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).every(c => new Date(c.startAt).getMinutes() === 30)).toBe(true)
+  })
+
+  it('materializes trigger-agent copies with a one-shot due at the trigger instant', () => {
+    const { ledger } = makeMaterializingLedger()
+    // daily + triggerAgent, no triggerAt → block start (09:00); horizon 3 → copies 01-07..09 with dueAt 09:00.
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies).toHaveLength(3)
+    for (const c of copies) {
+      expect(c.schedule?.enabled).toBe(true)
+      expect(c.schedule?.dueAt).toBe(at(new Date(c.startAt).getFullYear(), new Date(c.startAt).getMonth() + 1, new Date(c.startAt).getDate(), 9))
+      expect(c.schedule?.nextRunAt).toBe(c.schedule?.dueAt) // in the future
+      expect(c.schedule?.repeat).toBeUndefined()
+    }
+    // With an explicit triggerAt override the due shifts to that time-of-day.
+    const id2 = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true, triggerAt: '07:30' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copies2 = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id2)
+    expect(copies2.length).toBeGreaterThan(0)
+    for (const c of copies2) {
+      expect(c.schedule?.dueAt).toBe(at(new Date(c.startAt).getFullYear(), new Date(c.startAt).getMonth() + 1, new Date(c.startAt).getDate(), 7, 30))
+    }
   })
 })

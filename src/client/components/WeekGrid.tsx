@@ -192,9 +192,10 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
     if (edit === undefined || !armed) return
     if (p !== undefined && (p.start !== edit.origStart || p.end !== edit.origEnd)) {
       const task = controller.getSnapshot().snapshot.tasks.find(t => t.id === edit.taskId)
-      if (task !== undefined && task.originTaskId !== undefined) {
-        // A time change on a repeat copy must be confirmed: apply to this copy
-        // only (unbind) or shift the whole repeat (template + all copies).
+      if (task !== undefined && (task.originTaskId !== undefined || task.schedule?.repeat !== undefined)) {
+        // A time change on a repeat-series task (bound copy or template) must be
+        // confirmed: apply to this task only (unbind a copy / keep the template
+        // ahead of existing copies) or shift the whole series.
         controller.requestRepeatTimeEdit({
           taskId: edit.taskId,
           originTaskId: task.originTaskId,

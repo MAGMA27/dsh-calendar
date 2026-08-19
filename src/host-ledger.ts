@@ -18,9 +18,9 @@ import { randomId, SCHEMA_VERSION, type calendarAction, type calendarActionResul
 import {
   addSubtask, archiveTask, attachExecutionSession, createTask,
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
-  setTaskDone, settleExecution, startExecution, updateTask, type TaskRecord,
+  setTaskDone, settleExecution, startExecution, updateTask, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
-import { REPEAT_HORIZON_DAYS, buildRepeatCopy, isValidRepeat, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
+import { REPEAT_HORIZON_DAYS, buildRepeatCopy, isValidRepeat, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
 import { addDays, dayKey } from './core/calendar.ts'
 import { parseTasks } from './core/store.ts'
 import { calendarDir, ledgerPath } from './dsh-home.ts'
@@ -167,6 +167,14 @@ export class HostLedger {
         recentRequests: (loaded.recentRequests ?? []).slice(-MAX_REQUEST_CACHE),
       }
       : emptyState(timeZone())
+    // One-shot migration: drop copies whose template no longer has an active
+    // repeat rule (e.g. the rule was cleared while the Host was down). Persist
+    // immediately so the cleanup survives the next restart.
+    const pruned = pruneOrphanCopies(this.state.tasks)
+    if (pruned.length !== this.state.tasks.length) {
+      this.state.tasks = pruned
+      this.commit()
+    }
   }
 
   getSnapshot(): calendarSnapshot {
@@ -375,24 +383,63 @@ export class HostLedger {
       case 'update': {
         const before = this.state.tasks.find(t => t.id === action.id)
         if (before === undefined) return false
-        this.state.tasks = updateTask(this.state.tasks, action.id, action.patch, now)
+        let tasks = updateTask(this.state.tasks, action.id, action.patch, now)
+        // Live sync (repeat template → bound copies): content + execution pins
+        // propagate; per-instance state (done, executions, block times, unbind)
+        // never does. Archived copies are left alone.
+        if (isTemplate(before)) {
+          const sync = templateSyncPatch(action.patch)
+          if (Object.keys(sync).length > 0) {
+            tasks = tasks.map(t => t.originTaskId === action.id && t.archivedAt === undefined
+              ? updateTask([t], t.id, sync, now)[0]
+              : t)
+          }
+        }
+        this.state.tasks = tasks
         return true
       }
-      case 'setQuadrant':
-        this.state.tasks = setQuadrant(this.state.tasks, action.id, action.urgency, action.importance, now)
+      case 'setQuadrant': {
+        const before = this.state.tasks.find(t => t.id === action.id)
+        let tasks = setQuadrant(this.state.tasks, action.id, action.urgency, action.importance, now)
+        if (isTemplate(before)) {
+          tasks = tasks.map(t => t.originTaskId === action.id && t.archivedAt === undefined
+            ? setQuadrant([t], t.id, action.urgency, action.importance, now)[0]
+            : t)
+        }
+        this.state.tasks = tasks
         return this.state.tasks.some(t => t.id === action.id)
+      }
       case 'setDone':
+        // Per-instance: never propagates.
         this.state.tasks = setTaskDone(this.state.tasks, action.id, action.done, now)
         return this.state.tasks.some(t => t.id === action.id)
-      case 'addSubtask':
-        this.state.tasks = addSubtask(this.state.tasks, action.id, { id: action.subtaskId, title: action.title }, now)
+      case 'addSubtask': {
+        const before = this.state.tasks.find(t => t.id === action.id)
+        let tasks = addSubtask(this.state.tasks, action.id, { id: action.subtaskId, title: action.title }, now)
+        // Subtask structure syncs from the template to bound copies; done-state
+        // stays per-instance (setSubtaskDone never propagates).
+        if (isTemplate(before)) {
+          tasks = tasks.map(t => t.originTaskId === action.id && t.archivedAt === undefined
+            ? addSubtask([t], t.id, { id: action.subtaskId, title: action.title }, now)[0]
+            : t)
+        }
+        this.state.tasks = tasks
         return true
+      }
       case 'setSubtaskDone':
         this.state.tasks = setSubtaskDone(this.state.tasks, action.id, action.subtaskId, action.done, now)
         return true
-      case 'removeSubtask':
-        this.state.tasks = removeSubtask(this.state.tasks, action.id, action.subtaskId, now)
+      case 'removeSubtask': {
+        const before = this.state.tasks.find(t => t.id === action.id)
+        let tasks = removeSubtask(this.state.tasks, action.id, action.subtaskId, now)
+        if (isTemplate(before)) {
+          tasks = tasks.map(t => t.originTaskId === action.id && t.archivedAt === undefined
+            ? removeSubtask([t], t.id, action.subtaskId, now)[0]
+            : t)
+        }
+        this.state.tasks = tasks
         return true
+      }
       case 'delete': {
         // Deleting a repeat template cascades to its bound copies (a rule
         // without its template is meaningless); deleting one copy removes only
@@ -421,9 +468,14 @@ export class HostLedger {
       }
       case 'setSchedule': {
         if (action.patch.repeat !== undefined && action.patch.repeat !== null && !isValidRepeat(action.patch.repeat)) return false
+        const before = this.state.tasks.find(t => t.id === action.id)
         let tasks = setSchedule(this.state.tasks, action.id, action.patch, now)
         const task = tasks.find(t => t.id === action.id)
         if (task === undefined) return false
+        // Clearing the repeat rule ends the series: its bound copies go away.
+        if (before !== undefined && before.schedule?.repeat !== undefined && action.patch.repeat === null) {
+          tasks = tasks.filter(t => t.originTaskId !== action.id)
+        }
         if (task.schedule !== undefined && (task.schedule.enabled || task.schedule.repeat !== undefined || task.schedule.dueAt !== undefined)) {
           const nextRunAt = computeNextRun(task.schedule, now)
           tasks = setNextRun(tasks, action.id, nextRunAt, task.schedule.lastTriggeredAt, now)
@@ -435,14 +487,16 @@ export class HostLedger {
         return true
       }
       case 'shiftRepeatTimes': {
-        // "Change all copies": shift the template + every bound copy by the
-        // same start/end deltas. The edited task must be a bound copy.
-        const copy = this.state.tasks.find(t => t.id === action.id)
-        if (copy === undefined || copy.originTaskId === undefined) return false
-        const origin = copy.originTaskId
+        // "Change all copies": shift the whole series — the template + every
+        // bound copy — by the same start/end deltas. The edited task may be a
+        // bound copy (originTaskId set) or the template itself.
+        const target = this.state.tasks.find(t => t.id === action.id)
+        if (target === undefined) return false
+        const root = target.originTaskId ?? (target.schedule?.repeat !== undefined ? target.id : undefined)
+        if (root === undefined) return false
         let hit = false
         this.state.tasks = this.state.tasks.map(t => {
-          if (t.id !== origin && t.originTaskId !== origin) return t
+          if (t.id !== root && t.originTaskId !== root) return t
           hit = true
           return { ...t, startAt: t.startAt + action.startDelta, endAt: t.endAt + action.endDelta, updatedAt: now }
         })
@@ -501,4 +555,25 @@ function computeNextRun(s: NonNullable<TaskRecord['schedule']>, now: number): nu
 /** Human copy for an action that was rejected. */
 export function actionError(action: calendarAction): string {
   return `unknown or rejected calendar action of kind "${action.kind}"`
+}
+
+/** Whether a task is a repeat template (owns a repeat rule, not itself a copy). */
+function isTemplate(task: TaskRecord | undefined): boolean {
+  return task !== undefined && task.originTaskId === undefined && task.schedule?.repeat !== undefined
+}
+
+/**
+ * The fields of an update patch that sync from a repeat template to its bound
+ * copies: content + execution pins. Block times, done and the unbind flag stay
+ * per-instance and are excluded.
+ */
+function templateSyncPatch(patch: TaskUpdatePatch): TaskUpdatePatch {
+  const out: TaskUpdatePatch = {}
+  const syncable = ['title', 'description', 'prompt', 'allDay', 'urgency', 'importance',
+    'workspaceId', 'sessionId', 'provider', 'model', 'reasoningEffort', 'mode', 'permission'] as const
+  for (const key of syncable) {
+    const value = patch[key]
+    if (value !== undefined) (out as Record<string, unknown>)[key] = value
+  }
+  return out
 }

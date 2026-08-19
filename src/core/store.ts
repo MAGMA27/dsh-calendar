@@ -49,6 +49,10 @@ function normalizeRepeat(value: unknown): RepeatRule | undefined {
     if (weekdays.length === 0) return undefined
     rule.weekdays = [...new Set(weekdays)]
   }
+  if (r.triggerAgent === true) {
+    rule.triggerAgent = true
+    if (typeof r.triggerAt === 'string' && /^\d{1,2}:\d{2}$/.test(r.triggerAt)) rule.triggerAt = r.triggerAt
+  }
   return rule
 }
 

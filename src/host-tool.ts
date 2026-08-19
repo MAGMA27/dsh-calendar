@@ -39,6 +39,8 @@ const parameters = {
   repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the Host copies the task onto each matching date (setSchedule).' },
   weekdays: { type: 'array', items: { type: 'integer' }, description: 'Weekly repeat weekdays, JS numbering 0=Sunday..6=Saturday, non-empty (setSchedule).' },
   skipHolidays: { type: 'boolean', description: 'Skip weekends + public holidays for the repeat rule (setSchedule).' },
+  triggerAgent: { type: 'boolean', description: 'Auto-run the agent at each repeat occurrence (setSchedule).' },
+  triggerAt: { type: 'string', description: 'Trigger time-of-day HH:MM; blank = the task block start (setSchedule).' },
   dueAt: { type: 'integer', description: 'One-off due ms epoch (setSchedule).' },
   enabled: { type: 'boolean', description: 'Whether the schedule is armed (setSchedule).' },
   subtasks: { type: 'array', items: { type: 'string' }, description: 'Optional subtask titles (create).' },
@@ -172,7 +174,13 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
           : undefined
         const hasDue = typeof a.dueAt === 'number'
         const repeat = hasRepeat
-          ? { kind: repeatKind as 'daily' | 'weekly', weekdays: repeatKind === 'weekly' ? weekdays : undefined, skipHolidays: a.skipHolidays === true }
+          ? {
+            kind: repeatKind as 'daily' | 'weekly',
+            weekdays: repeatKind === 'weekly' ? weekdays : undefined,
+            skipHolidays: a.skipHolidays === true,
+            triggerAgent: a.triggerAgent === true,
+            triggerAt: a.triggerAgent === true && typeof a.triggerAt === 'string' && /^\d{1,2}:\d{2}$/.test(a.triggerAt) ? a.triggerAt : undefined,
+          }
           : null
         const enabled = bool(a.enabled) !== false && (hasRepeat || hasDue)
         const patch = { enabled, repeat, dueAt: hasDue ? (a.dueAt as number) : null }

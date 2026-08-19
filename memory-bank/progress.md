@@ -3,7 +3,7 @@
 > ✏️ **2026 重命名记录**：包名/代码/文档统一由 `dsh-calender` 更正为 `dsh-calendar`（commit `970d53b`，51 文件）。仓库文件夹同步迁移到 **`D:\Dev\agents\dsh-calendar`（本份 memory-bank 即新目录内容，新会话请以它为工作区）**；旧 `dsh-calender` 目录因会话占用无法原位删除，会话结束后手动清除即可。账本数据已从 `~/.dsh/calender` 复制到 `~/.dsh/calendar`；profile 已卸载 `dsh-calender` 并重新挂载 `dsh-calendar`（`ui-calendar`），重启 dsh web 生效。localStorage 旧键 `dsh.calender.*` 已废弃（不触发重复导入）。
 
 ## 当前状态
-- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**168 单测全绿**（24 文件）。**定时模型已从自由 cron 重构为「受限重复规则（每日/每周 + 跳过节假日，物化副本）+ 一次性到时」**（见文末「受限重复规则替代 cron」节）。
+- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**179 单测全绿**（24 文件）。**定时模型已从自由 cron 重构为「受限重复规则（每日/每周 + 跳过节假日，物化副本 + 模板同步 + 可选触发 Agent）+ 一次性到时」**（见文末两节）。
 - 计划已批准（Host 权威架构）。
 - 📋 **验收清单见 [acceptance-checklist.md](memory-bank/acceptance-checklist.md)**：基线 / 挂载 / M0–M7 逐项 GUI 与 Host·工具行为验收。
 
@@ -159,6 +159,15 @@
 - **级联删除**：删模板 → 连带删仍绑定副本；删单个副本只删它自己。详情面板副本显示 ↻ +「查看模板」跳转；任务块/卡片加 ↻ 徽标。
 - **Host 侧**：`host-scheduler.ts` tick 改为「先触发到期一次性 dueAt（只接受后 `advanceSchedule(undefined)` 清除）→ 再 `materializeRepeats`」；`host-tool.ts` `setSchedule` 参数 cron → `repeat/kind/weekdays/skipHolidays`；`store.ts` 归一化 repeat + `originTaskId`、**旧账本 cron 规则在加载时丢弃**（清理崩溃现场）。
 - **测试**：删 `schedule.spec.ts` → 新增 `repeat.spec.ts`（10）；host-ledger 物化/级联/shift/解绑（7）；host-scheduler 重写（7）；新增 `repeat-time-edit.spec.tsx`（拖拽副本→挂起→this/all 解析，3）与 `schedule-settings.spec.tsx`（模式/周几 chips/节假日开关，3）；tasks/store/host-tool 同步。**168 单测全绿**（24 文件）。
+
+## 副本同步 / 取消定时级联删除 / 触发 Agent（2026；用户复测反馈）
+- **问题**：① 用户在模板上取消定时后，已物化的 50 个副本留在账本里不消失；② 副本没有同步原任务的记录和设置（用户选定「保持同步」）；③ 问定时任务的 Agent 触发时间点。
+- **实现**：
+  - **取消定时/删模板 → 级联删副本**：`setSchedule repeat:null`（清除定时）连带删除仍绑定副本；删除模板亦然；删除单个副本只删它自己。账本**加载时** `pruneOrphanCopies` 清理孤儿副本（模板缺失/已无重复规则）并即时持久化——**当前账本里的 50 个孤儿副本重启后自动清掉**（模板 `test` 本身保留为普通任务）。
+  - **保持同步（用户选定）**：模板的 `update`（标题/描述/Prompt/象限/全部执行钉子）→ 传播到仍绑定且未归档的副本；`setQuadrant`、`addSubtask`/`removeSubtask`（子任务结构）同传播；`setDone`/`setSubtaskDone`/时间段**永不**传播（每副本独立）。改副本只改它自己。
+  - **触发 Agent**：重复规则新增 `triggerAgent` + `triggerAt`(HH:MM)——物化的每个副本带一次性 `dueAt`（默认=任务时间段开始，`triggerAt` 可覆盖），到点经现有一次性调度自动执行、跑完清除该副本调度；不勾则副本只是日历条目。ScheduleSettings/详情面板加「到点触发 Agent」开关 + 「触发时间」输入（留空=按时间段）。
+  - **模板拖拽时间也走确认**：副本弹「只改这一个并解绑 / 改所有副本」；模板弹「同步所有副本（含模板）/ 只改模板（现有副本不动、未来新副本跟随）」；`shiftRepeatTimes` 泛化为系列根（副本或模板均可发起）。
+- **测试**：host-ledger +7（清定时级联、加载孤儿清理、模板同步/局部化、象限与子任务结构传播、模板发起 shift、触发物化默认/覆盖）；repeat.spec +3（触发副本 dueAt、parseTriggerTime、孤儿清理）；repeat-time-edit +1（模板拖拽确认）；schedule-settings +1（触发 UI）。**179 单测全绿**（24 文件）。
 
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   REPEAT_HORIZON_DAYS, buildRepeatCopy, isHoliday, isValidRepeat, matchesRepeat,
-  nextRepeatDate, repeatDatesBetween,
+  nextRepeatDate, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween,
 } from '../src/core/repeat.ts'
 import type { RepeatRule, TaskRecord } from '../src/core/tasks.ts'
 
@@ -112,6 +112,57 @@ describe('buildRepeatCopy', () => {
     expect(copy.provider).toBe('p1')
     expect(copy.mode).toBe('standard')
     expect(copy.permission).toBe('read-only')
+  })
+
+  it('arms a one-shot due schedule on trigger-agent copies (block start default / triggerAt override)', () => {
+    const template = mkTask({
+      id: 'tpl', title: 'Standup', description: '', prompt: '', startAt: at(2025, 1, 6, 9, 0), endAt: at(2025, 1, 6, 10, 0),
+      urgency: 'high', importance: 'high', schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } },
+    })
+    const copy = buildRepeatCopy(template, at(2025, 1, 7), 1000, 'c1')
+    expect(copy.schedule?.enabled).toBe(true)
+    expect(copy.schedule?.dueAt).toBe(at(2025, 1, 7, 9, 0)) // block start
+    expect(copy.schedule?.nextRunAt).toBe(at(2025, 1, 7, 9, 0))
+    expect(copy.schedule?.repeat).toBeUndefined()
+
+    const withOverride = mkTask({
+      id: 'tpl2', title: 'T', description: '', prompt: '', startAt: at(2025, 1, 6, 9, 0), endAt: at(2025, 1, 6, 10, 0),
+      urgency: 'high', importance: 'high', schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true, triggerAt: '07:30' } },
+    })
+    const c2 = buildRepeatCopy(withOverride, at(2025, 1, 7), 1000, 'c2')
+    expect(c2.schedule?.dueAt).toBe(at(2025, 1, 7, 7, 30))
+
+    // A due instant already in the past never fires (no nextRunAt).
+    const late = buildRepeatCopy(template, at(2025, 1, 7), at(2025, 1, 7, 12), 'c3')
+    expect(late.schedule?.dueAt).toBe(at(2025, 1, 7, 9, 0))
+    expect(late.schedule?.nextRunAt).toBeUndefined()
+  })
+})
+
+describe('parseTriggerTime', () => {
+  it('parses HH:MM into minutes-of-day and rejects invalid values', () => {
+    expect(parseTriggerTime('09:30')).toBe(570)
+    expect(parseTriggerTime('23:59')).toBe(1439)
+    expect(parseTriggerTime('7:05')).toBe(425)
+    expect(parseTriggerTime(undefined)).toBeUndefined()
+    expect(parseTriggerTime('')).toBeUndefined()
+    expect(parseTriggerTime('25:00')).toBeUndefined()
+    expect(parseTriggerTime('9:60')).toBeUndefined()
+    expect(parseTriggerTime('abc')).toBeUndefined()
+  })
+})
+
+describe('pruneOrphanCopies', () => {
+  it('keeps copies of active-repeat templates and drops the rest', () => {
+    const tpl = mkTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily' } } })
+    const paused = mkTask({ id: 'paused', schedule: { enabled: false, repeat: { kind: 'daily' } } })
+    const plain = mkTask({ id: 'plain' })
+    const c1 = mkTask({ id: 'c1', originTaskId: 'tpl' })
+    const c2 = mkTask({ id: 'c2', originTaskId: 'paused' }) // paused still counts as active rule
+    const c3 = mkTask({ id: 'c3', originTaskId: 'ghost' }) // template gone
+    const c4 = mkTask({ id: 'c4', originTaskId: 'plain' }) // plain task has no rule
+    const out = pruneOrphanCopies([tpl, paused, plain, c1, c2, c3, c4])
+    expect(out.map(t => t.id)).toEqual(['tpl', 'paused', 'plain', 'c1', 'c2'])
   })
 })
 

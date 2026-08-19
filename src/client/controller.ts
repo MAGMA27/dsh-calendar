@@ -58,14 +58,16 @@ function saveDayWindow(win: DayWindow): void {
   }
 }
 
-/** A pending time change on a repeat copy awaiting the user's confirmation:
- * apply to this copy only (unbind), or shift the whole repeat (template + all
- * bound copies). Populated by the week-grid drag end; resolved by the confirm
- * dialog. */
+/** A pending time change on a repeat-series task (a bound copy or the template
+ * itself) awaiting the user's confirmation: apply to this task only (unbinding
+ * a copy, or leaving the template's future copies to follow) or shift the whole
+ * series (template + all bound copies). Populated by the week-grid drag end;
+ * resolved by the confirm dialog. */
 export interface PendingRepeatTimeEdit {
   taskId: string
-  originTaskId: string
-  /** The copy's times before the drag. */
+  /** The series root; undefined when the edited task IS the template. */
+  originTaskId: string | undefined
+  /** The task's times before the drag. */
   origStart: number
   origEnd: number
   /** The dragged new times. */
@@ -172,21 +174,27 @@ export class calendarClientController {
   /** Replace the execution-settings option catalog (runtime data). */
   setCatalog(catalog: ExecutionCatalog): void { this.set({ catalog }) }
 
-  // --- repeat-copy time change confirmation ---------------------------------
-  /** Stage a repeat-copy time change; the confirm dialog resolves it. */
+  // --- repeat-series time change confirmation --------------------------------
+  /** Stage a repeat-series time change (copy or template drag); the confirm dialog resolves it. */
   requestRepeatTimeEdit(edit: PendingRepeatTimeEdit): void { this.set({ pendingRepeatTimeEdit: edit }) }
   cancelRepeatTimeEdit(): void { this.set({ pendingRepeatTimeEdit: undefined }) }
   /**
-   * Resolve the staged repeat-copy time change:
-   *  - 'this': update only the edited copy and unbind it (originTaskId cleared);
+   * Resolve the staged repeat time change:
+   *  - 'this' on a bound copy: update only that copy and unbind it (originTaskId
+   *    cleared); 'this' on the template: update only the template's block
+   *    (future copies follow the new time, existing copies keep theirs);
    *  - 'all': shift the template + every bound copy by the same deltas.
    */
   async resolveRepeatTimeEdit(choice: 'this' | 'all'): Promise<void> {
     const edit = this.state.pendingRepeatTimeEdit
     if (edit === undefined) return
     this.set({ pendingRepeatTimeEdit: undefined })
+    const task = this.state.snapshot.tasks.find(t => t.id === edit.taskId)
+    const isTemplate = task !== undefined && task.originTaskId === undefined && task.schedule?.repeat !== undefined
     if (choice === 'this') {
-      await this.dispatch({ kind: 'update', id: edit.taskId, patch: { startAt: edit.startAt, endAt: edit.endAt, originTaskId: null } })
+      const patch: { startAt: number; endAt: number; originTaskId?: string | null } = { startAt: edit.startAt, endAt: edit.endAt }
+      if (!isTemplate) patch.originTaskId = null
+      await this.dispatch({ kind: 'update', id: edit.taskId, patch })
     } else {
       await this.dispatch({
         kind: 'shiftRepeatTimes',

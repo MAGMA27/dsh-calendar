@@ -1,9 +1,10 @@
 /**
  * Shared schedule editor (create modal + detail panel): a constrained repeat
  * mode (none / daily / weekly), weekday chips for weekly, a skip-weekends-and-
- * holidays toggle, and a one-off due time for the none mode. There is no
- * free-form cron input: repeats are materialized by the Host onto their dates,
- * so the user only picks the granularity that is safe to run.
+ * holidays toggle, an optional agent-trigger (with a trigger-time override),
+ * and a one-off due time for the none mode. There is no free-form cron input:
+ * repeats are materialized by the Host onto their dates, so the user only picks
+ * the granularity that is safe to run.
  */
 import type { RepeatKind } from '../../core/tasks.ts'
 import { t, type calendarKey } from '../locales.ts'
@@ -15,6 +16,11 @@ export interface ScheduleSettingsValue {
   /** Weekly only: JS weekdays 0=Sun..6=Sat, non-empty when mode is weekly. */
   weekdays: number[]
   skipHolidays: boolean
+  /** Repeat + agent trigger: each materialized copy auto-runs at the trigger
+   * time (empty triggerAt → the task's block start). */
+  triggerAgent: boolean
+  /** Trigger time-of-day override (HH:MM, '' = block start). */
+  triggerAt: string
   /** datetime-local string ('' = unset), used only in the none mode. */
   dueAt: string
 }
@@ -77,6 +83,27 @@ export function ScheduleSettings({ value, onChange }: {
           />
           <span>{t('schedule.skipHolidays')}</span>
         </label>
+      )}
+      {value.mode !== 'none' && (
+        <>
+          <label className={css.checkRow}>
+            <input
+              type="checkbox"
+              checked={value.triggerAgent}
+              onChange={e => onChange({ ...value, triggerAgent: e.target.checked })}
+            />
+            <span>{t('schedule.triggerAgent')}</span>
+          </label>
+          {value.triggerAgent && (
+            <div className={css.formRow}>
+              <label className={css.formLabel}>{t('schedule.triggerAt')}</label>
+              <input className={css.input} type="time" value={value.triggerAt}
+                title={t('schedule.triggerAtHint')}
+                onChange={e => onChange({ ...value, triggerAt: e.target.value })} />
+              <span className={css.formValue}>{t('schedule.triggerAtHint')}</span>
+            </div>
+          )}
+        </>
       )}
       {value.mode === 'none' && (
         <div className={css.formRow}>

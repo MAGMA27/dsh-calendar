@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
 import { ScheduleSettings, type ScheduleSettingsValue } from '../src/client/components/ScheduleSettings.tsx'
 
+const NONE: ScheduleSettingsValue = { mode: 'none', weekdays: [], skipHolidays: false, triggerAgent: false, triggerAt: '', dueAt: '' }
+
 describe('ScheduleSettings', () => {
   function setup(initial: ScheduleSettingsValue) {
     const host = document.createElement('div'); document.body.appendChild(host)
@@ -15,7 +17,7 @@ describe('ScheduleSettings', () => {
   }
 
   it('renders the mode select and a one-off due input in the none mode', () => {
-    const { host, root } = setup({ mode: 'none', weekdays: [], skipHolidays: false, dueAt: '' })
+    const { host, root } = setup(NONE)
     const select = host.querySelector('select') as HTMLSelectElement
     expect([...select.options].map(o => o.value)).toEqual(['none', 'daily', 'weekly'])
     expect(host.querySelector('input[type="datetime-local"]')).toBeTruthy()
@@ -24,7 +26,7 @@ describe('ScheduleSettings', () => {
   })
 
   it('switching to weekly seeds Mon-Fri and shows 7 weekday chips + holiday toggle', () => {
-    const { host, root, latest } = setup({ mode: 'none', weekdays: [], skipHolidays: false, dueAt: '' })
+    const { host, root, latest } = setup(NONE)
     const select = host.querySelector('select') as HTMLSelectElement
     act(() => {
       select.value = 'weekly'
@@ -39,7 +41,7 @@ describe('ScheduleSettings', () => {
     const chips = host.querySelectorAll('button[class*=weekdayChip]')
     expect(chips.length).toBe(7)
     expect(host.querySelector('input[type="datetime-local"]')).toBeNull()
-    expect(host.querySelector('input[type="checkbox"]')).toBeTruthy()
+    expect(host.querySelectorAll('input[type="checkbox"]').length).toBe(2) // skip holidays + trigger agent
 
     // Toggling a chip off reports the weekday removed.
     const monday = chips[0] as HTMLButtonElement
@@ -48,7 +50,7 @@ describe('ScheduleSettings', () => {
   })
 
   it('daily mode hides weekday chips but keeps the holiday toggle', () => {
-    const { host, root, latest } = setup({ mode: 'none', weekdays: [], skipHolidays: false, dueAt: '' })
+    const { host, root, latest } = setup(NONE)
     const select = host.querySelector('select') as HTMLSelectElement
     act(() => {
       select.value = 'daily'
@@ -58,6 +60,21 @@ describe('ScheduleSettings', () => {
     act(() => { root.render(<ScheduleSettings value={latest()} onChange={() => {}} />) })
     expect(host.querySelectorAll('button[class*=weekdayChip]').length).toBe(0)
     expect(host.querySelector('input[type="checkbox"]')).toBeTruthy()
+    act(() => { root.unmount(); host.remove() })
+  })
+
+  it('trigger-agent checkbox reveals a trigger-time input (default blank = block start)', () => {
+    const { host, root, latest } = setup({ ...NONE, mode: 'daily' })
+    const checkboxes = host.querySelectorAll('input[type="checkbox"]')
+    const triggerCheck = checkboxes[1] as HTMLInputElement
+    act(() => {
+      triggerCheck.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    const withTrigger = latest()
+    expect(withTrigger.triggerAgent).toBe(true)
+    act(() => { root.render(<ScheduleSettings value={withTrigger} onChange={() => {}} />) })
+    const timeInput = host.querySelector('input[type="time"]') as HTMLInputElement
+    expect(timeInput).toBeTruthy()
     act(() => { root.unmount(); host.remove() })
   })
 })

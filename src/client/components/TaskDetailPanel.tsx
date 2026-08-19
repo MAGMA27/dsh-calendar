@@ -29,13 +29,19 @@ function quadKnobs(task: TaskRecord): Partial<ExecutionSettingsValue> {
   }
 }
 
-/** Human repeat-rule summary, e.g. "每周 周一、周三 · 跳过节假日". */
+/** Human repeat-rule summary, e.g. "每周 周一、周三 · 跳过节假日 · 触发 09:30". */
 function repeatSummary(rule: RepeatRule): string {
   const head = rule.kind === 'daily' ? t('schedule.daily') : t('schedule.weekly')
   const days = rule.kind === 'weekly' && rule.weekdays !== undefined && rule.weekdays.length > 0
     ? ` ${(rule.weekdays as number[]).slice().sort((a, b) => a - b).map(d => t(`weekday.${(d + 6) % 7}` as calendarKey)).join('、')}`
     : ''
-  return head + days + (rule.skipHolidays === true ? ` · ${t('schedule.skipHolidays')}` : '')
+  const holidays = rule.skipHolidays === true ? ` · ${t('schedule.skipHolidays')}` : ''
+  const trigger = rule.triggerAgent === true
+    ? (rule.triggerAt !== undefined && rule.triggerAt !== ''
+      ? ` · ${t('schedule.triggerSummary', { time: rule.triggerAt })}`
+      : ` · ${t('schedule.triggerBlock')}`)
+    : ''
+  return head + days + holidays + trigger
 }
 
 function initialSchedule(task: TaskRecord): ScheduleSettingsValue {
@@ -45,6 +51,8 @@ function initialSchedule(task: TaskRecord): ScheduleSettingsValue {
     mode: repeat?.kind ?? 'none',
     weekdays: repeat?.weekdays ?? [],
     skipHolidays: repeat?.skipHolidays === true,
+    triggerAgent: repeat?.triggerAgent === true,
+    triggerAt: repeat?.triggerAt ?? '',
     dueAt: s !== undefined && s.dueAt !== undefined ? new Date(s.dueAt).toISOString().slice(0, 16) : '',
   }
 }
@@ -78,9 +86,16 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
     const dueMs = schedule.dueAt.trim() === '' ? undefined : new Date(schedule.dueAt).getTime()
     // A schedule exists only when a repeat rule or a one-off due time is set;
     // clearing both must switch the schedule off (and drop the 🕐 badge).
+    const triggerAt = schedule.triggerAt.trim()
     const repeat = schedule.mode === 'none'
       ? null
-      : { kind: schedule.mode, weekdays: schedule.mode === 'weekly' ? schedule.weekdays : undefined, skipHolidays: schedule.skipHolidays }
+      : {
+        kind: schedule.mode,
+        weekdays: schedule.mode === 'weekly' ? schedule.weekdays : undefined,
+        skipHolidays: schedule.skipHolidays,
+        triggerAgent: schedule.triggerAgent,
+        triggerAt: schedule.triggerAgent && triggerAt !== '' ? triggerAt : undefined,
+      }
     const enabled = repeat !== null || dueMs !== undefined
     await controller.dispatch({
       kind: 'setSchedule',
@@ -93,7 +108,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   }
 
   const clearSchedule = (): void => {
-    setSchedule({ mode: 'none', weekdays: [], skipHolidays: false, dueAt: '' })
+    setSchedule({ mode: 'none', weekdays: [], skipHolidays: false, triggerAgent: false, triggerAt: '', dueAt: '' })
     setDirty(true)
     void controller.dispatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, repeat: null, dueAt: null } })
   }

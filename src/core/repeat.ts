@@ -2,13 +2,15 @@
  * Constrained repeat rules (replaces free-form cron): daily on every day or
  * weekly on chosen weekdays, optionally skipping weekends + public holidays.
  * The Host materializes one plain copy of the template task on each matching
- * date (see buildRepeatCopy); the rule itself never auto-runs.
+ * date (see buildRepeatCopy). With `triggerAgent` the materialized copies are
+ * one-shot scheduled tasks that auto-run at their due instant (default: the
+ * template's block start, overridable per-rule with `triggerAt` HH:MM).
  *
  * Framework-free and pure so the Host ledger (materialization) and the browser
  * view (next-occurrence display) share one source of truth.
  */
-import { addDays, dayKey } from './calendar.ts'
-import type { RepeatRule, TaskRecord } from './tasks.ts'
+import { addDays, dayKey, minutesOfDay } from './calendar.ts'
+import type { RepeatRule, ScheduleRule, TaskRecord } from './tasks.ts'
 
 /** Rolling materialization horizon (days ahead from today). */
 export const REPEAT_HORIZON_DAYS = 60
@@ -108,16 +110,38 @@ export function nextRepeatDate(rule: RepeatRule, fromMs: number): number | undef
   return undefined
 }
 
+/** Parse an HH:MM trigger time into minutes-of-day (0..1439); invalid → undefined. */
+export function parseTriggerTime(triggerAt: string | undefined): number | undefined {
+  if (triggerAt === undefined) return undefined
+  const m = /^(\d{1,2}):(\d{2})$/.exec(triggerAt.trim())
+  if (m === null) return undefined
+  const hours = Number(m[1])
+  const minutes = Number(m[2])
+  if (hours > 23 || minutes > 59) return undefined
+  return hours * 60 + minutes
+}
+
 /**
  * Build one materialized copy of a repeat template on `dateMs` (a date-start):
  * same time-of-day + duration as the template, same content + execution pins,
  * a fresh id, no schedule (copies are plain tasks), and `originTaskId` linking
- * back to the template.
+ * back to the template. When the rule has `triggerAgent` the copy instead
+ * carries a one-shot due schedule at the trigger instant (rule `triggerAt`
+ * HH:MM, defaulting to the template's block start) so the scheduler auto-runs
+ * it; a due instant already in the past never fires.
  */
 export function buildRepeatCopy(template: TaskRecord, dateMs: number, now: number, id: string): TaskRecord {
   const templateDay = startOfDayMs(template.startAt)
   const startAt = dateMs + (template.startAt - templateDay)
   const duration = template.endAt - template.startAt
+  const rule = template.schedule?.repeat
+  const triggerAgent = rule?.triggerAgent === true
+  let schedule: ScheduleRule | undefined
+  if (triggerAgent) {
+    const triggerMinutes = parseTriggerTime(rule?.triggerAt) ?? minutesOfDay(template.startAt)
+    const dueAt = dateMs + triggerMinutes * 60_000
+    schedule = { enabled: true, dueAt, nextRunAt: dueAt > now ? dueAt : undefined }
+  }
   return {
     id,
     title: template.title,
@@ -131,7 +155,7 @@ export function buildRepeatCopy(template: TaskRecord, dateMs: number, now: numbe
     done: false,
     subtasks: template.subtasks,
     executions: [],
-    schedule: undefined,
+    schedule,
     workspaceId: template.workspaceId,
     sessionId: template.sessionId,
     provider: template.provider,
@@ -143,4 +167,19 @@ export function buildRepeatCopy(template: TaskRecord, dateMs: number, now: numbe
     createdAt: now,
     updatedAt: now,
   }
+}
+
+/**
+ * Drop copies whose template no longer has an active repeat rule (template
+ * missing, or its `schedule.repeat` removed). Runs once at ledger load so a
+ * series whose rule was cleared or deleted leaves no orphaned copies behind.
+ * Archived templates still count as active (archive is reversible and does not
+ * cascade).
+ */
+export function pruneOrphanCopies(tasks: readonly TaskRecord[]): TaskRecord[] {
+  const templateIds = new Set<string>()
+  for (const t of tasks) {
+    if (t.originTaskId === undefined && t.schedule?.repeat !== undefined) templateIds.add(t.id)
+  }
+  return tasks.filter(t => t.originTaskId === undefined || templateIds.has(t.originTaskId))
 }

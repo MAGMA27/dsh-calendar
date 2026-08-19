@@ -27,7 +27,7 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
   const [importance, setImportance] = useState<Importance>('medium')
   const [subtaskInput, setSubtaskInput] = useState('')
   const [subtasks, setSubtasks] = useState<SubtaskRecord[]>([])
-  const [schedule, setSchedule] = useState<ScheduleSettingsValue>({ mode: 'none', weekdays: [], skipHolidays: false, dueAt: '' })
+  const [schedule, setSchedule] = useState<ScheduleSettingsValue>({ mode: 'none', weekdays: [], skipHolidays: false, triggerAgent: false, triggerAt: '', dueAt: '' })
   const [exec, setExec] = useState<ExecutionSettingsValue>({})
   const [error, setError] = useState<string | null>(null)
 
@@ -42,9 +42,16 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
     if (title.trim() === '' || draft === undefined) { setError('title required'); return }
     if (schedule.mode === 'weekly' && schedule.weekdays.length === 0) { setError(t('schedule.weeklyRequired')); return }
     const dueMs = schedule.dueAt.trim() === '' ? undefined : new Date(schedule.dueAt).getTime()
+    const triggerAt = schedule.triggerAt.trim()
     const repeat = schedule.mode === 'none'
       ? undefined
-      : { kind: schedule.mode, weekdays: schedule.mode === 'weekly' ? schedule.weekdays : undefined, skipHolidays: schedule.skipHolidays }
+      : {
+        kind: schedule.mode,
+        weekdays: schedule.mode === 'weekly' ? schedule.weekdays : undefined,
+        skipHolidays: schedule.skipHolidays,
+        triggerAgent: schedule.triggerAgent,
+        triggerAt: schedule.triggerAgent && triggerAt !== '' ? triggerAt : undefined,
+      }
     await controller.dispatch({
       kind: 'create',
       input: {

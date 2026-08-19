@@ -48,6 +48,11 @@ export interface RepeatRule {
   weekdays?: number[]
   /** Skip weekends + curated public holidays when materializing. */
   skipHolidays?: boolean
+  /** When true, materialized copies carry a one-shot due schedule that auto-runs
+   * the agent at `triggerAt` (HH:MM) or, when absent, at the block start. */
+  triggerAgent?: boolean
+  /** Trigger time-of-day override (HH:MM); ignored unless triggerAgent. */
+  triggerAt?: string
 }
 
 /** Whether a value is structurally a repeat rule. */
@@ -56,6 +61,7 @@ export function isRepeatRule(value: unknown): value is RepeatRule {
   const r = value as Record<string, unknown>
   if (r.kind !== 'daily' && r.kind !== 'weekly') return false
   if (r.weekdays !== undefined && (!Array.isArray(r.weekdays) || r.weekdays.some(d => typeof d !== 'number' || !Number.isInteger(d) || d < 0 || d > 6))) return false
+  if (r.triggerAt !== undefined && (typeof r.triggerAt !== 'string' || !/^\d{1,2}:\d{2}$/.test(r.triggerAt))) return false
   return true
 }
 

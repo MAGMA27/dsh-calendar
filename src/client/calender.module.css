@@ -435,6 +435,46 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   padding: 1px 4px;
 }
 
+.taskTime {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.badgeDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dsw-static-red-500);
+  margin-right: 3px;
+  vertical-align: baseline;
+  animation: dshCalPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes dshCalPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.subtaskTrack {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-1);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.subtaskTrackFill {
+  display: block;
+  height: 100%;
+  background: var(--dsw-alias-state-success-primary);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
 .taskBlockEditing { z-index: 5; border-color: var(--dsw-static-deepseek-500); box-shadow: 0 4px 14px var(--dsw-alias-bg-mask-2); cursor: grabbing; }
 
 .resizeHandleTop,
@@ -541,6 +581,7 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   padding: 12px;
   min-height: 0;
   overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
 }
 
 .matrixQuadrant.quadrantDo { border-color: var(--dsw-static-red-500); }
@@ -548,59 +589,151 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .matrixQuadrant.quadrantDelegate { border-color: var(--dsw-static-amber-500); }
 .matrixQuadrant.quadrantEliminate { border-top-color: var(--dsw-alias-label-tertiary); }
 
+.matrixQuadrantHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+}
+
 .matrixQuadrantTitle {
   font-size: 13px;
   font-weight: 700;
   color: var(--dsw-alias-label-primary);
 }
 
-.matrixList { display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+.matrixQuadrantCount {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: 999px;
+  min-width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  padding: 0 6px;
+}
+
+.matrixEmpty { font-size: 12px; color: var(--dsw-alias-label-tertiary); margin: 0; padding: 4px 2px; }
+
+.matrixList { display: flex; flex-direction: column; gap: 6px; overflow: auto; }
 
 .matrixItem {
-  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: stretch;
+  text-align: left;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-left-width: 3px;
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-primary);
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 6px 8px;
   font-size: 13px;
-  text-align: left;
   cursor: pointer;
 }
 
-.matrixItem:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.matrixItem:hover { background: var(--dsw-alias-interactive-bg-hover); border-color: var(--dsw-alias-border-l2); }
+
+.matrixItemTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.matrixItemTitle[data-done] { text-decoration: line-through; color: var(--dsw-alias-label-tertiary); }
+
+.matrixItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
 
 /* --- agenda ------------------------------------------------------------------- */
 
-.agendaPanel { display: flex; flex-direction: column; gap: 16px; }
+.agendaPanel { display: flex; flex-direction: column; gap: 18px; }
 
 .agendaGroup { display: flex; flex-direction: column; gap: 6px; }
 
 .agendaTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   font-size: 13px;
   font-weight: 700;
   color: var(--dsw-alias-label-secondary);
 }
 
-.agendaEmpty { font-size: 13px; color: var(--dsw-alias-label-tertiary); margin: 0; }
+.agendaCount {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  min-width: 20px;
+  height: 20px;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 6px;
+}
+
+.agendaEmpty { font-size: 13px; color: var(--dsw-alias-label-tertiary); margin: 2px 0; }
 
 .agendaItem {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  border: none;
+  flex-direction: column;
+  gap: 3px;
+  align-items: stretch;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-left-width: 3px;
   background: var(--dsw-alias-bg-layer-2);
-  border-radius: 8px;
-  padding: 7px 10px;
+  border-radius: 10px;
+  padding: 8px 10px;
   cursor: pointer;
   text-align: left;
 }
 
-.agendaItem:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.agendaItem:hover { background: var(--dsw-alias-interactive-bg-hover); border-color: var(--dsw-alias-border-l2); }
 
-.agendaTime { font-size: 12px; color: var(--dsw-alias-label-tertiary); flex: none; }
-.agendaProgress { font-size: 11px; color: var(--dsw-alias-label-secondary); flex: none; }
-.agendaText { font-size: 13px; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agendaItem[data-done] { opacity: 0.72; }
+
+.agendaItemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.agendaBadges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+
+.agendaText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.agendaText[data-done] { text-decoration: line-through; color: var(--dsw-alias-label-tertiary); }
+
+.agendaDesc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.agendaItem[data-overdue] .taskTime { color: var(--dsw-static-red-500); }
 
 /* --- matrix drag-over highlight ------------------------------------------------------ */
 

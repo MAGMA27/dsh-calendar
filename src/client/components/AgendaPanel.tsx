@@ -1,12 +1,24 @@
-/** Agenda list grouped by overdue / today / upcoming / done, with subtask progress. */
+/** Agenda list grouped by overdue / today / upcoming / done. Each row is a
+ * rich card: time range, quadrant stripe, status chips, description snippet
+ * and a subtask progress track.
+ */
 import type { CalenderClientController } from '../controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
+import { quadrantOf } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
+import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calender.module.css'
 
 interface AgendaPanelProps { controller: CalenderClientController }
 
 type Bucket = 'overdue' | 'today' | 'upcoming' | 'done'
+
+const ACCENT: Record<string, string> = {
+  do: css.quadrantDo,
+  schedule: css.quadrantSchedule,
+  delegate: css.quadrantDelegate,
+  eliminate: css.quadrantEliminate,
+}
 
 function bucket(task: TaskRecord, now: number): Bucket {
   if (task.done) return 'done'
@@ -37,17 +49,26 @@ export function AgendaPanel({ controller }: AgendaPanelProps) {
     <div className={css.agendaPanel} data-dsh-calender-agenda="">
       {groups.map(g => (
         <section key={g.key} className={css.agendaGroup}>
-          <h3 className={css.agendaTitle}>{g.label}</h3>
+          <h3 className={css.agendaTitle}>
+            {g.label}
+            {g.tasks.length > 0 && <span className={css.agendaCount}>{g.tasks.length}</span>}
+          </h3>
           {g.tasks.length === 0
             ? <p className={css.agendaEmpty}>{t('agenda.empty')}</p>
             : g.tasks.map(task => {
-              const done = task.subtasks.filter(s => s.done).length
+              const acc = ACCENT[quadrantOf(task.urgency, task.importance)]
               return (
-                <button type="button" key={task.id} className={css.agendaItem} onClick={() => controller.selectTask(task.id)}>
-                  <span className={css.agendaTime}>{new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(task.startAt)}</span>
-                  <span className={css.agendaText}>{task.title}</span>
-                  {task.subtasks.length > 0 && <span className={css.agendaProgress}>{done}/{task.subtasks.length}</span>}
-                  {task.schedule !== undefined && task.schedule.enabled && <span className={css.taskBadge}>{t('task.scheduled')}</span>}
+                <button type="button" key={task.id} className={css.agendaItem + ' ' + acc}
+                  data-overdue={g.key === 'overdue' ? 'true' : undefined}
+                  data-done={task.done || undefined}
+                  onClick={() => controller.selectTask(task.id)}>
+                  <span className={css.agendaItemHead}>
+                    <TaskTime task={task} />
+                    <span className={css.agendaBadges}><TaskBadges task={task} /></span>
+                  </span>
+                  <span className={css.agendaText} data-done={task.done || undefined}>{task.title}</span>
+                  {task.description !== '' && <span className={css.agendaDesc}>{task.description}</span>}
+                  <SubtaskTrack task={task} />
                 </button>
               )
             })}

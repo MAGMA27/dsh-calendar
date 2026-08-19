@@ -15,6 +15,7 @@ import { calendarClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpcalendarHostTransport } from './host-api.ts'
 import { createCalendarOverlay } from './calendar-overlay.tsx'
 import { CalendarEntry } from './calendar-entry.tsx'
+import { setCalendarOpen } from './root-open.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { en, zh } from './locales.ts'
 
@@ -49,14 +50,17 @@ export function apply(ctx: ClientContext): void {
   // titles / LLM providers+models) is assembled on the Host and fetched here.
   void refreshCatalog(controller)
 
-  // Session jump: open an execution's session in the GUI. The session may not
-  // be in the list snapshot yet right after a run, so failures are ignored.
+  // Session jump: opening an execution's session in the GUI is a deliberate
+  // leave-the-calendar action, so the calendar overlay is closed first; the
+  // session then opens below the now-visible conversation surface.
   const openSession = (sessionId: string): void => {
+    setCalendarOpen(false)
     const sessions = (ctx as unknown as { sessions?: { open(id: string): void } }).sessions
     try {
       sessions?.open(sessionId)
     } catch {
-      // The session may not be listed yet; ignore and keep the overlay open.
+      // The session may not be listed yet; ignore. The calendar is already
+      // closed: the click was an explicit leave intent.
     }
   }
 

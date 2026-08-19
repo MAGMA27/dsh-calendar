@@ -707,7 +707,7 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .matrixQuadrant.quadrantDo { border-color: var(--dsw-static-red-500); }
 .matrixQuadrant.quadrantSchedule { border-color: var(--dsw-static-blue-500); }
 .matrixQuadrant.quadrantDelegate { border-color: var(--dsw-static-amber-500); }
-.matrixQuadrant.quadrantEliminate { border-top-color: var(--dsw-alias-label-tertiary); }
+.matrixQuadrant.quadrantEliminate { border-color: var(--dsw-alias-label-tertiary); }
 
 .matrixQuadrantHeader {
   display: flex;
@@ -715,24 +715,39 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   justify-content: space-between;
   gap: 8px;
   flex: none;
+  padding-bottom: 8px;
+  border-bottom: 3px solid var(--dsw-alias-border-l1);
 }
 
+/* Each quadrant's title matches its color and the header carries a color bar. */
+.matrixQuadrant.quadrantDo .matrixQuadrantHeader { border-bottom-color: var(--dsw-static-red-500); }
+.matrixQuadrant.quadrantSchedule .matrixQuadrantHeader { border-bottom-color: var(--dsw-static-blue-500); }
+.matrixQuadrant.quadrantDelegate .matrixQuadrantHeader { border-bottom-color: var(--dsw-static-amber-500); }
+.matrixQuadrant.quadrantEliminate .matrixQuadrantHeader { border-bottom-color: var(--dsw-alias-label-tertiary); }
+
 .matrixQuadrantTitle {
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 700;
+  line-height: 1.2;
   color: var(--dsw-alias-label-primary);
 }
 
+.matrixQuadrant.quadrantDo .matrixQuadrantTitle { color: var(--dsw-static-red-500); }
+.matrixQuadrant.quadrantSchedule .matrixQuadrantTitle { color: var(--dsw-static-blue-500); }
+.matrixQuadrant.quadrantDelegate .matrixQuadrantTitle { color: var(--dsw-static-amber-500); }
+.matrixQuadrant.quadrantEliminate .matrixQuadrantTitle { color: var(--dsw-alias-label-tertiary); }
+
 .matrixQuadrantCount {
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--dsw-alias-label-secondary);
   background: var(--dsw-alias-bg-layer-2);
   border-radius: 999px;
-  min-width: 20px;
-  height: 20px;
-  line-height: 20px;
+  min-width: 22px;
+  height: 22px;
+  line-height: 22px;
   text-align: center;
-  padding: 0 6px;
+  padding: 0 8px;
 }
 
 .matrixEmpty { font-size: 12px; color: var(--dsw-alias-label-tertiary); margin: 0; padding: 4px 2px; }

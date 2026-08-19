@@ -117,11 +117,11 @@
 
 ## 日历视图功能增强（commit `c5ec7b1`）
 用户三项反馈一并落地：
-1. **搜索栏真正可用**：原来 `query` state 只存不用，纯摆设。现在新增纯函数 `taskMatchesQuery(task, query)`（`src/core/tasks.ts`，大小写不敏感匹配 title/description/prompt，空串匹配全部），四个视图（周/月/矩阵/议程）都接上 `query` prop 过滤任务。改动：`CalendarView.tsx`（trim 后透传）+ `WeekGrid/MonthGrid/MatrixPanel/AgendaPanel`（过滤各自任务源）。
+1. **搜索栏先做可用、后移除（commit `c5ec7b1` 加入 → `28a99cc` 移除）**：用户反馈原 `query` state 只存不用。先实现 `taskMatchesQuery`（`src/core/tasks.ts`，大小写不敏感匹配 title/description/prompt）并接到四视图；用户复测认为搜索栏没啥用 → **整体移除**：删 `query` state/input、各视图 `query` prop、`taskMatchesQuery` 及其 3 个测试、`.search` CSS、`board.search` locale 键。当前搜索栏不存在。
 2. **周/月日期导航**：原来只有「今天」按钮，无上一/下一期。新增 `DateNav` 组件（`CalendarView.tsx`）：`‹ 期标签 › + 今天`。core 新增 `addDays/addMonths/sameMonth/monthLabel/weekRangeLabel`（`src/core/calendar.ts`）——addMonths 按目标月天数钳制日（1月31日+1月→2月28/29）；周视图步进 ±7 天、月视图 ±1 月；标签带年份（如「2024年1月15日 – 1月21日」「2024年1月」）。`DateNav` 含 `aria-live` 标签。
 3. **月视图信息补全 + 区分相邻月**：原月视图无周几表头、无月份信息、上月/本月无区分。重构 `MonthGrid.tsx`：顶部 sticky 周几表头（随 weekStart 周一起始）、`sameMonth` 判当前月、相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、日期 `label-tertiary`、chips 半透明）、今天仍圆形高亮；外层包 `.monthWrap`（表头 + 可滚动 `.monthGrid`）。CSS 新增 `.dateNav*`、`.monthWrap/.monthWeekHeader/.monthWeekDay`、`.monthCell[data-outside]`。
 4. **月视图日期样式（commit `a003320` 系列→`78f027d`，用户复测多轮）**：色带方案反复迭代（3px 细线→胶囊→横贯整格→贴边品牌蓝）后**最终弃用**，改为干净方案：日期数字加大到 **18px/700**、**每月 1 号在数字旁标月份短名且字号与日期一致**（`monthShortLabel`，如「9月 1」；月份用 `label-secondary`、日期用 `label-primary` 区分主次）、今天数字套品牌蓝圆底白字（`--dsw-static-deepseek-500`；文档已记 token 坑：亮色下勿用 `--dsw-alias-brand-primary`，它映射近黑 bluish-1000）。改动：`MonthGrid.tsx`、`calendar.module.css`。
-- **测试**：`tests/calendar.spec.ts` 新增 date navigation 组（addDays/addMonths/sameMonth/monthLabel/weekRangeLabel）；`tests/tasks.spec.ts` 新增 taskMatchesQuery 组。**140 单测全绿**（21 文件）。
+- **测试**：`tests/calendar.spec.ts` 新增 date navigation 组（addDays/addMonths/sameMonth/monthLabel/weekRangeLabel）；搜索匹配组已随移除删除。**137 单测全绿**（21 文件）。
 5. **矩阵标题美化（commit `017467c`→`343c1cd`，用户复测追加）**：象限标题从 13px 放大到 **18px/700**，标题行底部加 3px 象限色横条（do 红 / schedule 蓝 / delegate 琥珀 / eliminate 灰，呼应外框），计数徽标放大到 12px/22px；复测后**标题文字改回主文字色 `label-primary`（黑）**，颜色只保留在横条与边框。改动：`calendar.module.css`。
 
 ## 下一步

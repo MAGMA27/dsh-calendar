@@ -48,11 +48,13 @@ export function AgendaPanel({ controller }: AgendaPanelProps) {
   return (
     <div className={css.agendaPanel} data-dsh-calender-agenda="">
       {groups.map(g => (
-        <section key={g.key} className={css.agendaGroup}>
-          <h3 className={css.agendaTitle}>
-            {g.label}
+        <section key={g.key} className={css.agendaGroup} data-group={g.key}>
+          <div className={css.agendaGroupHeader}>
+            <span className={css.agendaGroupDot} aria-hidden="true" />
+            <h3 className={css.agendaTitle}>{g.label}</h3>
+            <span className={css.agendaGroupLine} aria-hidden="true" />
             {g.tasks.length > 0 && <span className={css.agendaCount}>{g.tasks.length}</span>}
-          </h3>
+          </div>
           {g.tasks.length === 0
             ? <p className={css.agendaEmpty}>{t('agenda.empty')}</p>
             : g.tasks.map(task => {

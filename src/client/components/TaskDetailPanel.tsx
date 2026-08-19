@@ -88,7 +88,14 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
     // Clearing a repeat series must ask: one day only, or the whole series?
     const choice = await controller.requestScheduleClear(task.id)
     if (choice === 'day' && task.originTaskId !== undefined) {
-      await controller.dispatch({ kind: 'clearInstanceSchedule', id: task.id })
+      // "This day": a copy that still has its own (trigger) schedule loses it
+      // and stays as a plain task; a plain copy is removed (that day's
+      // occurrence is cancelled and never re-materialized).
+      if (task.schedule?.enabled === true) {
+        await controller.dispatch({ kind: 'clearInstanceSchedule', id: task.id })
+      } else {
+        await controller.dispatch({ kind: 'delete', id: task.id })
+      }
     } else if (choice === 'all') {
       await controller.dispatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, repeat: null, dueAt: null } })
     }

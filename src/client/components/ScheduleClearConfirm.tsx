@@ -16,9 +16,10 @@ export function ScheduleClearConfirm({ controller }: { controller: calendarClien
   const pending = snap.pendingScheduleClear
   if (pending === undefined) return null
   const task = snap.snapshot.tasks.find(x => x.id === pending.taskId)
-  // "This day" only makes sense on a bound copy that still has its own
-  // (trigger) schedule to clear.
-  const canClearDay = task !== undefined && task.originTaskId !== undefined && task.schedule?.enabled === true
+  // "This day" applies to any bound copy of the series: a copy that still has
+  // its own (trigger) schedule loses that schedule and stays as a plain task;
+  // a plain copy is removed (that day's occurrence is cancelled).
+  const canClearDay = task !== undefined && task.originTaskId !== undefined
 
   return (
     <div className={css.modalOverlay} role="dialog" aria-modal="true" aria-label={t('scheduleClear.title')}>

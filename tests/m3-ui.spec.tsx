@@ -112,6 +112,29 @@ describe('TaskDetailPanel', () => {
 
     await act(async () => { root.unmount(); host.remove() })
   })
+
+  it('"this day" is offered on a plain copy too and removes that day\'s copy', async () => {
+    const tpl = makeTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily' } } })
+    const copy = makeTask({ id: 'c1', originTaskId: 'tpl' }) // plain copy, no own schedule
+    const snap: calendarSnapshot = { schemaVersion: 1, revision: 1, tasks: [tpl, copy], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const { transport, dispatched } = recordTransport(snap)
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={copy} onClose={() => {}} />) })
+
+    const clearBtn = [...host.querySelectorAll('button')].find(b => b.textContent === '清除定时' || b.textContent === 'Clear schedule') as HTMLButtonElement | undefined
+    expect(clearBtn).toBeTruthy()
+    await act(async () => { clearBtn!.click() })
+
+    expect(controller.getSnapshot().pendingScheduleClear).toEqual({ taskId: 'c1' })
+    await act(async () => { controller.confirmScheduleClearDay() })
+    // No own schedule → the day's occurrence is removed.
+    expect(dispatched.some(a => a.kind === 'delete' && a.id === 'c1')).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
 })
 
 describe('ExecutionSettings', () => {

@@ -3,7 +3,7 @@ import {
   addSubtask, archiveTask, attachExecutionSession, completedSubtaskCount, createTask,
   deleteTask, quadrantOf, removeSubtask, restoreTask, setQuadrant, setSchedule,
   setSubtaskDone, setTaskDone, settleExecution, startExecution, subtaskProgress,
-  taskMatchesQuery, updateTask, type NewTaskInput,
+  updateTask, type NewTaskInput,
 } from '../src/core/tasks.ts'
 
 function baseInput(over: Partial<NewTaskInput> = {}): NewTaskInput {
@@ -127,23 +127,5 @@ describe('setSchedule / setNextRun', () => {
     expect(cleared.schedule?.enabled).toBe(false)
     expect(cleared.schedule?.cron).toBeUndefined()
     expect(cleared.schedule?.dueAt).toBeUndefined()
-  })
-})
-
-describe('taskMatchesQuery', () => {
-  it('matches title case-insensitively', () => {
-    expect(taskMatchesQuery(one({ title: '写周报' }), '周报')).toBe(true)
-    expect(taskMatchesQuery(one({ title: 'Write report' }), 'REPORT')).toBe(true)
-    expect(taskMatchesQuery(one({ title: '写周报' }), '报告')).toBe(false)
-  })
-
-  it('matches description and prompt too', () => {
-    expect(taskMatchesQuery(one({ description: '深色模式' }), '深色')).toBe(true)
-    expect(taskMatchesQuery(one({ prompt: 'send to api' }), 'API')).toBe(true)
-  })
-
-  it('blank query matches everything, whitespace trimmed', () => {
-    expect(taskMatchesQuery(one(), '')).toBe(true)
-    expect(taskMatchesQuery(one(), '   ')).toBe(true)
   })
 })

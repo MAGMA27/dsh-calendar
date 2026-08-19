@@ -5,7 +5,7 @@
  */
 import type { calendarClientController } from '../controller.ts'
 import { blockOnDay, monthDays, sameMonth } from '../../core/calendar.ts'
-import { quadrantOf, taskMatchesQuery } from '../../core/tasks.ts'
+import { quadrantOf } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -18,8 +18,6 @@ const ACCENT: Record<string, string> = {
 
 interface MonthGridProps {
   controller: calendarClientController
-  /** Free-text task filter (blank matches everything). */
-  query?: string
 }
 
 /** The 7 weekday headers, Monday-first or Sunday-first per weekStart. */
@@ -38,7 +36,7 @@ function monthShortLabel(dateMs: number): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(dateMs))
 }
 
-export function MonthGrid({ controller, query = '' }: MonthGridProps) {
+export function MonthGrid({ controller }: MonthGridProps) {
   const snap = controller.getSnapshot()
   const days = monthDays(snap.cursor, snap.weekStart)
   const todayKey = new Date().toDateString()
@@ -51,7 +49,7 @@ export function MonthGrid({ controller, query = '' }: MonthGridProps) {
       <div className={css.monthGrid}>
         {days.map(day => {
           const dayEnd = day.dateMs + 24 * 60 * 60_000
-          const dayTasks = snap.snapshot.tasks.filter(task => !task.archivedAt && taskMatchesQuery(task, query) && blockOnDay(task.startAt, task.endAt, day.dateMs, dayEnd))
+          const dayTasks = snap.snapshot.tasks.filter(task => !task.archivedAt && blockOnDay(task.startAt, task.endAt, day.dateMs, dayEnd))
           const isToday = new Date(day.dateMs).toDateString() === todayKey
           const inMonth = sameMonth(day.dateMs, snap.cursor)
           const isFirstOfMonth = new Date(day.dateMs).getDate() === 1

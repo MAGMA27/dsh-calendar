@@ -1,7 +1,7 @@
 /** Calendar container: header + body; a task detail panel opens on the right
  * when a task is selected.
  */
-import { useSyncExternalStore, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import type { calendarClientController, calendarView } from '../controller.ts'
 import { addDays, addMonths, monthLabel, weekDays, weekRangeLabel } from '../../core/calendar.ts'
 import { WeekGrid } from './WeekGrid.tsx'
@@ -41,14 +41,12 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
     fn => controller.subscribe(fn),
     () => controller.getSnapshot(),
   )
-  const [query, setQuery] = useState('')
-  const trimmedQuery = query.trim()
   const body = ((): React.ReactNode => {
     switch (snap.view) {
-      case 'month': return <MonthGrid controller={controller} query={trimmedQuery} />
-      case 'matrix': return <MatrixPanel controller={controller} query={trimmedQuery} />
-      case 'agenda': return <AgendaPanel controller={controller} query={trimmedQuery} />
-      default: return <WeekGrid controller={controller} query={trimmedQuery} />
+      case 'month': return <MonthGrid controller={controller} />
+      case 'matrix': return <MatrixPanel controller={controller} />
+      case 'agenda': return <AgendaPanel controller={controller} />
+      default: return <WeekGrid controller={controller} />
     }
   })()
   const selected = snap.selectedTaskId !== undefined ? snap.snapshot.tasks.find(t => t.id === snap.selectedTaskId) : undefined
@@ -74,7 +72,6 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
           <DateNav controller={controller} view={snap.view} />
         )}
         {snap.view === 'week' && snap.dayWindow !== undefined && <DayWindowControl controller={controller} start={snap.dayWindow.start} end={snap.dayWindow.end} />}
-        <input className={css.search} value={query} placeholder={t('board.search')} onChange={e => setQuery(e.target.value)} />
         <button type="button" className={css.btnPrimary} onClick={() => controller.setDraft({ start: Date.now(), end: Date.now() + 60_000 })}>{t('board.new')}</button>
       </div>
       <div className={css.calendarBodyWithPanel}>

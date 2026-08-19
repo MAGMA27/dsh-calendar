@@ -15,7 +15,6 @@ import {
   type DayCell,
 } from '../../core/calendar.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { taskMatchesQuery } from '../../core/tasks.ts'
 import { TaskBlock, type TaskEditKind } from './TaskBlock.tsx'
 import { t } from '../locales.ts'
 import css from '../calendar.module.css'
@@ -29,8 +28,6 @@ const HOURLY_PX = 48
 interface WeekGridProps {
   controller: calendarClientController
   snapMinutes?: number
-  /** Free-text task filter (blank matches everything). */
-  query?: string
 }
 
 interface EditCandidate {
@@ -51,7 +48,7 @@ interface EditCandidate {
   moveOffsetMin: number
 }
 
-export function WeekGrid({ controller, snapMinutes = 30, query = '' }: WeekGridProps) {
+export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   const snap = controller.getSnapshot()
   const days = weekDays(snap.cursor, snap.weekStart)
   const dragOrigin = useRef<{ y: number; dayCell: DayCell } | undefined>(undefined)
@@ -233,7 +230,7 @@ export function WeekGrid({ controller, snapMinutes = 30, query = '' }: WeekGridP
         </div>
         {days.map(day => {
           const dayEnd = day.dateMs + 24 * 60 * 60_000
-          const columnTasks = snap.snapshot.tasks.filter(t => !t.archivedAt && taskMatchesQuery(t, query) && blockOnDay(t.startAt, t.endAt, day.dateMs, dayEnd))
+          const columnTasks = snap.snapshot.tasks.filter(t => !t.archivedAt && blockOnDay(t.startAt, t.endAt, day.dateMs, dayEnd))
           // side-by-side columns so overlapping tasks don't cover each other
           const layout = layoutDayTasks(columnTasks)
           const colByTask = new Map(layout.map(l => [l.id, l]))

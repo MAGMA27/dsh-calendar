@@ -230,20 +230,6 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 
 .windowReset:hover { color: var(--dsw-alias-label-primary); }
 
-.search {
-  flex: 0 1 220px;
-  min-width: 120px;
-  padding: 6px 10px;
-  font-size: 13px;
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-specific-input-major);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 8px;
-  outline: none;
-}
-
-.search::placeholder { color: var(--dsw-alias-label-tertiary); }
-
 .calendarBody {
   flex: 1;
   min-height: 0;

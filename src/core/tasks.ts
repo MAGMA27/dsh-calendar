@@ -168,19 +168,6 @@ export function quadrantOf(urgency: Urgency, importance: Importance): Quadrant {
   return urgency === 'high' ? 'delegate' : 'eliminate'
 }
 
-/**
- * Whether a task matches a free-text query. Case-insensitive substring match
- * over the title, description and prompt. A blank/whitespace query matches
- * everything.
- */
-export function taskMatchesQuery(task: TaskRecord, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (q === '') return true
-  return task.title.toLowerCase().includes(q)
-    || task.description.toLowerCase().includes(q)
-    || task.prompt.toLowerCase().includes(q)
-}
-
 /** Normalize an optional execution-target string: trim; blank collapses to undefined. */
 function normalizeTargetId(value: string | undefined): string | undefined {
   const trimmed = value?.trim()

@@ -91,6 +91,23 @@
   | `5966aac` | 月视图任务条补全边框；周视图拖拽保留抓取偏移（跟手） |
 - **当前基线**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 个测试文件）。
 
+## 客户端挂载重构（2026-08 后期 · 分支 `feature/calendar-slot-view`）
+
+**问题背景**：原版把日历覆盖层用 `createRoot` + `appendChild` 注入到 React 托管的中间列（`[class*="centerCol"]`）。在 dsh-client rc.6 依赖下该容器频繁「创建→被 shell 重渲染拆走→不重建」，表现为 `view: MISSING` / 整列空白，多轮自愈（`isConnected` + 1s interval + observer）都未能根治。
+
+**本次根因与动作（结论）**：
+- 先在分支 `feature/calendar-slot-view` 上把 **client 依赖从 rc.6 对齐到 rc.7**（`@deepseek-ai/dsh-client-*@0.1.0-rc.7`，并补 `dsh-client-ui-conversation` 进 `dsh.client.inject`）——rc.6↔rc.7 不兼容是早期「覆盖层挂不住」的重要嫌疑。
+- **放弃对中间列的 DOM 注入**，改走 DSH「官方 Slot」机制（和会话页同源、shell 托管生命周期、稳定）：
+  - **面板**：注册进 **`shell.overlay`**（root 级帧层槽位，`replaceRisk:none`）渲染 `CalendarView`；根级 → **无需打开会话即可进日历**（解决前一轮「两个入口都要开会话」的问题）。
+  - **入口**：注册进 **`sidebar.footer.action`**（root 级，左下角 Settings 旁）——这是侧边栏唯一的 root 级 additive 槽位，**左上角无 additive 槽位**（`sidebar.workspaces` 单占位），想放左上角只能回到不稳定的 DOM 注入。
+  - 覆盖层通过动态测量侧边栏右缘（`ResizeObserver` + resize）**收窄到侧栏右侧**，保留侧栏可见可点（「任务看板」观感）。
+  - 入口样式对齐 Settings：展开态「图标 + 日历」、折叠 rail 态按 `[data-dsh-frame][data-sidebar-collapsed]` 收成纯图标。
+  - 渲染链：`CalendarEntry`（footer 入口）→ 根级 `root-open.ts` 开关 store → `CalendarOverlay`（shell.overlay 占用组件）→ `<CalendarView>`。
+
+**新增/删除文件**：新增 `src/client/root-open.ts`、`calendar-overlay.tsx`、`calendar-entry.tsx`；删除 `sidebar-entry.ts`、`calendar-mount.tsx`、`calendar-view-slot.tsx`。
+**验证**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 文件）。git：分支 `feature/calendar-slot-view`，提交 `9e16259`(slot 注册)→`4656bc1`(覆盖层)→`ec405a2`(shell.overlay+footer entry)→`432b04f`(收窄到侧栏右缘)→`6064953`/`ec38796`(入口样式对齐 Settings)。
+**当前基线**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 个测试文件）。
+
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 

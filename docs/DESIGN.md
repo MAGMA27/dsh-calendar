@@ -83,4 +83,13 @@
 
 ## 8. 样式归属
 
-所有样式在 `src/client/calendar.module.css`（CSS Modules，build 预设内联注入 `<style data-plugin>`）；全局规则仅限中间列接管（`[data-dsh-calendar-view]`、`html[data-dsh-calendar-active]` 遮蔽对话子树），以插件自有 data 属性作用域，不泄漏。
+所有样式在 `src/client/calendar.module.css`（CSS Modules，build 预设内联注入 `<style data-plugin>`）；以插件自有 data 属性作用域，不泄漏。
+
+## 9. 挂载（2026-08 后期重构）
+
+日历的浏览器呈现改用 DSH **官方 Slot**，不再向 React 托管的中间列做 DOM 注入（早期做法在 dsh-client rc.6 下「容器挂不上/内容空白」反复出现）：
+- **面板**→`shell.overlay` 槽位（root、`replaceRisk:none`）渲染 `<CalendarView>`；根级 → 无需打开会话即可进入日历；
+- **入口**→`sidebar.footer.action` 槽位（root、左下角 Settings 旁）——侧边栏唯一的 root 级 additive 槽位，左上角无 additive 位置；
+- 覆盖层动态测量侧边栏右缘收窄到侧栏右侧（保留侧栏可见）；入口样式对齐 Settings（展开图标+文字、折叠纯图标）。
+渲染链：`CalendarEntry` → `root-open.ts` 开关 store → `CalendarOverlay` → `CalendarView`。
+client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-conversation`）。

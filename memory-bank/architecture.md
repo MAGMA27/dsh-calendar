@@ -16,7 +16,7 @@
 - **客户端防御规则（重点）**：客户端 `apply(ctx)` 只能使用 `inject` 声明的服务 + 纯 DOM/transport；访问未声明的服务（如 `ctx.sessions` 等）会抛 `cannot get property X without inject` 导致整包加载失败、GUI 无法进入。因此所有 DSH 域数据（会话标题、工作区、模型目录等）一律由 Host 半边读取并经 `/api/calendar/*` HTTP 暴露，浏览器只 fetch。
 - Host（`ApiProxy` from `@deepseek-ai/dsh-host-apiproxy`）：`api.sessions.{list,create({workspaceId?,cwd?,sessionId?,agentPreset?}),prompt({sessionId,mode:'queue',content}),rename,models,selectModel({sessionId,provider,model,reasoningEffort?}),history}`、`api.workspaces.{list,create}`。
 - 模型目录：`api.sessions.models({sessionId})` → `SessionModels{current:ModelSelection,routable,groups}`；`selectModel` → `{selected:ModelSelection}`（`ModelSelection={provider,model,reasoningEffort?}`）。
-- UI 接缝：外部插件无可用槽位（sidebar/conversation 均单占），侧边栏入口与中间列接管走 **DOM 注入 + MutationObserver 自愈**；跨面板互斥用 `dsh-panel-activate` 事件。
+- UI 接缝（2026-08 后期更新）：改为 DSH **官方 Slot** 挂载——**面板**注册进 `shell.overlay`（root 级帧层槽位，`replaceRisk:none`，渲染 `CalendarView`，根级→无需开会话即可进）；**入口**注册进 `sidebar.footer.action`（root 级，左下角 Settings 旁）。覆盖层动态测量侧边栏右缘、收窄到侧栏右侧以保留侧栏可见。早期把覆盖层 DOM 注入到中间列的做法（`appendChild` + 自愈）在 rc.6 下频繁「挂不上/内容空白」，已弃用。侧边栏无左上角 additive 槽位（`sidebar.workspaces` 单占位）。
 
 ## 3. 本插件架构（Host 权威，用户已确认）
 

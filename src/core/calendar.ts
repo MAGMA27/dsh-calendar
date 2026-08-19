@@ -64,6 +64,53 @@ export function startOfMonth(dateMs: number): number {
   return d.getTime()
 }
 
+/** Add `n` whole days to a ms timestamp (calendar-day arithmetic via Date). */
+export function addDays(dateMs: number, n: number): number {
+  const d = new Date(dateMs)
+  d.setDate(d.getDate() + n)
+  return d.getTime()
+}
+
+/**
+ * Add `n` months to a ms timestamp, clamping the day to the target month's
+ * length so e.g. Jan 31 + 1 month is Feb 28/29 (never Mar 3).
+ */
+export function addMonths(dateMs: number, n: number): number {
+  const d = new Date(dateMs)
+  const day = d.getDate()
+  d.setDate(1)
+  d.setMonth(d.getMonth() + n)
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(day, last))
+  return d.getTime()
+}
+
+/** Whether two ms timestamps fall in the same calendar month (local time). */
+export function sameMonth(a: number, b: number): boolean {
+  const da = new Date(a)
+  const db = new Date(b)
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth()
+}
+
+/** Human-readable month label, e.g. "2024年1月" / "January 2024". */
+export function monthLabel(dateMs: number, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long' }).format(new Date(dateMs))
+}
+
+/**
+ * Human-readable week range label, e.g. "2024年1月15日 – 1月21日" (the year
+ * rides the first day so the visible period is always self-identifying). Uses
+ * the day cells so the week starts at `weekStart`.
+ */
+export function weekRangeLabel(dateMs: number, weekStart: WeekStart, locale: string): string {
+  const days = weekDays(dateMs, weekStart)
+  const first = new Date(days[0].dateMs)
+  const last = new Date(days[6].dateMs)
+  const firstLabel = new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', day: 'numeric' }).format(first)
+  const lastLabel = new Intl.DateTimeFormat(locale, { month: 'long', day: 'numeric' }).format(last)
+  return `${firstLabel} – ${lastLabel}`
+}
+
 /** The day cells of the calendar month grid (leading/trailing padding included). */
 export function monthDays(dateMs: number, weekStart: WeekStart): DayCell[] {
   const first = startOfMonth(dateMs)

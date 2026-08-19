@@ -4,12 +4,16 @@
  */
 import type { calendarClientController } from '../controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { quadrantOf } from '../../core/tasks.ts'
+import { quadrantOf, taskMatchesQuery } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
 
-interface AgendaPanelProps { controller: calendarClientController }
+interface AgendaPanelProps {
+  controller: calendarClientController
+  /** Free-text task filter (blank matches everything). */
+  query?: string
+}
 
 type Bucket = 'overdue' | 'today' | 'upcoming' | 'done'
 
@@ -29,7 +33,7 @@ function bucket(task: TaskRecord, now: number): Bucket {
   return 'upcoming'
 }
 
-export function AgendaPanel({ controller }: AgendaPanelProps) {
+export function AgendaPanel({ controller, query = '' }: AgendaPanelProps) {
   const snap = controller.getSnapshot()
   const now = Date.now()
   const groups: Array<{ key: Bucket; label: string; tasks: TaskRecord[] }> = [
@@ -39,7 +43,7 @@ export function AgendaPanel({ controller }: AgendaPanelProps) {
     { key: 'done', label: t('agenda.done'), tasks: [] },
   ]
   for (const task of snap.snapshot.tasks) {
-    if (task.archivedAt !== undefined) continue
+    if (task.archivedAt !== undefined || !taskMatchesQuery(task, query)) continue
     const b = bucket(task, now)
     const g = groups.find(g => g.key === b)!
     g.tasks.push(task)

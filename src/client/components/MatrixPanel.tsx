@@ -4,7 +4,7 @@
  */
 import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
-import { type Quadrant, type Urgency, type Importance, quadrantOf } from '../../core/tasks.ts'
+import { type Quadrant, type Urgency, type Importance, quadrantOf, taskMatchesQuery } from '../../core/tasks.ts'
 import { t, type calendarKey } from '../locales.ts'
 import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
@@ -25,11 +25,15 @@ const LABEL: Record<Quadrant, calendarKey> = {
   do: 'quadrant.do', schedule: 'quadrant.schedule', delegate: 'quadrant.delegate', eliminate: 'quadrant.eliminate',
 }
 
-interface MatrixPanelProps { controller: calendarClientController }
+interface MatrixPanelProps {
+  controller: calendarClientController
+  /** Free-text task filter (blank matches everything). */
+  query?: string
+}
 
 const DRAG_KIND = 'application/x-dsh-calendar-task'
 
-export function MatrixPanel({ controller }: MatrixPanelProps) {
+export function MatrixPanel({ controller, query = '' }: MatrixPanelProps) {
   const snap = controller.getSnapshot()
   const [over, setOver] = useState<Quadrant | undefined>(undefined)
 
@@ -44,7 +48,7 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
   return (
     <div className={css.matrixPanel} data-dsh-calendar-matrix="">
       {QUADRANTS.map(({ q, urgency, importance }) => {
-        const tasks = snap.snapshot.tasks.filter(task => !task.archivedAt && task.urgency === urgency && task.importance === importance)
+        const tasks = snap.snapshot.tasks.filter(task => !task.archivedAt && taskMatchesQuery(task, query) && task.urgency === urgency && task.importance === importance)
         return (
           <div key={q}
             className={css.matrixQuadrant + ' ' + ACCENT[q] + (over === q ? ' ' + css.matrixOver : '')}

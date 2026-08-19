@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  dayFraction, dayKey, dayWindowFraction, dayWindowLength, hhmm, inDayWindow,
-  layoutDayTasks, minutesOfDay, normalizeDrag, sameDay,
-  snapCeil, snapFloor, startOfMonth, startOfWeek, weekDays,
+  addDays, addMonths, dayFraction, dayKey, dayWindowFraction, dayWindowLength, hhmm, inDayWindow,
+  layoutDayTasks, minutesOfDay, monthLabel, normalizeDrag, sameDay, sameMonth,
+  snapCeil, snapFloor, startOfMonth, startOfWeek, weekDays, weekRangeLabel,
 } from '../src/core/calendar.ts'
 
 // 2024-01-15 is a Monday in local time.
@@ -151,5 +151,49 @@ describe('layoutDayTasks', () => {
     const layout = layoutDayTasks(tasks)
     const counts = new Set(layout.map(l => l.columnCount))
     expect(counts.size).toBe(1)
+  })
+})
+
+describe('date navigation', () => {
+  it('addDays moves across day boundaries including month/year edges', () => {
+    const jan30 = new Date(2024, 0, 30, 12).getTime()
+    expect(dayKey(addDays(jan30, 1))).toBe('2024-01-31')
+    expect(dayKey(addDays(jan30, 2))).toBe('2024-02-01')
+    // 2024 is a leap year (366 days), so +365 lands on Jan 29 of 2025.
+    expect(dayKey(addDays(jan30, 365))).toBe('2025-01-29')
+    expect(dayKey(addDays(jan30, 366))).toBe('2025-01-30')
+    expect(dayKey(addDays(jan30, -1))).toBe('2024-01-29')
+  })
+
+  it('addMonths clamps the day to the target month length', () => {
+    const jan31 = new Date(2024, 0, 31, 12).getTime()
+    // Feb 2024 has 29 days → clamps to the 29th.
+    expect(dayKey(addMonths(jan31, 1))).toBe('2024-02-29')
+    // Jan 31 + 12 months → next Jan 31.
+    expect(dayKey(addMonths(jan31, 12))).toBe('2025-01-31')
+  })
+
+  it('addMonths crosses the year boundary', () => {
+    const dec15 = new Date(2024, 11, 15, 12).getTime()
+    expect(dayKey(addMonths(dec15, 1))).toBe('2025-01-15')
+    expect(dayKey(addMonths(dec15, -1))).toBe('2024-11-15')
+  })
+
+  it('sameMonth distinguishes calendar months', () => {
+    const a = new Date(2024, 0, 31, 23).getTime()
+    expect(sameMonth(a, new Date(2024, 0, 1).getTime())).toBe(true)
+    expect(sameMonth(a, new Date(2024, 1, 1).getTime())).toBe(false)
+    expect(sameMonth(a, new Date(2023, 0, 31).getTime())).toBe(false)
+  })
+
+  it('monthLabel formats the month', () => {
+    const d = new Date(2024, 0, 15).getTime()
+    expect(monthLabel(d, 'zh-CN')).toBe('2024年1月')
+    expect(monthLabel(d, 'en-US')).toBe('January 2024')
+  })
+
+  it('weekRangeLabel shows the week range', () => {
+    // 2024-01-15 is a Monday; weekStart 0 → 1月15日 – 1月21日.
+    expect(weekRangeLabel(MON_1200, 0, 'zh-CN')).toBe('2024年1月15日 – 1月21日')
   })
 })

@@ -3,6 +3,7 @@
  */
 import { useSyncExternalStore, useState } from 'react'
 import type { calendarClientController, calendarView } from '../controller.ts'
+import { addDays, addMonths, monthLabel, weekDays, weekRangeLabel } from '../../core/calendar.ts'
 import { WeekGrid } from './WeekGrid.tsx'
 import { MonthGrid } from './MonthGrid.tsx'
 import { MatrixPanel } from './MatrixPanel.tsx'
@@ -22,6 +23,13 @@ const VIEWS: Array<{ view: calendarView; key: calendarKey }> = [
 /** Whole-hour minutes-of-day options for the visible-day-window pickers. */
 const HOUR_OPTIONS = Array.from({ length: 25 }, (_, h) => h * 60)
 
+/** The document language (drives date labels); falls back to zh. */
+function locale(): string {
+  return typeof document !== 'undefined' && document.documentElement.lang
+    ? document.documentElement.lang
+    : 'zh'
+}
+
 interface CalendarViewProps {
   controller: calendarClientController
   /** Open the GUI's session view (session jump from an execution record). */
@@ -34,12 +42,13 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
     () => controller.getSnapshot(),
   )
   const [query, setQuery] = useState('')
+  const trimmedQuery = query.trim()
   const body = ((): React.ReactNode => {
     switch (snap.view) {
-      case 'month': return <MonthGrid controller={controller} />
-      case 'matrix': return <MatrixPanel controller={controller} />
-      case 'agenda': return <AgendaPanel controller={controller} />
-      default: return <WeekGrid controller={controller} />
+      case 'month': return <MonthGrid controller={controller} query={trimmedQuery} />
+      case 'matrix': return <MatrixPanel controller={controller} query={trimmedQuery} />
+      case 'agenda': return <AgendaPanel controller={controller} query={trimmedQuery} />
+      default: return <WeekGrid controller={controller} query={trimmedQuery} />
     }
   })()
   const selected = snap.selectedTaskId !== undefined ? snap.snapshot.tasks.find(t => t.id === snap.selectedTaskId) : undefined
@@ -62,7 +71,7 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
           ))}
         </div>
         {(snap.view === 'week' || snap.view === 'month') && (
-          <button type="button" className={css.btnGhost} onClick={() => controller.setCursor(Date.now())}>{t('board.today')}</button>
+          <DateNav controller={controller} view={snap.view} />
         )}
         {snap.view === 'week' && snap.dayWindow !== undefined && <DayWindowControl controller={controller} start={snap.dayWindow.start} end={snap.dayWindow.end} />}
         <input className={css.search} value={query} placeholder={t('board.search')} onChange={e => setQuery(e.target.value)} />
@@ -82,6 +91,32 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
         <CreateTaskModal controller={controller} onClose={() => controller.setDraft(undefined)} />
       )}
     </div>
+  )
+}
+
+/**
+ * Week/month date navigation: previous / today / next around the calendar
+ * cursor, with a label of the currently shown period.
+ */
+function DateNav({ controller, view }: { controller: calendarClientController; view: 'week' | 'month' }) {
+  const snap = controller.getSnapshot()
+  const cursor = snap.cursor
+  const label = view === 'month'
+    ? monthLabel(cursor, locale())
+    : weekRangeLabel(cursor, snap.weekStart, locale())
+  const back = (): void => {
+    controller.setCursor(view === 'month' ? addMonths(cursor, -1) : addDays(cursor, -7))
+  }
+  const forward = (): void => {
+    controller.setCursor(view === 'month' ? addMonths(cursor, 1) : addDays(cursor, 7))
+  }
+  return (
+    <span className={css.dateNav} role="group" aria-label={t('board.title')}>
+      <button type="button" className={css.dateNavButton} aria-label="上一期" onClick={back}>‹</button>
+      <span className={css.dateNavLabel} aria-live="polite">{label}</span>
+      <button type="button" className={css.dateNavButton} aria-label="下一期" onClick={forward}>›</button>
+      <button type="button" className={css.btnGhost} onClick={() => controller.setCursor(Date.now())}>{t('board.today')}</button>
+    </span>
   )
 }
 

@@ -102,4 +102,4 @@ client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-c
 
 - **任务搜索**：顶栏搜索框真正可用——`core/tasks.ts` 的 `taskMatchesQuery(task, query)`（大小写不敏感匹配 title/description/prompt，空串匹配全部）；周/月/矩阵/议程四个视图均接 `query` prop 过滤各自任务源。
 - **周/月日期导航 `DateNav`**：`‹ 期标签 › + 今天`。core `calendar.ts` 新增 `addDays / addMonths / sameMonth / monthLabel / weekRangeLabel`；`addMonths` 按目标月天数钳制日（1月31日+1月→2月28/29）。周视图步进 ±7 天、月视图 ±1 月；期标签带年份，`aria-live` 播报。
-- **月视图**：顶部 sticky 周几表头（随 `weekStart` 周一起始）；`sameMonth` 判当前月，相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、日期 `label-tertiary`、任务 chips 半透明）；今天圆形高亮；`.monthWrap`（表头 + 可滚动 `.monthGrid`）替代原单一网格。**日期栏色条（commit `a003320`）**：每个单元格日期行加一条横穿整行的颜色条 `.monthCellBar`——当前月品牌色（`brand-primary`，今天实心、其余 70% 透明度）、相邻月灰色（`label-tertiary` 50%），一眼区分本月与上月/下月。
+- **月视图**：顶部 sticky 周几表头（随 `weekStart` 周一起始）；`sameMonth` 判当前月，相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、任务 chips 半透明）；`.monthWrap`（表头 + 可滚动 `.monthGrid`）替代原单一网格。**日期色带（commit `a003320`→`c3d0b63`）**：日期数字浮在胶囊色带 `.monthCellDateRow` 上——当前月品牌色（`brand-primary`）、相邻月灰色（`label-tertiary` 75%），今天加品牌色外环，一眼区分本月与上月/下月。

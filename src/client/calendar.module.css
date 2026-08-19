@@ -550,7 +550,9 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   font-size: 11px;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-bg-layer-2);
-  border-left: 3px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-left-width: 3px;
+  border-left-color: var(--dsw-alias-border-l2);
   border-radius: 4px;
   padding: 1px 4px;
   display: block;

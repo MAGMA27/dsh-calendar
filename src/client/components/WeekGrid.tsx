@@ -11,7 +11,7 @@ import { useRef, useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import {
   blockOnDay, dayKey, dayWindowFraction, dayWindowLength, inDayWindow, layoutDayTasks,
-  normalizeDrag, snapFloor, weekDays,
+  minutesOfDay, normalizeDrag, snapFloor, weekDays,
   type DayCell,
 } from '../../core/calendar.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -40,6 +40,12 @@ interface EditCandidate {
   pointerId: number
   /** The block's own day (used to constrain a resize to that day). */
   dayCell: DayCell
+  /**
+   * Grab offset in minutes between the pointer and the block start, so a move
+   * keeps the cursor at the same relative spot inside the block (follows the
+   * hand instead of snapping the block top to the cursor).
+   */
+  moveOffsetMin: number
 }
 
 export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
@@ -103,9 +109,14 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   // --- task move / resize (threshold-armed, cross-day move) ------------------
   const onEditStart = (task: TaskRecord) => (e: React.PointerEvent<HTMLElement>, kind: TaskEditKind): void => {
     const dayCell = days.find(d => dayKeyEquals(d, task.startAt)) ?? days[0]
+    // Keep the grab offset (pointer position inside the block) so the dragged
+    // block follows the cursor instead of jumping its top to the cursor.
+    const pointerMin = yToMinutes(e.clientY)
+    const taskStartMin = minutesOfDay(task.startAt)
+    const moveOffsetMin = kind === 'move' ? Math.max(0, pointerMin - taskStartMin) : 0
     editRef.current = {
       taskId: task.id, kind, origStart: task.startAt, origEnd: task.endAt,
-      startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, dayCell,
+      startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, dayCell, moveOffsetMin,
     }
     armedRef.current = false
     suppressSelectRef.current = false
@@ -139,7 +150,9 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
     if (edit.kind === 'move') {
       const dayIdx = xToDayIndex(x)
       const day = days[dayIdx]
-      const snappedMin = snapMinutes * Math.round(yToMinutes(y) / snapMinutes)
+      const yMin = yToMinutes(y)
+      const rawStart = yMin - edit.moveOffsetMin
+      const snappedMin = snapMinutes * Math.round(rawStart / snapMinutes)
       const start = day.dateMs + snappedMin * 60_000
       return { start, end: start + span, dayIdx }
     }

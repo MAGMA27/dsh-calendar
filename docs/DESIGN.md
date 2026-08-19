@@ -95,5 +95,5 @@
 渲染链：`CalendarEntry` → `root-open.ts` 开关 store → `CalendarOverlay` → `CalendarView`。
 **会话跳转关日历（两层）**：
 - 日历页内执行记录「打开会话」（`onOpenSession` → index.ts `openSession`）先 `setCalendarOpen(false)` 再 `ctx.sessions.open`（commit `8d520ef`）；
-- 侧边栏点会话/新建会话（日历仍开着）由 `navigation-watch.ts`（`watchSessionNavigation`，纯函数）订阅 `ctx.sessions.list` 的 `current`，变化即关日历；基线随每次打开重种，避免打开时误关（commit `139c42f`）。
+- 侧边栏点会话/新建会话（日历仍开着）由 `navigation-watch.ts` 处理，两层：`watchSessionNavigation` 订阅 `ctx.sessions.list` 的 `current`，变化即关日历（基线随每次打开重种）；`closeOnSessionOpen` 包装共享 `sessions.open`——**点当前会话**不改变 `current`，但任何 open 调用（含点当前会话）都关日历（dispose 还原）。提交 `139c42f` + `51ca679`。
 client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-conversation`）。

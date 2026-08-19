@@ -3,7 +3,7 @@
 > ✏️ **2026 重命名记录**：包名/代码/文档统一由 `dsh-calender` 更正为 `dsh-calendar`（commit `970d53b`，51 文件）。仓库文件夹同步迁移到 **`D:\Dev\agents\dsh-calendar`（本份 memory-bank 即新目录内容，新会话请以它为工作区）**；旧 `dsh-calender` 目录因会话占用无法原位删除，会话结束后手动清除即可。账本数据已从 `~/.dsh/calender` 复制到 `~/.dsh/calendar`；profile 已卸载 `dsh-calender` 并重新挂载 `dsh-calendar`（`ui-calendar`），重启 dsh web 生效。localStorage 旧键 `dsh.calender.*` 已废弃（不触发重复导入）。
 
 ## 当前状态
-- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**200 单测全绿**（24 文件）。**定时模型已从自由 cron 重构为「受限重复规则（每日/每周 + 跳过节假日，物化副本 + 模板同步 + 可选触发 Agent）+ 一次性到时」**（见文末三节）。
+- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**202 单测全绿**（24 文件）。**定时模型已从自由 cron 重构为「受限重复规则（每日/每周 + 跳过节假日，物化副本 + 模板同步 + 可选触发 Agent）+ 一次性到时」**（见文末三节）。
 - 计划已批准（Host 权威架构）。
 - 📋 **验收清单见 [acceptance-checklist.md](memory-bank/acceptance-checklist.md)**：基线 / 挂载 / M0–M7 逐项 GUI 与 Host·工具行为验收。
 
@@ -262,3 +262,5 @@
 ### 拖选建任务贴合上个任务下边缘（复测反馈）
 问题：周视图拖选建任务时，起点用 `snapFloor`（总是向下取整），而任务移动/缩放已用 nearest；加上严格边界是单像素死区，导致「贴着上一个任务下边缘往下新建」非常难——起点要么被吸进上一个任务区间（移动了它），要么跳到 10:30 之类下一格。
 修复：① 新增 `core/calendar.ts` 的 `snapNearest`，`normalizeDrag` 改为**取最近边界**（与移动/缩放一致，边界 ±15 分钟都命中，等于把指针命中区放宽一倍）；② 新增 `alignCreateStart(start,end,blocked)`——若吸附后起点落进某既有任务块内，把起点推到该任务**实际结束边界**，使新任务稳稳贴其下缘；仅动起点，尾部自由重叠仍允许（日历支持并排重叠）。WeekGrid 拖选时按目标列既有任务传 blocked。新增 snapNearest + alignCreateStart 用例、更新反向拖拽断言（+5，200 全绿）。
+### 建任务起点改为向上取整（复测反馈）
+按用户要求：`normalizeDrag` 的**起点**从「就近取整」改为 **`snapCeil`（向上取整）**——新建任务从不会早于被吸附的边界、不会回退进上一个格子；**终点仍就近取整**；`hi<=lo` 的退化区间强制为起点起的一个格（保证 start<end，且子格拖拽仍得合法一格）。新增「起点向上」「子格拖拽」用例（+2，202 全绿）。`alignCreateStart` 继续兜底把吸附进既有任务的起点推到其下缘。

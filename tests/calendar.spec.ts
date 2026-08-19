@@ -66,6 +66,22 @@ describe('drag selection', () => {
     const { start, end } = normalizeDrag(t, t, t, 30)
     expect(end - start).toBe(30 * 60_000)
   })
+  it('rounds the START up (ceil) so it never precedes the previous cell', () => {
+    const anchor = 0
+    // press at 9:50, release at 11:00 → start goes UP to 10:00, not down to 9:30
+    const from = new Date(2024, 0, 15, 9, 50).getTime()
+    const to = new Date(2024, 0, 15, 11, 0).getTime()
+    const { start, end } = normalizeDrag(anchor, from, to, 30)
+    expect(minutesOfDay(start)).toBe(10 * 60)
+    expect(minutesOfDay(end)).toBe(11 * 60)
+  })
+  it('a sub-cell drag still yields a valid one-cell span', () => {
+    const from = new Date(2024, 0, 15, 9, 50).getTime()
+    const to = new Date(2024, 0, 15, 10, 5).getTime()
+    const { start, end } = normalizeDrag(0, from, to, 30)
+    expect(end - start).toBe(30 * 60_000)
+    expect(minutesOfDay(start)).toBe(10 * 60)
+  })
 })
 
 describe('alignCreateStart', () => {

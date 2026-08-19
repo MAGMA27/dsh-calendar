@@ -320,18 +320,20 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .weekColumn {
   position: relative;
   border-right: 1px solid var(--dsw-alias-border-l2);
-  /* Visible hourly grid lines (48px per hour at 24h × 48px). */
   background-color: transparent;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(48px - 1px),
-    var(--dsw-alias-border-l2) calc(48px - 1px),
-    var(--dsw-alias-border-l2) 48px
-  );
 }
 
 .weekColumn[data-weekend='true'] { background-color: var(--dsw-alias-bg-layer-2); }
+
+.hourLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--dsw-alias-border-l2);
+  pointer-events: none;
+  z-index: 0;
+}
 
 .slotOverlay {
   position: absolute;

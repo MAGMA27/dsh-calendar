@@ -40,7 +40,9 @@ function loadDayWindow(): DayWindow {
     const obj = (typeof v === 'object' && v !== null ? v : {}) as { start?: unknown; end?: unknown }
     const start = Math.max(0, Math.min(1439, Math.round(Number(obj.start) || 0)))
     const end = Math.max(1, Math.min(1440, Math.round(Number(obj.end) || 1440)))
-    return start < end ? { start, end } : defaultDayWindow()
+    // Either order is valid: start < end is a same-day span, start > end wraps
+    // past midnight (e.g. 11:00 -> 02:00). Equal degenerate values reset.
+    return start === end ? defaultDayWindow() : { start, end }
   } catch {
     return defaultDayWindow()
   }
@@ -142,11 +144,11 @@ export class CalenderClientController {
   setWeekStart(weekStart: WeekStart): void { this.set({ weekStart }) }
   selectTask(id: string | undefined): void { this.set({ selectedTaskId: id }) }
   setDraft(draft: { start: number; end: number } | undefined): void { this.set({ draft }) }
-  /** Set and persist the visible week-grid time window. */
+  /** Set and persist the visible week-grid time window (start > end wraps past midnight). */
   setDayWindow(win: DayWindow): void {
     const start = Math.max(0, Math.min(1439, Math.round(win.start)))
     const end = Math.max(1, Math.min(1440, Math.round(win.end)))
-    const next = start < end ? { start, end } : { start: 0, end: 1440 }
+    const next = start === end ? { start: 0, end: 1440 } : { start, end }
     this.set({ dayWindow: next })
     saveDayWindow(next)
   }

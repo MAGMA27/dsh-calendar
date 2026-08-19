@@ -152,6 +152,42 @@ export function dayFraction(ms: number): number {
   return minutesOfDay(ms) / 1440
 }
 
+/**
+ * Length in minutes of a visible day window, honoring cross-midnight ranges.
+ * start/end are minutes of day. If start < end it is a same-day span; if
+ * start > end it wraps past midnight (e.g. 11:00 -> 02:00 is 15 hours). Equal
+ * or degenerate values fall back to the full 24h so nothing is ever 0-length.
+ */
+export function dayWindowLength(start: number, end: number): number {
+  const len = (((end - start) % 1440) + 1440) % 1440
+  return len === 0 ? 1440 : len
+}
+
+/**
+ * Position (0..1) of a ms timestamp within a day window, clamping times that
+ * fall in the hidden gap back onto the nearest edge. start may wrap past
+ * midnight (start > end is allowed, see {@link dayWindowLength}).
+ */
+export function dayWindowFraction(start: number, end: number, ms: number): number {
+  const length = dayWindowLength(start, end)
+  const raw = (((minutesOfDay(ms) - start) % 1440) + 1440) % 1440
+  if (raw >= length) {
+    // raw sits in the hidden gap right after the window tail. Clamp to the
+    // nearer edge: fraction 1 (window end) or fraction 0 (next window start).
+    const dEnd = raw - length
+    const dStart = 1440 - raw
+    return dEnd <= dStart ? 1 : 0
+  }
+  return raw / length
+}
+
+/** Whether a ms timestamp lies inside the day window (see dayWindowLength). */
+export function inDayWindow(start: number, end: number, ms: number): boolean {
+  const length = dayWindowLength(start, end)
+  const raw = (((minutesOfDay(ms) - start) % 1440) + 1440) % 1440
+  return raw < length
+}
+
 /** Render HH:MM for a ms timestamp (local time). */
 export function hhmm(ms: number): string {
   const d = new Date(ms)

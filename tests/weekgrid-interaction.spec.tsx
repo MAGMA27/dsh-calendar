@@ -91,6 +91,36 @@ describe('WeekGrid day window', () => {
 
     await act(async () => { root.unmount(); host.remove() })
   })
+
+  it('wraps a cross-midnight window (23:00 to next-day 02:00)', async () => {
+    const now = new Date(2026, 0, 12, 23, 30, 0) // Monday 23:30
+    const task: TaskRecord = {
+      id: 't1', title: 'Night shift', description: '', prompt: '',
+      startAt: now.getTime(), endAt: now.getTime() + 30 * 60_000,
+      urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [],
+      createdAt: 0, updatedAt: 0,
+    }
+    const transport = new MemoryCalenderHostTransport(snapWith(task), undefined)
+    const controller = new CalenderClientController(transport, initialState(now.getTime(), 0))
+    // start > end: the window wraps past midnight, length = 3h.
+    controller.setDayWindow({ start: 23 * 60, end: 2 * 60 })
+    await controller.start()
+
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<WeekGrid controller={controller} />) })
+
+    const block = host.querySelector('[data-dsh-calender-block]') as HTMLElement
+    expect(block).toBeTruthy()
+    // 23:30 is at (23.5-23)/3 = 1/6 of the wrapped window.
+    expect(Number.parseFloat(block.style.top)).toBeCloseTo(1 / 6 * 100, 1)
+
+    // Hours 23, 0 and 1 intersect the wrapped window (DOM order = ascending hour).
+    const labels = [...host.querySelectorAll('[class*=weekGutterLabel]')].map(el => el.textContent)
+    expect(labels).toEqual(['00:00', '01:00', '23:00'])
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
 })
 
 describe('WeekGrid header', () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  dayFraction, dayKey, hhmm, layoutDayTasks, minutesOfDay, normalizeDrag, sameDay,
+  dayFraction, dayKey, dayWindowFraction, dayWindowLength, hhmm, inDayWindow,
+  layoutDayTasks, minutesOfDay, normalizeDrag, sameDay,
   snapCeil, snapFloor, startOfMonth, startOfWeek, weekDays,
 } from '../src/core/calendar.ts'
 
@@ -68,6 +69,40 @@ describe('time rendering', () => {
   })
   it('dayFraction maps minute-of-day to [0,1]', () => {
     expect(dayFraction(new Date(2024, 0, 15, 12, 0).getTime())).toBeCloseTo(0.5)
+  })
+})
+
+
+describe('day window', () => {
+  const ms = (h: number, m = 0) => new Date(2024, 0, 15, h, m, 0, 0).getTime()
+
+  it('length: a same-day span is end - start', () => {
+    expect(dayWindowLength(8 * 60, 12 * 60)).toBe(4 * 60)
+  })
+  it('length: a cross-midnight span wraps (11:00 -> 02:00 is 15h)', () => {
+    expect(dayWindowLength(11 * 60, 2 * 60)).toBe(15 * 60)
+  })
+  it('length: full day and degenerate ranges fall back to 1440', () => {
+    expect(dayWindowLength(0, 1440)).toBe(1440)
+    expect(dayWindowLength(600, 600)).toBe(1440)
+  })
+  it('fraction: same-day 10:00 is the middle of 08:00-12:00', () => {
+    expect(dayWindowFraction(8 * 60, 12 * 60, ms(10))).toBeCloseTo(0.5)
+  })
+  it('fraction: cross-midnight 00:30 is the middle of 23:00-02:00', () => {
+    expect(dayWindowFraction(23 * 60, 2 * 60, ms(0, 30))).toBeCloseTo(0.5)
+  })
+  it('fraction: hidden times clamp onto the nearest window edge', () => {
+    // 13:00 sits just after 08:00-12:00 -> clamps to the bottom (1).
+    expect(dayWindowFraction(8 * 60, 12 * 60, ms(13))).toBe(1)
+    // 06:00 sits just before it -> clamps to the top (0).
+    expect(dayWindowFraction(8 * 60, 12 * 60, ms(6))).toBe(0)
+  })
+  it('inDayWindow honors membership, wrapping past midnight', () => {
+    expect(inDayWindow(8 * 60, 12 * 60, ms(10))).toBe(true)
+    expect(inDayWindow(8 * 60, 12 * 60, ms(13))).toBe(false)
+    expect(inDayWindow(23 * 60, 2 * 60, ms(1))).toBe(true)
+    expect(inDayWindow(23 * 60, 2 * 60, ms(5))).toBe(false)
   })
 })
 

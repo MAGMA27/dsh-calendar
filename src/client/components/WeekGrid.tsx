@@ -10,7 +10,8 @@
 import { useRef, useState } from 'react'
 import type { CalenderClientController } from '../controller.ts'
 import {
-  blockOnDay, dayKey, layoutDayTasks, minutesOfDay, normalizeDrag, snapFloor, weekDays,
+  blockOnDay, dayKey, dayWindowFraction, dayWindowLength, inDayWindow, layoutDayTasks,
+  normalizeDrag, snapFloor, weekDays,
   type DayCell,
 } from '../../core/calendar.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -54,30 +55,32 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
   const now = Date.now()
-  // Visible minutes-of-day window; hidden top/bottom edges (sleep etc.) are
-  // collapsed so the shown span gets more vertical room.
+  // Visible minutes-of-day window. The grid keeps its full-day height and the
+  // window is stretched across it, so hiding sleep/off hours enlarges the rest.
+  // start > end is allowed: the window then wraps past midnight (e.g. 11:00 -
+  // next-day 02:00).
   const rawWin = snap.dayWindow ?? { start: 0, end: 1440 }
   const winStart = Math.max(0, Math.min(1439, Math.round(rawWin.start)))
-  const winEnd = Math.max(winStart + 1, Math.min(1440, Math.round(rawWin.end)))
-  const winSpan = winEnd - winStart // minutes shown
-  const gridHeight = (winSpan / 60) * HOURLY_PX
+  const winEnd = Math.max(1, Math.min(1440, Math.round(rawWin.end)))
+  const winLength = dayWindowLength(winStart, winEnd)
+  const gridHeight = 24 * HOURLY_PX // constant; the window stretches across it
 
-  // Position of a timestamp within the shown window, clamped to its edges.
-  const winFrac = (ms: number): number => {
-    const mins = minutesOfDay(ms)
-    const clamped = Math.max(winStart, Math.min(winEnd, mins))
-    return (clamped - winStart) / winSpan
-  }
+  // Position (0..1) of a timestamp within the shown window, clamping hidden
+  // times onto the nearest edge.
+  const winFrac = (ms: number): number => dayWindowFraction(winStart, winEnd, ms)
+  const winHas = (ms: number): boolean => inDayWindow(winStart, winEnd, ms)
 
-  // Hours intersecting the window: [first full/partial hour .. last).
+  // Hour boundaries that fall inside the (possibly wrapped) window.
   const gutterHours: number[] = []
-  for (let h = Math.floor(winStart / 60); h * 60 < winEnd; h++) gutterHours.push(h)
+  for (let h = 0; h <= 23; h++) {
+    if (winHas(todayStart.getTime() + h * 3_600_000)) gutterHours.push(h)
+  }
 
   const yToMs = (dayCell: DayCell, y: number): number => {
     const rect = bodyRef.current?.getBoundingClientRect()
     if (rect === undefined) return dayCell.dateMs + winStart * 60_000
     const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
-    const mins = winStart + Math.round(frac * winSpan)
+    const mins = (winStart + Math.round(frac * winLength)) % 1440
     return dayCell.dateMs + mins * 60_000
   }
 
@@ -126,7 +129,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
     const rect = bodyRef.current?.getBoundingClientRect()
     if (rect === undefined) return winStart
     const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
-    return winStart + Math.round(frac * winSpan)
+    return (winStart + Math.round(frac * winLength)) % 1440
   }
 
   /** Compute the edit result from a pointer position (x,y). */
@@ -201,11 +204,16 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
       </div>
       <div className={css.weekGridCells} style={{ height: gridHeight }}>
         <div className={css.weekGutter}>
-          {gutterHours.map(h => (
-            <div key={h} className={css.weekGutterLabel} style={{ top: ((h * 60 - winStart) / winSpan) * 100 + '%' }}>
-              {h === 0 ? '' : String(h).padStart(2, '0') + ':00'}
-            </div>
-          ))}
+          {gutterHours.map(h => {
+            // Only suppress the 00:00 label when it sits exactly at the grid's
+            // top edge (window starts at midnight); mid-grid 00:00 is shown.
+            const atTop = winFrac(todayStart.getTime() + h * 3_600_000) === 0
+            return (
+              <div key={h} className={css.weekGutterLabel} style={{ top: winFrac(todayStart.getTime() + h * 3_600_000) * 100 + '%' }}>
+                {h === 0 && atTop ? '' : String(h).padStart(2, '0') + ':00'}
+              </div>
+            )
+          })}
         </div>
         {days.map(day => {
           const dayEnd = day.dateMs + 24 * 60 * 60_000
@@ -215,6 +223,9 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
           const colByTask = new Map(layout.map(l => [l.id, l]))
           return (
             <div key={day.key} className={css.weekColumn} data-weekend={(day.weekday === 0 || day.weekday === 6) ? 'true' : undefined}>
+              {gutterHours.map(h => (
+                <div key={h} className={css.hourLine} style={{ top: winFrac(todayStart.getTime() + h * 3_600_000) * 100 + '%' }} aria-hidden="true" />
+              ))}
               <div
                 className={css.slotOverlay}
                 onPointerDown={startDrag(day)}
@@ -222,7 +233,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
                 onPointerUp={endDrag}
                 onPointerLeave={() => { if (dragOrigin.current === undefined) setDrag(undefined) }}
               />
-              {dayKeyEquals(day, todayStart.getTime()) && minutesOfDay(now) >= winStart && minutesOfDay(now) < winEnd && (
+              {dayKeyEquals(day, todayStart.getTime()) && winHas(now) && (
                 <div className={css.nowLine} style={{ top: winFrac(now) * 100 + '%' }} aria-hidden="true" />
               )}
               {columnTasks.map(task => {

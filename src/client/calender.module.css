@@ -346,31 +346,32 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   font-family: var(--dsw-font-family);
 }
 
-.taskBlockTime {
-  font-size: 10px;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-secondary);
-  white-space: nowrap;
-}
-
-.taskBlockTimeOnly {
-  font-size: 10px;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-secondary);
-  white-space: nowrap;
-  align-self: center;
-  margin: auto;
+.taskBlockHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
 }
 
 .taskBlockTitle {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
+}
+
+.taskBlockTime {
+  flex: none;
+  font-size: 10px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
 }
 
 .taskBlockTitle[data-done] { text-decoration: line-through; color: var(--dsw-alias-label-tertiary); }

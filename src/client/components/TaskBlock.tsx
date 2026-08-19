@@ -43,7 +43,6 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
   const running = task.executions.some(e => e.endedAt === undefined)
 
   const editable = onEditStart !== undefined
-  const compact = heightPct < 4
 
   const startMove = (e: React.PointerEvent<HTMLElement>): void => {
     if (onEditStart === undefined) return
@@ -66,13 +65,11 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
       onPointerDown={editable ? startMove : undefined}
       aria-label={task.title}
     >
-      <span
-        className={compact ? css.taskBlockTimeOnly : css.taskBlockTime}
-      >
-        {fmtTime(task.startAt)}–{fmtTime(task.endAt)}
+      <span className={css.taskBlockHeader}>
+        <span className={css.taskBlockTitle} data-done={task.done || undefined}>{task.title}</span>
+        <span className={css.taskBlockTime}>{fmtTime(task.startAt)}–{fmtTime(task.endAt)}</span>
       </span>
-      {!compact && <span className={css.taskBlockTitle} data-done={task.done || undefined}>{task.title}</span>}
-      {!compact && (scheduled || running || subCount > 0 || hasProvider) && (
+      {(scheduled || running || subCount > 0 || hasProvider) && (
         <span className={css.taskBlockMeta}>
           {running && <span className={css.taskBadge} title={t('task.running')}>{t('task.running')}</span>}
           {scheduled && <span className={css.taskBadge} title={t('task.scheduled')}>🕐</span>}

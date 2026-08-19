@@ -52,35 +52,35 @@ describe('snap', () => {
 })
 
 describe('drag selection', () => {
-  it('floors both ends on a reversed drag', () => {
+  it('start ceils, end floors on a reversed drag', () => {
     const anchor = MON_1200
     const from = new Date(2024, 0, 15, 11, 10).getTime()
     const to = new Date(2024, 0, 15, 9, 50).getTime()
     const { start, end } = normalizeDrag(anchor, from, to, 30)
     expect(start).toBeLessThan(end)
-    expect(minutesOfDay(start)).toBe(9 * 60 + 30) // floor(9:50)
-    expect(minutesOfDay(end)).toBe(11 * 60)      // floor(11:10)
+    expect(minutesOfDay(start)).toBe(10 * 60) // ceil(9:50)
+    expect(minutesOfDay(end)).toBe(11 * 60)  // floor(11:10)
   })
   it('a zero-length selection gets one snap cell', () => {
     const t = new Date(2024, 0, 15, 9, 20).getTime()
     const { start, end } = normalizeDrag(t, t, t, 30)
     expect(end - start).toBe(30 * 60_000)
   })
-  it('the START floors DOWN: 9:50->9:30, 10:20->10:00, 10:35->10:30', () => {
+  it('the START ceils UP: 9:50->10:00, 10:20->10:30, 10:35->11:00 while the end floors', () => {
     const a = normalizeDrag(0, new Date(2024, 0, 15, 9, 50).getTime(), new Date(2024, 0, 15, 11, 0).getTime(), 30)
-    expect(minutesOfDay(a.start)).toBe(9 * 60 + 30)
+    expect(minutesOfDay(a.start)).toBe(10 * 60)
     const b = normalizeDrag(0, new Date(2024, 0, 15, 10, 20).getTime(), new Date(2024, 0, 15, 12, 0).getTime(), 30)
-    expect(minutesOfDay(b.start)).toBe(10 * 60)
+    expect(minutesOfDay(b.start)).toBe(10 * 60 + 30)
     const c = normalizeDrag(0, new Date(2024, 0, 15, 10, 35).getTime(), new Date(2024, 0, 15, 11, 10).getTime(), 30)
-    expect(minutesOfDay(c.start)).toBe(10 * 60 + 30)
-    expect(minutesOfDay(c.end)).toBe(11 * 60) // end stays floor
+    expect(minutesOfDay(c.start)).toBe(11 * 60)
+    expect(minutesOfDay(c.end)).toBe(11 * 60 + 30) // degenerate (11:00==11:00) -> one cell 11:00-11:30
   })
-  it('a sub-cell drag still yields a valid one-cell span', () => {
+  it('a degenerate sub-cell drag yields a valid one-cell span', () => {
     const from = new Date(2024, 0, 15, 9, 50).getTime()
     const to = new Date(2024, 0, 15, 10, 5).getTime()
     const { start, end } = normalizeDrag(0, from, to, 30)
-    expect(minutesOfDay(start)).toBe(9 * 60 + 30)
-    expect(minutesOfDay(end)).toBe(10 * 60)
+    expect(minutesOfDay(start)).toBe(10 * 60)
+    expect(minutesOfDay(end)).toBe(10 * 60 + 30)
   })
 })
 

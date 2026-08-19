@@ -190,15 +190,14 @@ export interface DragSelection {
 }
 
 /**
- * Normalize a drag to a non-empty, start<end snapped selection. Both ends round
- * DOWN to the start of their `snapMinutes` cell (snapFloor): the start absorbs
- * 9:50 -> 9:30, 10:20 -> 10:00, 10:35 -> 10:30; the end stays floor too. A
- * degenerate snapped range becomes one cell from the start.
+ * Normalize a drag to a non-empty, start<end snapped selection. The START
+ * rounds UP (snapCeil) and the END rounds DOWN (snapFloor). A degenerate snapped
+ * range becomes one cell from the start.
  */
 export function normalizeDrag(anchor: number, from: number, to: number, snapMinutes: number): { start: number; end: number } {
   void anchor
   const minutes = effectiveSnap(snapMinutes)
-  const lo = snapFloor(Math.min(from, to), minutes)
+  const lo = snapCeil(Math.min(from, to), minutes)
   const hi = snapFloor(Math.max(from, to), minutes)
   if (hi <= lo) return { start: lo, end: lo + minutes * 60_000 }
   return { start: lo, end: hi }

@@ -1,5 +1,7 @@
 # dsh-calendar 进度（Progress）
 
+> ✏️ **2026 重命名记录**：包名/代码/文档统一由 `dsh-calender` 更正为 `dsh-calendar`（commit `970d53b`，51 文件）。仓库文件夹同步迁移到 `D:\Dev\agents\dsh-calendar`（旧 `dsh-calender` 目录因本会话占用无法原位删除，会话结束后可手动清除）；账本数据已从 `~/.dsh/calender` 迁移到 `~/.dsh/calendar`；profile 已卸载 `dsh-calender` 并重新挂载 `dsh-calendar`（`ui-calendar`），重启 dsh web 生效。localStorage 旧键 `dsh.calender.*` 已废弃（不触发重复导入）。
+
 ## 当前状态
 - **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）落地；**113 单测全绿**。
 - 计划已批准（Host 权威架构）。

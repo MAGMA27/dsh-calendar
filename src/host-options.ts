@@ -40,7 +40,9 @@ export interface CatalogApiFace {
   llm?: { models(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { groups?: readonly ModelProviderGroup[] } } }> }
   workspace?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { items?: readonly WsRow[]; archivedSessionIds?: readonly unknown[] } } }> }
   sessions?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { items?: readonly SsRow[] } } }> }
-  agentPreset?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { presets?: readonly AgentPresetEntry[] } } }> }
+  // NOTE: the in-process ApiProxy domain object is `agentPresets` (plural),
+  // even though the wire method path is `agentPreset.list` (singular).
+  agentPresets?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { presets?: readonly AgentPresetEntry[] } } }> }
 }
 
 let rpcSeq = 0
@@ -95,7 +97,7 @@ export async function buildCatalogFromApi(api: CatalogApiFace): Promise<Executio
   // failure to a run that names it.
   let presetItems: readonly AgentPresetEntry[] | undefined
   try {
-    const res = await api.agentPreset?.list?.(req()) as { result?: { ok?: boolean; value?: { presets?: readonly AgentPresetEntry[] } } } | undefined
+    const res = await api.agentPresets?.list?.(req()) as { result?: { ok?: boolean; value?: { presets?: readonly AgentPresetEntry[] } } } | undefined
     if (res?.result?.ok === true && res.result.value !== undefined) presetItems = res.result.value.presets
   } catch { /* ignore */ }
 

@@ -18,7 +18,7 @@ describe('buildCatalogFromApi', () => {
         { sessionId: 's1', cwd: '/a' },
         { sessionId: 's2', cwd: '/a' },
       ] } } }) },
-      agentPreset: { list: async () => ({ result: { ok: true, value: { presets: [
+      agentPresets: { list: async () => ({ result: { ok: true, value: { presets: [
         { id: 'standard', trust: 'system', isDefault: true },
         { id: 'minimal', trust: 'user', isDefault: false, name: 'Minimal' },
         { id: 'broken-one', trust: 'user', isDefault: false, broken: 'cannot mount' },

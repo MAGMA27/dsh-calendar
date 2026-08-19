@@ -126,7 +126,8 @@
 
 ## 任务详情的预设下拉（执行设置目录补全）
 - **问题**：任务详情/新建弹窗的「预设」一直是自由文本输入框，没有下拉选项——`ExecutionCatalog` 从未携带可用 agent preset 列表，只有 workspace/session/provider/model。
-- **实现**：Host `/api/calendar/options` 经 ApiProxy 新增 `agentPreset.list` 读取（`src/host-options.ts`）：preset roster 投影为 `catalog.modes`（`{ id, label }`，label = 发布的 `name ?? id`；**剔除 `broken` 的 preset**——选中它只会把失败推迟到执行时）；core `ExecutionCatalog` 增加 `modes` 字段（`src/core/exec-catalog.ts`）；`ExecutionSettings` 有 modes 渲染 `<select>`（复用 `OptionSelect`），无则回退自由文本；空目录/无 roster 部署容错不变。
+- **实现**：Host `/api/calendar/options` 经 ApiProxy 新增 `agentPresets.list` 读取（`src/host-options.ts`）：preset roster 投影为 `catalog.modes`（`{ id, label }`，label = 发布的 `name ?? id`；**剔除 `broken` 的 preset**——选中它只会把失败推迟到执行时）；core `ExecutionCatalog` 增加 `modes` 字段（`src/core/exec-catalog.ts`）；`ExecutionSettings` 有 modes 渲染 `<select>`（复用 `OptionSelect`），无则回退自由文本；空目录/无 roster 部署容错不变。
+- **坑（修复前下拉仍为空）**：进程内 ApiProxy 域对象名是 **`agentPresets`（复数）**，而 HTTP wire 方法路径是 `agentPreset.list`（单数）——首次实现 face 用了单数 `agentPreset`，`api.agentPreset` 为 undefined，`?.` 短路 → modes 恒空。已修正为复数并在 face 注释里记录该差异。验证：直连 `POST /api/agentPreset.list`（wire 信封 `{type:'client-request',rpcId,method,payload}`）返回 4 个 preset（standard/code/minimal/cordis）。
 - **测试**：`tests/host-options.spec.ts` 断言 modes 映射（name 优先、broken 排除、空 roster 为 []）；`tests/exec-settings-ui.spec.tsx` 新增预设下拉渲染+选中派发用例；`tests/exec-catalog.spec.ts` 空目录 toEqual 兼容。**138 单测全绿**（21 文件）。
 
 ## 下一步

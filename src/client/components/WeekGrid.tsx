@@ -10,7 +10,7 @@
 import { useRef, useState } from 'react'
 import type { CalenderClientController } from '../controller.ts'
 import {
-  blockOnDay, dayFraction, dayKey, layoutDayTasks, normalizeDrag, snapFloor, weekDays,
+  blockOnDay, dayKey, layoutDayTasks, minutesOfDay, normalizeDrag, snapFloor, weekDays,
   type DayCell,
 } from '../../core/calendar.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -18,10 +18,11 @@ import { TaskBlock, type TaskEditKind } from './TaskBlock.tsx'
 import { t } from '../locales.ts'
 import css from '../calender.module.css'
 
-const HOURS = Array.from({ length: 24 }, (_, h) => h)
 const MIN_BLOCK_MS = 15 * 60_000
 const GUTTER_PX = 56
 const DRAG_THRESHOLD_PX = 4
+/** Vertical pixels allotted to one hour of the visible day window. */
+const HOURLY_PX = 48
 
 interface WeekGridProps {
   controller: CalenderClientController
@@ -53,13 +54,31 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
   const now = Date.now()
-  const gridHeight = 24 * 48
+  // Visible minutes-of-day window; hidden top/bottom edges (sleep etc.) are
+  // collapsed so the shown span gets more vertical room.
+  const rawWin = snap.dayWindow ?? { start: 0, end: 1440 }
+  const winStart = Math.max(0, Math.min(1439, Math.round(rawWin.start)))
+  const winEnd = Math.max(winStart + 1, Math.min(1440, Math.round(rawWin.end)))
+  const winSpan = winEnd - winStart // minutes shown
+  const gridHeight = (winSpan / 60) * HOURLY_PX
+
+  // Position of a timestamp within the shown window, clamped to its edges.
+  const winFrac = (ms: number): number => {
+    const mins = minutesOfDay(ms)
+    const clamped = Math.max(winStart, Math.min(winEnd, mins))
+    return (clamped - winStart) / winSpan
+  }
+
+  // Hours intersecting the window: [first full/partial hour .. last).
+  const gutterHours: number[] = []
+  for (let h = Math.floor(winStart / 60); h * 60 < winEnd; h++) gutterHours.push(h)
 
   const yToMs = (dayCell: DayCell, y: number): number => {
     const rect = bodyRef.current?.getBoundingClientRect()
-    if (rect === undefined) return dayCell.dateMs
+    if (rect === undefined) return dayCell.dateMs + winStart * 60_000
     const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
-    return dayCell.dateMs + Math.round(frac * 24 * 60) * 60_000
+    const mins = winStart + Math.round(frac * winSpan)
+    return dayCell.dateMs + mins * 60_000
   }
 
   const startDrag = (dayCell: DayCell) => (e: React.PointerEvent<HTMLDivElement>) => {
@@ -105,9 +124,9 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
 
   const yToMinutes = (y: number): number => {
     const rect = bodyRef.current?.getBoundingClientRect()
-    if (rect === undefined) return 0
+    if (rect === undefined) return winStart
     const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
-    return Math.round(frac * 24 * 60)
+    return winStart + Math.round(frac * winSpan)
   }
 
   /** Compute the edit result from a pointer position (x,y). */
@@ -182,8 +201,8 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
       </div>
       <div className={css.weekGridCells} style={{ height: gridHeight }}>
         <div className={css.weekGutter}>
-          {HOURS.map(h => (
-            <div key={h} className={css.weekGutterLabel} style={{ top: (h / 24) * 100 + '%' }}>
+          {gutterHours.map(h => (
+            <div key={h} className={css.weekGutterLabel} style={{ top: ((h * 60 - winStart) / winSpan) * 100 + '%' }}>
               {h === 0 ? '' : String(h).padStart(2, '0') + ':00'}
             </div>
           ))}
@@ -203,8 +222,8 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
                 onPointerUp={endDrag}
                 onPointerLeave={() => { if (dragOrigin.current === undefined) setDrag(undefined) }}
               />
-              {dayKeyEquals(day, todayStart.getTime()) && (
-                <div className={css.nowLine} style={{ top: dayFraction(now) * 100 + '%' }} aria-hidden="true" />
+              {dayKeyEquals(day, todayStart.getTime()) && minutesOfDay(now) >= winStart && minutesOfDay(now) < winEnd && (
+                <div className={css.nowLine} style={{ top: winFrac(now) * 100 + '%' }} aria-hidden="true" />
               )}
               {columnTasks.map(task => {
                 const editing = preview !== undefined && preview.id === task.id
@@ -213,8 +232,8 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
                 const inColumn = preview !== undefined && preview.dayIdx === days.indexOf(day)
                 const topMs = editing && inColumn ? preview!.start : task.startAt
                 const endMs = editing && inColumn ? preview!.end : task.endAt
-                const topFrac = dayFraction(topMs)
-                const durationFrac = (endMs - topMs) / (24 * 60 * 60_000)
+                const topFrac = winFrac(topMs)
+                const durationFrac = Math.max(0, winFrac(endMs) - winFrac(topMs))
                 const pos = colByTask.get(task.id)
                 const columns = pos?.columnCount ?? 1
                 const column = pos?.column ?? 0
@@ -238,7 +257,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
               {drag !== undefined && dragOrigin.current !== undefined && dragOrigin.current.dayCell.key === day.key && (
                 <div
                   className={css.selection}
-                  style={{ top: dayFraction(drag.start) * 100 + '%', height: Math.max((drag.end - drag.start) / (24 * 60 * 60_000) * 100, 1.6) + '%' }}
+                  style={{ top: winFrac(drag.start) * 100 + '%', height: Math.max((winFrac(drag.end) - winFrac(drag.start)) * 100, 1.6) + '%' }}
                 />
               )}
             </div>
@@ -250,8 +269,8 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
             className={css.movePreview}
             style={{
               left: `calc(${GUTTER_PX}px + ${preview.dayIdx} * (100% - ${GUTTER_PX}px) / 7)`,
-              top: dayFraction(preview.start) * 100 + '%',
-              height: Math.max((preview.end - preview.start) / (24 * 60 * 60_000) * 100, 1.6) + '%',
+              top: winFrac(preview.start) * 100 + '%',
+              height: Math.max((winFrac(preview.end) - winFrac(preview.start)) * 100, 1.6) + '%',
             }}
             data-dsh-calender-move-preview=""
           />

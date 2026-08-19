@@ -13,6 +13,49 @@ import type { ExecutionCatalog } from '../core/exec-catalog.ts'
 /** The available calendar views. */
 export type CalenderView = 'week' | 'month' | 'matrix' | 'agenda'
 
+/**
+ * The visible time window of the week grid, in minutes since local midnight.
+ * Only [start, end) is shown; the hidden top/bottom edges (e.g. sleep time)
+ * are collapsed so the day's real span gets more vertical room.
+ */
+export interface DayWindow {
+  /** Minutes since midnight for the first shown minute (0..1439). */
+  start: number
+  /** Minutes since midnight for the first hidden minute (1..1440). */
+  end: number
+}
+
+const DAY_WINDOW_KEY = 'dsh.calender.dayWindow'
+
+function defaultDayWindow(): DayWindow {
+  return { start: 0, end: 1440 }
+}
+
+function loadDayWindow(): DayWindow {
+  if (typeof localStorage === 'undefined') return defaultDayWindow()
+  try {
+    const raw = localStorage.getItem(DAY_WINDOW_KEY)
+    if (!raw) return defaultDayWindow()
+    const v: unknown = JSON.parse(raw)
+    const obj = (typeof v === 'object' && v !== null ? v : {}) as { start?: unknown; end?: unknown }
+    const start = Math.max(0, Math.min(1439, Math.round(Number(obj.start) || 0)))
+    const end = Math.max(1, Math.min(1440, Math.round(Number(obj.end) || 1440)))
+    return start < end ? { start, end } : defaultDayWindow()
+  } catch {
+    return defaultDayWindow()
+  }
+}
+
+/** Persist the day window to localStorage (best-effort, view-only pref). */
+function saveDayWindow(win: DayWindow): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(DAY_WINDOW_KEY, JSON.stringify(win))
+  } catch {
+    /* storage full/blocked — ignore, the window just won't persist */
+  }
+}
+
 export interface CalenderClientState {
   snapshot: CalenderSnapshot
   /** The calendar cursor (a ms epoch); week view centers on its week. */
@@ -22,6 +65,8 @@ export interface CalenderClientState {
   selectedTaskId: string | undefined
   /** A pending drag selection (week grid) — surfaced to the create flow. */
   draft: { start: number; end: number } | undefined
+  /** Visible minutes-of-day window of the week grid (hides sleep/off hours). */
+  dayWindow: DayWindow
   /** Whether the calendar panel is open (center-column takeover active). */
   open: boolean
   /** Read endpoint option lists (workspaces/sessions/providers/models). */
@@ -97,6 +142,14 @@ export class CalenderClientController {
   setWeekStart(weekStart: WeekStart): void { this.set({ weekStart }) }
   selectTask(id: string | undefined): void { this.set({ selectedTaskId: id }) }
   setDraft(draft: { start: number; end: number } | undefined): void { this.set({ draft }) }
+  /** Set and persist the visible week-grid time window. */
+  setDayWindow(win: DayWindow): void {
+    const start = Math.max(0, Math.min(1439, Math.round(win.start)))
+    const end = Math.max(1, Math.min(1440, Math.round(win.end)))
+    const next = start < end ? { start, end } : { start: 0, end: 1440 }
+    this.set({ dayWindow: next })
+    saveDayWindow(next)
+  }
   /** Replace the execution-settings option catalog (runtime data). */
   setCatalog(catalog: ExecutionCatalog): void { this.set({ catalog }) }
 
@@ -122,6 +175,7 @@ export function initialState(cursor: number = Date.now(), weekStart: WeekStart =
     weekStart,
     selectedTaskId: undefined,
     draft: undefined,
+    dayWindow: loadDayWindow(),
     open: false,
     catalog: { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} },
     status: 'loading',

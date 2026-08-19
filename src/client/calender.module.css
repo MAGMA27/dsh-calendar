@@ -134,6 +134,49 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   font-weight: 600;
 }
 
+.windowControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.windowLabel {
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.windowSelect {
+  appearance: auto;
+  padding: 1px 4px;
+  font-size: 11px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-input-major);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+}
+
+.windowDash {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.windowReset {
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.windowReset:hover { color: var(--dsw-alias-label-primary); }
+
 .search {
   flex: 0 1 220px;
   min-width: 120px;

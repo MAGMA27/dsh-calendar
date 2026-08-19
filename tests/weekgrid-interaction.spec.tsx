@@ -61,6 +61,37 @@ describe('WeekGrid interaction', () => {
   })
 })
 
+describe('WeekGrid day window', () => {
+  it('maps positions within the visible window and hides off-window hours', async () => {
+    const now = new Date(2026, 0, 12, 10, 0, 0) // a Monday 10:00
+    const task: TaskRecord = {
+      id: 't1', title: 'Standup', description: '', prompt: '',
+      startAt: now.getTime(), endAt: now.getTime() + 30 * 60_000,
+      urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [],
+      createdAt: 0, updatedAt: 0,
+    }
+    const transport = new MemoryCalenderHostTransport(snapWith(task), undefined)
+    const controller = new CalenderClientController(transport, initialState(now.getTime(), 0))
+    // Show only 08:00-12:00; 10:00 sits exactly in the middle.
+    controller.setDayWindow({ start: 480, end: 720 })
+    await controller.start()
+
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<WeekGrid controller={controller} />) })
+
+    const block = host.querySelector('[data-dsh-calender-block]') as HTMLElement
+    expect(block).toBeTruthy()
+    // 10:00 maps to (600-480)/(720-480) = 0.5, so the block sits at 50%.
+    expect(block.style.top).toBe('50%')
+
+    // Only hours 8-11 are labelled; 00:00..07:00 and 12:00..23:00 are hidden.
+    const labels = [...host.querySelectorAll('[class*=weekGutterLabel]')].map(el => el.textContent)
+    expect(labels).toEqual(['08:00', '09:00', '10:00', '11:00'])
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+})
 
 describe('WeekGrid header', () => {
   it('renders a weekday/date header row and assigns overlap columns', async () => {

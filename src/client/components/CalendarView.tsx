@@ -19,6 +19,9 @@ const VIEWS: Array<{ view: CalenderView; key: CalenderKey }> = [
   { view: 'agenda', key: 'view.agenda' },
 ]
 
+/** Whole-hour minutes-of-day options for the visible-day-window pickers. */
+const HOUR_OPTIONS = Array.from({ length: 25 }, (_, h) => h * 60)
+
 interface CalendarViewProps {
   controller: CalenderClientController
   /** Open the GUI's session view (session jump from an execution record). */
@@ -61,6 +64,7 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
         {(snap.view === 'week' || snap.view === 'month') && (
           <button type="button" className={css.btnGhost} onClick={() => controller.setCursor(Date.now())}>{t('board.today')}</button>
         )}
+        {snap.view === 'week' && snap.dayWindow !== undefined && <DayWindowControl controller={controller} start={snap.dayWindow.start} end={snap.dayWindow.end} />}
         <input className={css.search} value={query} placeholder={t('board.search')} onChange={e => setQuery(e.target.value)} />
         <button type="button" className={css.btnPrimary} onClick={() => controller.setDraft({ start: Date.now(), end: Date.now() + 60_000 })}>{t('board.new')}</button>
       </div>
@@ -78,5 +82,29 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
         <CreateTaskModal controller={controller} onClose={() => controller.setDraft(undefined)} />
       )}
     </div>
+  )
+}
+
+/** Compact control to pick the visible minutes-of-day window of the week grid. */
+function DayWindowControl(props: { controller: CalenderClientController; start: number; end: number }) {
+  const { controller, start, end } = props
+  const onStart = (raw: string): void => controller.setDayWindow({ start: Number(raw), end })
+  const onEnd = (raw: string): void => controller.setDayWindow({ start, end: Number(raw) })
+  return (
+    <span className={css.windowControl} role="group" aria-label={t('view.window')} title={t('view.windowHint')}>
+      <span className={css.windowLabel}>{t('view.window')}</span>
+      <select className={css.windowSelect} value={start} aria-label={t('new.start')} onChange={e => onStart(e.target.value)}>
+        {HOUR_OPTIONS.map(h => (
+          <option key={'s' + h} value={h}>{String(h / 60).padStart(2, '0') + ':00'}</option>
+        ))}
+      </select>
+      <span className={css.windowDash}>–</span>
+      <select className={css.windowSelect} value={end} aria-label={t('new.end')} onChange={e => onEnd(e.target.value)}>
+        {HOUR_OPTIONS.map(h => (
+          <option key={'e' + h} value={h}>{String(h / 60).padStart(2, '0') + ':00'}</option>
+        ))}
+      </select>
+      <button type="button" className={css.windowReset} title={t('view.windowReset')} onClick={() => controller.setDayWindow({ start: 0, end: 1440 })}>×</button>
+    </span>
   )
 }

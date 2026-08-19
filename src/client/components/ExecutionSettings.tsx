@@ -102,6 +102,7 @@ export function ExecutionSettings({ value, catalog, onChange }: ExecutionSetting
   const hasSessions = catalog !== undefined && catalog.sessions.length > 0
   const hasGroupedSessions = catalog !== undefined && catalog.projects.length > 0
   const hasProviders = catalog !== undefined && catalog.providers.length > 0
+  const hasModes = catalog !== undefined && catalog.modes.length > 0
 
   // If a pinned provider is no longer selected, default the model dropdown to it.
   const provider = value.provider
@@ -145,7 +146,10 @@ export function ExecutionSettings({ value, catalog, onChange }: ExecutionSetting
             <TextField label={t('exec.model')} value={value.model} placeholder={t('exec.leaveBlank')} onPick={v => onChange({ model: v })} />
           </>}
 
-      <TextField label={t('exec.mode')} value={value.mode} placeholder={t('exec.leaveBlank')} onPick={v => onChange({ mode: v })} />
+      {hasModes
+        ? <OptionSelect label={t('exec.mode')} value={value.mode} options={catalog!.modes}
+            placeholder={t('exec.leaveBlank')} onPick={v => onChange({ mode: v })} />
+        : <TextField label={t('exec.mode')} value={value.mode} placeholder={t('exec.leaveBlank')} onPick={v => onChange({ mode: v })} />}
 
       <div className={css.formRow}>
         <label className={css.formLabel}>{t('exec.permission')}</label>

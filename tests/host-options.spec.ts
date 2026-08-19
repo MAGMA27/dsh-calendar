@@ -18,6 +18,11 @@ describe('buildCatalogFromApi', () => {
         { sessionId: 's1', cwd: '/a' },
         { sessionId: 's2', cwd: '/a' },
       ] } } }) },
+      agentPreset: { list: async () => ({ result: { ok: true, value: { presets: [
+        { id: 'standard', trust: 'system', isDefault: true },
+        { id: 'minimal', trust: 'user', isDefault: false, name: 'Minimal' },
+        { id: 'broken-one', trust: 'user', isDefault: false, broken: 'cannot mount' },
+      ] } } }) },
     }
 
     const cat = await buildCatalogFromApi(api)
@@ -25,6 +30,12 @@ describe('buildCatalogFromApi', () => {
     expect(cat.sessions.map(s => s.id)).toEqual(['s1'])
     expect(cat.projects[0].label).toBe('Proj A')
     expect(cat.projects[0].sessions.map(s => s.id)).toEqual(['s1'])
+    // Modes: roster presets become dropdown options; broken ones excluded;
+    // label prefers the published name and falls back to the id.
+    expect(cat.modes).toEqual([
+      { id: 'standard', label: 'standard' },
+      { id: 'minimal', label: 'Minimal' },
+    ])
   })
 
   it('prefers the real session title (projection) over the cwd basename', async () => {
@@ -53,5 +64,6 @@ describe('buildCatalogFromApi', () => {
     expect(cat.workspaces).toEqual([])
     expect(cat.providers).toEqual([])
     expect(cat.projects).toEqual([])
+    expect(cat.modes).toEqual([])
   })
 })

@@ -178,5 +178,5 @@ export class MemorycalendarHostTransport implements calendarHostTransport {
   }
   subscribe(_listener: () => void): () => void { return () => {} }
   async bootstrap(legacy: readonly TaskRecord[]) { void legacy; return this.snap }
-  async options(): Promise<ExecutionCatalog> { return { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} } }
+  async options(): Promise<ExecutionCatalog> { return { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [] } }
 }

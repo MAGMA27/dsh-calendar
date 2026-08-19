@@ -14,6 +14,8 @@ export interface ExecSessionOption { id: string; label: string }
 export interface ExecProviderOption { id: string; label: string }
 /** One selectable model under a provider. */
 export interface ExecModelOption { id: string; label: string }
+/** One selectable agent preset (mode) a scheduled run can be composed from. */
+export interface ExecModeOption { id: string; label: string }
 
 /** One project (workspace) with its sessions, for grouped session selection. */
 export interface ExecProjectOption {
@@ -32,10 +34,12 @@ export interface ExecutionCatalog {
   providers: ExecProviderOption[]
   /** Models keyed by provider id. */
   modelsByProvider: Record<string, ExecModelOption[]>
+  /** Agent presets (modes) a task run can pin, id → display name. */
+  modes: ExecModeOption[]
 }
 
 export const EMPTY_CATALOG: ExecutionCatalog = {
-  workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {},
+  workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [],
 }
 
 /** Minimal read face the loader needs from the live runtime; satisfies both
@@ -52,7 +56,7 @@ function unwrap<T>(v: T | (() => T)): T {
 
 /** Build the catalog from the runtime face (returns EMPTY_CATALOG on gaps). */
 export function buildCatalog(face: ExecutionRuntimeFace): ExecutionCatalog {
-  const cat: ExecutionCatalog = { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} }
+  const cat: ExecutionCatalog = { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [] }
 
   try {
     const ws = unwrap(face.workspaces)

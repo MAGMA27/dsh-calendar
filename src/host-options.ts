@@ -15,6 +15,7 @@
 // host-apiproxy value runtime into this bundle.
 import type {
   ModelProviderGroup,
+  AgentPresetEntry,
 } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { ExecutionCatalog } from './core/exec-catalog.ts'
 import { uniquifyLabels } from './core/exec-catalog.ts'
@@ -39,6 +40,7 @@ export interface CatalogApiFace {
   llm?: { models(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { groups?: readonly ModelProviderGroup[] } } }> }
   workspace?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { items?: readonly WsRow[]; archivedSessionIds?: readonly unknown[] } } }> }
   sessions?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { items?: readonly SsRow[] } } }> }
+  agentPreset?: { list(request: { rpcId: unknown; payload: object }): Promise<{ result: { ok: boolean; value?: { presets?: readonly AgentPresetEntry[] } } }> }
 }
 
 let rpcSeq = 0
@@ -88,6 +90,15 @@ export async function buildCatalogFromApi(api: CatalogApiFace): Promise<Executio
     if (res?.result?.ok === true && res.result.value !== undefined) ssItems = res.result.value.items
   } catch { /* ignore */ }
 
+  // Agent presets (modes): the roster of preset ids a task run can pin. Broken
+  // presets are excluded — offering one for selection would only defer the
+  // failure to a run that names it.
+  let presetItems: readonly AgentPresetEntry[] | undefined
+  try {
+    const res = await api.agentPreset?.list?.(req()) as { result?: { ok?: boolean; value?: { presets?: readonly AgentPresetEntry[] } } } | undefined
+    if (res?.result?.ok === true && res.result.value !== undefined) presetItems = res.result.value.presets
+  } catch { /* ignore */ }
+
   // session id → display name (basename of cwd)
   const nameById = new Map<string, string>()
   for (const s of ssItems ?? []) {
@@ -95,7 +106,7 @@ export async function buildCatalogFromApi(api: CatalogApiFace): Promise<Executio
     nameById.set(id, sessionNameOf(s, id))
   }
 
-  const catalog: ExecutionCatalog = { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} }
+  const catalog: ExecutionCatalog = { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [] }
 
   // projects group sessions by their owning workspace, skipping archived ids.
   for (const w of wsItems ?? []) {
@@ -125,6 +136,11 @@ export async function buildCatalogFromApi(api: CatalogApiFace): Promise<Executio
     catalog.modelsByProvider = {}
     for (const g of groups) catalog.modelsByProvider[g.id] = g.models.map(m => ({ id: m.id, label: m.name || m.id }))
   }
+
+  // Preset label: the display name the preset published, id as fallback.
+  catalog.modes = (presetItems ?? [])
+    .filter(p => p.broken === undefined)
+    .map(p => ({ id: p.id, label: p.name ?? p.id }))
 
   return catalog
 }

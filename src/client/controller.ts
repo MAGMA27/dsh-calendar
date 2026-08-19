@@ -179,7 +179,7 @@ export function initialState(cursor: number = Date.now(), weekStart: WeekStart =
     draft: undefined,
     dayWindow: loadDayWindow(),
     open: false,
-    catalog: { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {} },
+    catalog: { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [] },
     status: 'loading',
     error: null,
   }

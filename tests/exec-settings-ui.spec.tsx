@@ -14,6 +14,7 @@ const catalog: ExecutionCatalog = {
   ],
   providers: [],
   modelsByProvider: {},
+  modes: [{ id: 'standard', label: 'Standard' }, { id: 'minimal', label: 'Minimal' }],
 }
 
 describe('ExecutionSettings grouped session select', () => {
@@ -54,6 +55,31 @@ describe('ExecutionSettings grouped session select', () => {
     })
     expect(emitted.some(p => p.workspaceId === 'w2')).toBe(true)
     expect(emitted.some(p => p.sessionId === undefined && p.workspaceId === 'w2')).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('renders the preset (mode) as a select with one option per roster preset', async () => {
+    const emitted: Partial<ExecutionSettingsValue>[] = []
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<ExecutionSettings value={{}} catalog={catalog} onChange={(p) => emitted.push(p)} />) })
+
+    // Find the select whose label is 预设/Preset (providers are empty in this
+    // fixture, so selects are: workspace, session, mode, permission → index 2).
+    const selects = host.querySelectorAll('select')
+    const modeSelect = selects[2] as HTMLSelectElement
+    const options = modeSelect.querySelectorAll('option')
+    // blank + the two roster presets
+    expect(options.length).toBe(3)
+    expect((options[1] as HTMLOptionElement).textContent).toBe('Standard')
+    expect((options[2] as HTMLOptionElement).textContent).toBe('Minimal')
+
+    await act(async () => {
+      modeSelect.value = 'minimal'
+      modeSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(emitted.some(p => p.mode === 'minimal')).toBe(true)
 
     await act(async () => { root.unmount(); host.remove() })
   })

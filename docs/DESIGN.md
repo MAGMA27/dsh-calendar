@@ -22,7 +22,7 @@
 
 ## 2. 布局 **[M2 已实现主体；右侧面板规划 M3]**
 
-- **头部**：标题（16px/700）· 视图切换（week / month / matrix / agenda，segmented 控件）· 今天 · 搜索 · 新建按钮（primary）。
+- **头部**：标题（16px/700）· 视图切换（week / month / matrix / agenda，segmented 控件）· 今天 · 日期导航 · 新建按钮（primary）。
 - **主体（M2 现状）**：整块日历区（无右侧常驻面板）；新建走浮层弹窗；选中任务通过 `controller.selectTask` 记录（供 M3 详情面板消费）。
 - **主体（M3 已实现）**：左日历（flex:1）+ 右侧 320px **TaskDetailPanel**（选中任务时展开于 calendarBodyWithPanel 右侧，flex 布局、内部滚动）。宽屏常驻、窄屏仍为右列面板（内置滚动，宽度 340px）。
 
@@ -57,7 +57,7 @@
 2. 描述 / Prompt：只读展示 + 编辑入口。
 3. 艾森豪威尔 knobs：紧急/重要选择，改即 `setQuadrant`。
 4. 子任务 checklist：勾选 `setSubtaskDone`；新增/删除；父任务进度条（3px 圆角、`state-success-primary` 填充）。
-5. 执行设置 ExecutionSettings：工作区 / 执行会话（新建或复用）/ **provider + model + reasoningEffort** / agent 预设 / 权限；下拉 + 徽标预览；留空 = 运行时默认。
+5. 执行设置 ExecutionSettings：工作区 / 执行会话（新建或复用）/ **provider + model + reasoningEffort** / agent 预设 / 权限；下拉 + 徽标预览；留空 = 运行时默认。**agent 预设是下拉**：Host 经 `agentPreset.list`（ApiProxy）读 preset roster 投影为 `catalog.modes`（`name ?? id` 作标签、剔除 `broken`），有 roster 渲染 `<select>`，无则回退自由文本。
 6. 定时：启用开关 + 5 段 cron + 预设按钮组（每天09:00/每小时/每10分钟/每周一09:00）+ 下次运行。
 7. 执行记录 + 会话跳转（M4）：sessionId/起止/结果/错误；「查看会话」跳 transcript。
 8. 删除 / 归档（danger 按钮）。

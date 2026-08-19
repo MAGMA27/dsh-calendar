@@ -52,32 +52,35 @@ describe('snap', () => {
 })
 
 describe('drag selection', () => {
-  it('normalizes a reversed drag to start<end on the snap grid (floor)', () => {
+  it('floors both ends on a reversed drag', () => {
     const anchor = MON_1200
     const from = new Date(2024, 0, 15, 11, 10).getTime()
     const to = new Date(2024, 0, 15, 9, 50).getTime()
     const { start, end } = normalizeDrag(anchor, from, to, 30)
     expect(start).toBeLessThan(end)
-    expect(minutesOfDay(start)).toBe(9 * 60 + 30)
-    expect(minutesOfDay(end)).toBe(11 * 60)
+    expect(minutesOfDay(start)).toBe(9 * 60 + 30) // floor(9:50)
+    expect(minutesOfDay(end)).toBe(11 * 60)      // floor(11:10)
   })
   it('a zero-length selection gets one snap cell', () => {
     const t = new Date(2024, 0, 15, 9, 20).getTime()
     const { start, end } = normalizeDrag(t, t, t, 30)
     expect(end - start).toBe(30 * 60_000)
   })
-  it('rounds the START DOWN (floor): 9:50 -> 9:30, 10:20 -> 10:00', () => {
+  it('the START floors DOWN: 9:50->9:30, 10:20->10:00, 10:35->10:30', () => {
     const a = normalizeDrag(0, new Date(2024, 0, 15, 9, 50).getTime(), new Date(2024, 0, 15, 11, 0).getTime(), 30)
     expect(minutesOfDay(a.start)).toBe(9 * 60 + 30)
     const b = normalizeDrag(0, new Date(2024, 0, 15, 10, 20).getTime(), new Date(2024, 0, 15, 12, 0).getTime(), 30)
     expect(minutesOfDay(b.start)).toBe(10 * 60)
+    const c = normalizeDrag(0, new Date(2024, 0, 15, 10, 35).getTime(), new Date(2024, 0, 15, 11, 10).getTime(), 30)
+    expect(minutesOfDay(c.start)).toBe(10 * 60 + 30)
+    expect(minutesOfDay(c.end)).toBe(11 * 60) // end stays floor
   })
   it('a sub-cell drag still yields a valid one-cell span', () => {
     const from = new Date(2024, 0, 15, 9, 50).getTime()
     const to = new Date(2024, 0, 15, 10, 5).getTime()
     const { start, end } = normalizeDrag(0, from, to, 30)
-    expect(end - start).toBe(30 * 60_000)
     expect(minutesOfDay(start)).toBe(9 * 60 + 30)
+    expect(minutesOfDay(end)).toBe(10 * 60)
   })
 })
 

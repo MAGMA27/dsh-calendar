@@ -191,9 +191,9 @@ export interface DragSelection {
 
 /**
  * Normalize a drag to a non-empty, start<end snapped selection. Both ends round
- * DOWN to the start of their `snapMinutes` cell (snapFloor, e.g. 9:50 -> 9:30,
- * 10:20 -> 10:00) so a created task never extends forward past the cells it
- * covers. A degenerate snapped range becomes one cell from the start.
+ * DOWN to the start of their `snapMinutes` cell (snapFloor): the start absorbs
+ * 9:50 -> 9:30, 10:20 -> 10:00, 10:35 -> 10:30; the end stays floor too. A
+ * degenerate snapped range becomes one cell from the start.
  */
 export function normalizeDrag(anchor: number, from: number, to: number, snapMinutes: number): { start: number; end: number } {
   void anchor

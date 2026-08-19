@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addSubtask, archiveTask, attachExecutionSession, completedSubtaskCount, createTask,
+  addSubtask, archiveTask, attachExecutionSession, collapseRepeatSeries,
+  completedSubtaskCount, createTask,
   deleteTask, quadrantOf, removeSubtask, restoreTask, setQuadrant, setSchedule,
   setSubtaskDone, setTaskDone, settleExecution, startExecution, subtaskProgress,
-  taskTriggersAgent, updateTask, type NewTaskInput,
+  taskTriggersAgent, updateTask, type NewTaskInput, type TaskRecord,
 } from '../src/core/tasks.ts'
 
 function baseInput(over: Partial<NewTaskInput> = {}): NewTaskInput {
@@ -155,5 +156,41 @@ describe('taskTriggersAgent (the clock badge)', () => {
   })
   it('is false when the schedule is disabled even if triggerAgent is set', () => {
     expect(taskTriggersAgent(one({ schedule: { enabled: false, repeat: { kind: 'daily', triggerAgent: true } } }))).toBe(false)
+  })
+})
+
+function mkCopy(id: string, origin: string, start: number, done = false, over: Partial<TaskRecord> = {}): TaskRecord {
+  return {
+    id, title: 'T', description: '', prompt: '', startAt: start, endAt: start + 3_600_000,
+    urgency: 'medium', importance: 'medium', done, subtasks: [], executions: [],
+    originTaskId: origin, schedule: { enabled: true, repeat: { kind: 'daily' } },
+    createdAt: 0, updatedAt: 0, ...over,
+  }
+}
+
+describe('collapseRepeatSeries (list views)', () => {
+  it('keeps standalone tasks and drops all but the newest unfinished copy of a series', () => {
+    const plain = { ...mkCopy('s', 'tpl', 10_000), originTaskId: undefined } as TaskRecord
+    const c1 = mkCopy('c1', 'tpl', 1_000, true) // old done copy
+    const c2 = mkCopy('c2', 'tpl', 2_000, false) // newer unfinished
+    const c3 = mkCopy('c3', 'tpl', 3_000, false) // newest unfinished
+    const tpl: TaskRecord = { ...mkCopy('tpl', '', 0), originTaskId: undefined, schedule: { enabled: true, repeat: { kind: 'daily' } } }
+    const out = collapseRepeatSeries([plain, c1, c2, c3, tpl])
+    expect(out.map(x => x.id).sort()).toEqual(['c3', 's']) // template + old/done copies removed
+    expect(out.find(x => x.id === 'c3')).toBeDefined()
+  })
+  it('keeps the newest member when every series member is done', () => {
+    const text = { ...mkCopy('text', 'uni', 0), originTaskId: undefined } as TaskRecord
+    const c1 = mkCopy('a', 'uni', 1_000, true)
+    const c2 = mkCopy('b', 'uni', 2_000, true)
+    const out = collapseRepeatSeries([text, c1, c2])
+      .map(x => x.id).sort()
+    expect(out).toEqual(['b', 'text'])
+  })
+  it('falls back to the template when it is the newest unfinished', () => {
+    const tpl: TaskRecord = { ...mkCopy('uni', '', 9_000), originTaskId: undefined, schedule: { enabled: true, repeat: { kind: 'weekly', weekdays: [1] } } }
+    const c1 = mkCopy('a', 'uni', 1_000, false)
+    const out = collapseRepeatSeries([tpl, c1])
+    expect(out.map(x => x.id)).toEqual(['uni'])
   })
 })

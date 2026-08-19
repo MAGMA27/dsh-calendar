@@ -227,6 +227,46 @@ export function taskTriggersAgent(task: Pick<TaskRecord, 'schedule'>): boolean {
   return s.repeat?.triggerAgent === true
 }
 
+/**
+ * Collapse a repeat series into a single representative row for list views
+ * (matrix / agenda). A series is a template (schedule.repeat, no originTaskId)
+ * plus every materialized copy (originTaskId === template id). The week grid
+ * keeps the real timeline, but list views would otherwise show one near-identical
+ * row per materialized date. Each series contributes at most one entry: the
+ * newest unfinished occurrence (max startAt among not-done members — including
+ * the template itself); if every member is done, the newest member is kept so
+ * the task is not lost entirely. Standalone tasks pass through unchanged.
+ */
+export function collapseRepeatSeries(tasks: readonly TaskRecord[]): TaskRecord[] {
+  const copies = new Map<string, TaskRecord[]>()
+  const templates = new Map<string, TaskRecord>()
+  const standalone: TaskRecord[] = []
+  for (const t of tasks) {
+    if (t.originTaskId !== undefined) {
+      const arr = copies.get(t.originTaskId) ?? []
+      arr.push(t)
+      copies.set(t.originTaskId, arr)
+    } else if (t.schedule?.repeat !== undefined) {
+      templates.set(t.id, t)
+    } else {
+      standalone.push(t)
+    }
+  }
+  const out: TaskRecord[] = [...standalone]
+  const seriesIds = new Set([...copies.keys(), ...templates.keys()])
+  for (const sId of seriesIds) {
+    const members: TaskRecord[] = [...(copies.get(sId) ?? [])]
+    const tpl = templates.get(sId)
+    if (tpl !== undefined) members.push(tpl)
+    if (members.length === 0) continue
+    const incomplete = members.filter(m => !m.done)
+    const pool = incomplete.length > 0 ? incomplete : members
+    pool.sort((a, b) => a.startAt - b.startAt)
+    out.push(pool[pool.length - 1])
+  }
+  return out
+}
+
 /** Normalize an optional execution-target string: trim; blank collapses to undefined. */
 function normalizeTargetId(value: string | undefined): string | undefined {
   const trimmed = value?.trim()

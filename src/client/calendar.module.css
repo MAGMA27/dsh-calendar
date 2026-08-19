@@ -606,30 +606,27 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   text-align: left;
 }
 
-/* Date band: a full-cell-width horizontal bar that hugs the cell's top edge
- * (negative margins cancel the cell padding) so it reads as part of the grid,
- * with the day number floating on it. Current-month days get the brand blue;
- * adjacent months get grey. Uses the static DeepSeek blue
- * (--dsw-alias-brand-primary is near-black in light mode) so the band reads as
- * blue, with white text floating on it. */
+/* Date row: the day number (larger than the chips) plus an optional month
+ * label on the 1st of each month. No band — the grid lines stay visible. */
 .monthCellDateRow {
   display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 22px;
-  margin: -6px -6px 6px;
-  padding: 0 8px;
-  box-sizing: border-box;
-  border-radius: 0;
-  background: var(--dsw-static-deepseek-500);
-  color: var(--dsw-static-neutral-bluish-50);
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.monthCellMonthLabel {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
 }
 
 .monthCellDay {
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--dsw-alias-label-primary);
 }
 
 /* Adjacent-month days: muted to keep the current month obvious. */
@@ -637,23 +634,25 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   background: var(--dsw-alias-bg-layer-1);
 }
 
-.monthCell[data-outside] .monthCellDateRow {
-  background: var(--dsw-alias-label-tertiary);
-  color: var(--dsw-static-neutral-bluish-50);
-  opacity: 0.75;
+.monthCell[data-outside] .monthCellDay,
+.monthCell[data-outside] .monthCellMonthLabel {
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .monthCell[data-outside] .taskChip {
   opacity: 0.55;
 }
 
-/* Today: a slightly brighter blue + bolder number sets it apart. */
-.monthCell[data-today] .monthCellDateRow {
-  background: var(--dsw-static-deepseek-450);
-}
-
+/* Today: the date number gets a filled brand circle. */
 .monthCell[data-today] .monthCellDay {
-  font-weight: 800;
+  background: var(--dsw-static-deepseek-500);
+  color: var(--dsw-static-neutral-bluish-50);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  display: inline-block;
 }
 
 .monthChips { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }

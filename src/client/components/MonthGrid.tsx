@@ -33,6 +33,11 @@ function weekdayLabels(weekStart: 0 | 1): string[] {
   return labels
 }
 
+/** Short month name (e.g. "9月" / "Sep") for the 1st-of-month cells. */
+function monthShortLabel(dateMs: number): string {
+  return new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(dateMs))
+}
+
 export function MonthGrid({ controller, query = '' }: MonthGridProps) {
   const snap = controller.getSnapshot()
   const days = monthDays(snap.cursor, snap.weekStart)
@@ -49,6 +54,7 @@ export function MonthGrid({ controller, query = '' }: MonthGridProps) {
           const dayTasks = snap.snapshot.tasks.filter(task => !task.archivedAt && taskMatchesQuery(task, query) && blockOnDay(task.startAt, task.endAt, day.dateMs, dayEnd))
           const isToday = new Date(day.dateMs).toDateString() === todayKey
           const inMonth = sameMonth(day.dateMs, snap.cursor)
+          const isFirstOfMonth = new Date(day.dateMs).getDate() === 1
           return (
             <button
               type="button"
@@ -59,6 +65,7 @@ export function MonthGrid({ controller, query = '' }: MonthGridProps) {
               onClick={() => { controller.setCursor(day.dateMs); controller.setView('week') }}
             >
               <span className={css.monthCellDateRow}>
+                {isFirstOfMonth && <span className={css.monthCellMonthLabel}>{monthShortLabel(day.dateMs)}</span>}
                 <span className={css.monthCellDay}>{new Date(day.dateMs).getDate()}</span>
               </span>
               <span className={css.monthChips}>

@@ -65,6 +65,27 @@ describe('TaskDetailPanel', () => {
     expect(permSelect).toBeTruthy()
     await act(async () => { root.unmount(); host.remove() })
   })
+
+  it('a repeat copy shows the series rule in its schedule section (consistent with the template)', async () => {
+    const tpl = makeTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } } })
+    const copy = makeTask({ id: 'c1', originTaskId: 'tpl' })
+    const snap: calendarSnapshot = { schemaVersion: 1, revision: 1, tasks: [tpl, copy], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const { transport } = recordTransport(snap)
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={copy} onClose={() => {}} />) })
+
+    // The schedule mode select is seeded from the series rule, not the copy's own (absent) schedule.
+    const modeSelect = [...host.querySelectorAll('select')].find(s => (s as HTMLSelectElement).value === 'daily') as HTMLSelectElement | undefined
+    expect(modeSelect).toBeTruthy()
+    // The series summary + the series-scope hint are rendered.
+    expect(host.textContent).toContain('触发（按时间段）')
+    expect(host.textContent).toContain('整个重复系列')
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
 })
 
 describe('ExecutionSettings', () => {

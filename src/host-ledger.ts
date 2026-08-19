@@ -20,8 +20,8 @@ import {
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
   setTaskDone, settleExecution, startExecution, updateTask, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
-import { REPEAT_HORIZON_DAYS, buildRepeatCopy, isValidRepeat, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
-import { addDays, dayKey } from './core/calendar.ts'
+import { REPEAT_HORIZON_DAYS, buildRepeatCopy, isValidRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
+import { addDays, dayKey, minutesOfDay } from './core/calendar.ts'
 import { parseTasks } from './core/store.ts'
 import { calendarDir, ledgerPath } from './dsh-home.ts'
 
@@ -468,21 +468,45 @@ export class HostLedger {
       }
       case 'setSchedule': {
         if (action.patch.repeat !== undefined && action.patch.repeat !== null && !isValidRepeat(action.patch.repeat)) return false
-        const before = this.state.tasks.find(t => t.id === action.id)
-        let tasks = setSchedule(this.state.tasks, action.id, action.patch, now)
-        const task = tasks.find(t => t.id === action.id)
+        const target = this.state.tasks.find(t => t.id === action.id)
+        if (target === undefined) return false
+        // A copy's schedule IS the series' schedule: route to the template so
+        // editing/cancelling the repeat from any member behaves identically
+        // (unbound copies schedule themselves).
+        const scheduleId = target.originTaskId ?? action.id
+        const before = this.state.tasks.find(t => t.id === scheduleId)
+        let tasks = setSchedule(this.state.tasks, scheduleId, action.patch, now)
+        const task = tasks.find(t => t.id === scheduleId)
         if (task === undefined) return false
         // Clearing the repeat rule ends the series: its bound copies go away.
         if (before !== undefined && before.schedule?.repeat !== undefined && action.patch.repeat === null) {
-          tasks = tasks.filter(t => t.originTaskId !== action.id)
+          tasks = tasks.filter(t => t.originTaskId !== scheduleId)
         }
         if (task.schedule !== undefined && (task.schedule.enabled || task.schedule.repeat !== undefined || task.schedule.dueAt !== undefined)) {
           const nextRunAt = computeNextRun(task.schedule, now)
-          tasks = setNextRun(tasks, action.id, nextRunAt, task.schedule.lastTriggeredAt, now)
+          tasks = setNextRun(tasks, scheduleId, nextRunAt, task.schedule.lastTriggeredAt, now)
         }
         // re-read after possible setNextRun
-        const updated = tasks.find(t => t.id === action.id)
-        if (updated?.schedule !== undefined) this.state.scheduler.nextRuns[action.id] = mirrorOf(updated.schedule)
+        const updated = tasks.find(t => t.id === scheduleId)
+        if (updated?.schedule !== undefined) this.state.scheduler.nextRuns[scheduleId] = mirrorOf(updated.schedule)
+        // When the (still active) repeat rule changes, re-derive the trigger
+        // one-shots of already-materialized bound copies so the series stays
+        // coherent: future occurrences gain/keep their dueAt, occurrences whose
+        // trigger was turned off (or that are already past) become plain tasks.
+        if (updated?.schedule?.repeat !== undefined) {
+          const rule = updated.schedule.repeat
+          const triggerAgent = rule.triggerAgent === true && updated.schedule.enabled === true
+          const triggerMinutes = triggerAgent ? (parseTriggerTime(rule.triggerAt) ?? minutesOfDay(updated.startAt)) : 0
+          tasks = tasks.map(t => {
+            if (t.originTaskId !== scheduleId || t.archivedAt !== undefined) return t
+            if (triggerAgent) {
+              const dueAt = startOfDayMs(t.startAt) + triggerMinutes * 60_000
+              if (dueAt > now) return { ...t, schedule: { enabled: true, dueAt, nextRunAt: dueAt }, updatedAt: now }
+              return t.schedule === undefined ? t : { ...t, schedule: undefined, updatedAt: now }
+            }
+            return t.schedule === undefined ? t : { ...t, schedule: undefined, updatedAt: now }
+          })
+        }
         this.state.tasks = tasks
         return true
       }

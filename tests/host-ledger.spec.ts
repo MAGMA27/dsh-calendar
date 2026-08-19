@@ -401,4 +401,52 @@ describe('HostLedger repeat materialization', () => {
       expect(c.schedule?.dueAt).toBe(at(new Date(c.startAt).getFullYear(), new Date(c.startAt).getMonth() + 1, new Date(c.startAt).getDate(), 7, 30))
     }
   })
+
+  it('routes a copy schedule edit to the series: clearing the repeat on a copy cancels all future copies', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    // The copy's schedule section shows the series rule; clearing it on the copy
+    // must cancel the whole series (template rule gone + bound copies removed).
+    const r = ledger.apply({ requestId: 'clear-copy', action: { kind: 'setSchedule', id: copy.id, patch: { enabled: false, repeat: null, dueAt: null } } })
+    expect(r.ok).toBe(true)
+    expect(ledger.taskById(id)!.schedule?.repeat).toBeUndefined()
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(0)
+    expect(ledger.taskById(copy.id)).toBeUndefined()
+  })
+
+  it('routes a copy schedule edit to the series: trigger toggles re-derive the bound copies', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    expect(copy.schedule).toBeDefined()
+
+    // Turn trigger off via the copy: future bound copies lose their one-shots.
+    const off = ledger.apply({ requestId: 'off', action: { kind: 'setSchedule', id: copy.id, patch: { enabled: true, repeat: { kind: 'daily', triggerAgent: false } } } })
+    expect(off.ok).toBe(true)
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).every(c => c.schedule === undefined)).toBe(true)
+    expect(ledger.taskById(id)!.schedule?.repeat?.triggerAgent).toBe(false)
+
+    // Turn trigger back on with an override via the copy: copies get the new due.
+    const on = ledger.apply({ requestId: 'on', action: { kind: 'setSchedule', id: copy.id, patch: { enabled: true, repeat: { kind: 'daily', triggerAgent: true, triggerAt: '08:15' } } } })
+    expect(on.ok).toBe(true)
+    for (const c of ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)) {
+      expect(c.schedule?.dueAt).toBe(at(new Date(c.startAt).getFullYear(), new Date(c.startAt).getMonth() + 1, new Date(c.startAt).getDate(), 8, 15))
+    }
+  })
+
+  it('does not route a schedule edit on an unbound copy', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    // Unbind the copy first.
+    expect(ledger.apply({ requestId: 'unbind', action: { kind: 'update', id: copy.id, patch: { originTaskId: null } } }).ok).toBe(true)
+    const r = ledger.apply({ requestId: 'self', action: { kind: 'setSchedule', id: copy.id, patch: { enabled: true, dueAt: 9999 } } })
+    expect(r.ok).toBe(true)
+    expect(ledger.taskById(copy.id)!.schedule?.dueAt).toBe(9999)
+    expect(ledger.taskById(id)!.schedule?.repeat?.kind).toBe('daily') // template untouched
+  })
 })

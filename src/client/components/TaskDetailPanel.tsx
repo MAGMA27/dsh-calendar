@@ -58,11 +58,17 @@ function initialSchedule(task: TaskRecord): ScheduleSettingsValue {
 }
 
 export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: TaskDetailPanelProps) {
+  // A copy's schedule IS the series' schedule: initialize and display from the
+  // template so copies read consistently with the original. Ledger routes
+  // setSchedule on a copy to the template anyway.
+  const seriesTask = task.originTaskId !== undefined
+    ? controller.getSnapshot().snapshot.tasks.find(t => t.id === task.originTaskId) ?? task
+    : task
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [prompt, setPrompt] = useState(task.prompt)
   const [subtaskInput, setSubtaskInput] = useState('')
-  const [schedule, setSchedule] = useState<ScheduleSettingsValue>(initialSchedule(task))
+  const [schedule, setSchedule] = useState<ScheduleSettingsValue>(initialSchedule(seriesTask))
   const [exec, setExec] = useState<ExecutionSettingsValue>(quadKnobs(task))
   const [dirty, setDirty] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -85,7 +91,8 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
     })
     const dueMs = schedule.dueAt.trim() === '' ? undefined : new Date(schedule.dueAt).getTime()
     // A schedule exists only when a repeat rule or a one-off due time is set;
-    // clearing both must switch the schedule off (and drop the 🕐 badge).
+    // clearing both must switch the schedule off (and drop the 🕐 badge). Sent
+    // to the open task; the ledger routes a copy's schedule to its template.
     const triggerAt = schedule.triggerAt.trim()
     const repeat = schedule.mode === 'none'
       ? null
@@ -197,22 +204,25 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
 
       <div className={css.detailSection}>
         <h4 className={css.execTitle}>{t('detail.schedule')}</h4>
+        {task.originTaskId !== undefined && (
+          <div className={css.scheduleSummary}>{t('detail.scheduleSeriesHint')}</div>
+        )}
         <ScheduleSettings value={schedule} onChange={(v) => { setSchedule(v); markDirty() }} />
-        {task.schedule?.repeat !== undefined && (
+        {seriesTask.schedule?.repeat !== undefined && (
           <div className={css.scheduleSummary}>
-            {repeatSummary(task.schedule.repeat)}
+            {repeatSummary(seriesTask.schedule.repeat)}
             {(() => {
-              const next = nextRepeatDate(task.schedule!.repeat!, Date.now())
+              const next = nextRepeatDate(seriesTask.schedule!.repeat!, Date.now())
               return next !== undefined
                 ? <div className={css.scheduleNext}>{t('schedule.next', { date: new Date(next).toLocaleDateString() })}</div>
                 : null
             })()}
           </div>
         )}
-        {task.schedule?.nextRunAt !== undefined && (
-          <div className={css.scheduleNext}>{new Date(task.schedule.nextRunAt).toLocaleString()}</div>
+        {seriesTask.schedule?.nextRunAt !== undefined && (
+          <div className={css.scheduleNext}>{new Date(seriesTask.schedule.nextRunAt).toLocaleString()}</div>
         )}
-        {(task.schedule?.enabled === true) && (
+        {(seriesTask.schedule?.enabled === true) && (
           <button type="button" className={css.btnGhost} onClick={clearSchedule}>{t('detail.clearSchedule')}</button>
         )}
       </div>

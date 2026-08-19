@@ -606,19 +606,24 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   text-align: left;
 }
 
-/* Date band: a full-cell-width horizontal bar with the day number floating on
- * it. Current-month days get the brand bar; adjacent months get grey. */
+/* Date band: a full-cell-width horizontal bar that hugs the cell's top edge
+ * (negative margins cancel the cell padding) so it reads as part of the grid,
+ * with the day number floating on it. Current-month days get the brand blue;
+ * adjacent months get grey. Uses the static DeepSeek blue
+ * (--dsw-alias-brand-primary is near-black in light mode) so the band reads as
+ * blue, with white text floating on it. */
 .monthCellDateRow {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   width: 100%;
   min-height: 22px;
+  margin: -6px -6px 6px;
   padding: 0 8px;
   box-sizing: border-box;
-  border-radius: 6px;
-  background: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-label-primary-foreground);
+  border-radius: 0;
+  background: var(--dsw-static-deepseek-500);
+  color: var(--dsw-static-neutral-bluish-50);
 }
 
 .monthCellDay {
@@ -634,7 +639,7 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 
 .monthCell[data-outside] .monthCellDateRow {
   background: var(--dsw-alias-label-tertiary);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsw-static-neutral-bluish-50);
   opacity: 0.75;
 }
 
@@ -642,9 +647,13 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   opacity: 0.55;
 }
 
-/* Today: a ring around the band sets it apart from the other brand bands. */
+/* Today: a slightly brighter blue + bolder number sets it apart. */
 .monthCell[data-today] .monthCellDateRow {
-  box-shadow: 0 0 0 2px var(--dsw-alias-bg-base), 0 0 0 3.5px var(--dsw-alias-brand-primary);
+  background: var(--dsw-static-deepseek-450);
+}
+
+.monthCell[data-today] .monthCellDay {
+  font-weight: 800;
 }
 
 .monthChips { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }

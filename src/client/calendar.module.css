@@ -81,11 +81,14 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 
 /* --- calendar frame ---------------------------------------------------------- */
 
-/* Frame-wide calendar overlay (rendered in the shell.overlay slot). Sits above
- * every column; covers the frame with an opaque background and scrolls. */
+/* Frame-adjacent calendar overlay (rendered in the shell.overlay slot). Sits
+ * above the columns to the RIGHT of the sidebar (its `left` is set inline to
+ * the sidebar's right edge), leaving the sidebar visible and clickable. */
 .calendarOverlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
   z-index: 90;
   display: flex;
   flex-direction: column;

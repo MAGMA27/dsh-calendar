@@ -212,6 +212,21 @@ export function quadrantOf(urgency: Urgency, importance: Importance): Quadrant {
   return urgency === 'high' ? 'delegate' : 'eliminate'
 }
 
+/**
+ * Whether a task will actually run an agent at a due instant. This drives the
+ * 🕐 badge (and only that): the clock means "this task auto-triggers an agent".
+ * It is true for a one-shot dueAt schedule, or a repeat rule with
+ * `triggerAgent` enabled. It is false for a plain task, a repeat template (or
+ * copy) whose rule does NOT trigger an agent, and a plain materialized copy —
+ * materializing copies onto dates is not an agent trigger.
+ */
+export function taskTriggersAgent(task: Pick<TaskRecord, 'schedule'>): boolean {
+  const s = task.schedule
+  if (s === undefined || s.enabled !== true) return false
+  if (s.dueAt !== undefined) return true
+  return s.repeat?.triggerAgent === true
+}
+
 /** Normalize an optional execution-target string: trim; blank collapses to undefined. */
 function normalizeTargetId(value: string | undefined): string | undefined {
   const trimmed = value?.trim()

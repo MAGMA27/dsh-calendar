@@ -3,7 +3,7 @@ import {
   addSubtask, archiveTask, attachExecutionSession, completedSubtaskCount, createTask,
   deleteTask, quadrantOf, removeSubtask, restoreTask, setQuadrant, setSchedule,
   setSubtaskDone, setTaskDone, settleExecution, startExecution, subtaskProgress,
-  updateTask, type NewTaskInput,
+  taskTriggersAgent, updateTask, type NewTaskInput,
 } from '../src/core/tasks.ts'
 
 function baseInput(over: Partial<NewTaskInput> = {}): NewTaskInput {
@@ -135,5 +135,25 @@ describe('setSchedule / setNextRun', () => {
     expect(cleared.schedule?.enabled).toBe(false)
     expect(cleared.schedule?.repeat).toBeUndefined()
     expect(cleared.schedule?.dueAt).toBeUndefined()
+  })
+})
+
+describe('taskTriggersAgent (the clock badge)', () => {
+  it('is false for a plain task and for a repeat template with no agent trigger', () => {
+    expect(taskTriggersAgent(one())).toBe(false)
+    const plain = one({ schedule: { enabled: true, repeat: { kind: 'daily' } } })
+    expect(taskTriggersAgent(plain)).toBe(false)
+    const tpl = one({ schedule: { enabled: true, repeat: { kind: 'weekly', weekdays: [1] } } })
+    expect(taskTriggersAgent(tpl)).toBe(false)
+  })
+  it('is true for a one-shot dueAt', () => {
+    expect(taskTriggersAgent(one({ schedule: { enabled: true, dueAt: 5000 } }))).toBe(true)
+  })
+  it('is true for a repeat rule with triggerAgent', () => {
+    expect(taskTriggersAgent(one({ schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } } }))).toBe(true)
+    expect(taskTriggersAgent(one({ schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true, triggerAt: '07:30' } } }))).toBe(true)
+  })
+  it('is false when the schedule is disabled even if triggerAgent is set', () => {
+    expect(taskTriggersAgent(one({ schedule: { enabled: false, repeat: { kind: 'daily', triggerAgent: true } } }))).toBe(false)
   })
 })

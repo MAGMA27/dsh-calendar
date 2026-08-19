@@ -2,7 +2,7 @@
  * top/bottom edge resize (delegated to the grid via callbacks).
  */
 import type { TaskRecord } from '../../core/tasks.ts'
-import { quadrantOf, completedSubtaskCount } from '../../core/tasks.ts'
+import { quadrantOf, completedSubtaskCount, taskTriggersAgent } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -39,7 +39,7 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
   const subCount = task.subtasks.length
   const subDone = completedSubtaskCount(task)
   const hasProvider = task.provider !== undefined && task.model !== undefined
-  const scheduled = task.schedule?.enabled === true
+  const scheduled = taskTriggersAgent(task)
   const isCopy = task.originTaskId !== undefined
   const running = task.executions.some(e => e.endedAt === undefined)
 

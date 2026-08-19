@@ -58,7 +58,7 @@
 3. 艾森豪威尔 knobs：紧急/重要选择，改即 `setQuadrant`。
 4. 子任务 checklist：勾选 `setSubtaskDone`；新增/删除；父任务进度条（3px 圆角、`state-success-primary` 填充）。
 5. 执行设置 ExecutionSettings：工作区 / 执行会话（新建或复用）/ **provider + model + reasoningEffort** / agent 预设 / 权限；下拉 + 徽标预览；留空 = 运行时默认。**agent 预设是下拉**：Host 经 `agentPreset.list`（ApiProxy）读 preset roster 投影为 `catalog.modes`（`name ?? id` 作标签、剔除 `broken`），有 roster 渲染 `<select>`，无则回退自由文本。
-6. 定时：启用开关 + 5 段 cron + 预设按钮组（每天09:00/每小时/每10分钟/每周一09:00）+ 下次运行。
+6. 定时：启用开关 + 5 段 cron + 预设按钮组（每天09:00/每小时/每10分钟/每周一09:00）+ 下次运行。**一次性 dueAt 触发并执行后自动清除**：`advanceSchedule` 在 `nextRunAt===undefined` 且无 cron 时整体删除 schedule 规则（徽标/清除按钮/到时全部消失）；cron 任务照旧滚进下一次匹配。
 7. 执行记录 + 会话跳转（M4）：sessionId/起止/结果/错误；「查看会话」跳 transcript。
 8. 删除 / 归档（danger 按钮）。
 
@@ -104,3 +104,11 @@ client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-c
 - **周/月日期导航 `DateNav`**：`‹ 期标签 › + 今天`。core `calendar.ts` 新增 `addDays / addMonths / sameMonth / monthLabel / weekRangeLabel`；`addMonths` 按目标月天数钳制日（1月31日+1月→2月28/29）。周视图步进 ±7 天、月视图 ±1 月；期标签带年份，`aria-live` 播报。
 - **任务搜索**：曾实现 `taskMatchesQuery` 过滤四视图（`c5ec7b1`），用户复测认为无用后**整体移除**（`28a99cc`）——无搜索栏。
 - **月视图**：顶部 sticky 周几表头（随 `weekStart` 周一起始）；`sameMonth` 判当前月，相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、任务 chips 半透明）；`.monthWrap`（表头 + 可滚动 `.monthGrid`）替代原单一网格。**日期样式（commit `a003320` 系列→`78f027d`）**：色带方案反复迭代后**弃用**，改为干净的日期行——日期数字 **18px/700**，**每月 1 号在数字旁标月份短名（字号与日期一致，如「9月 1」，月份 `label-secondary` 主次区分）**；相邻月日期 `label-tertiary`；今天数字套品牌蓝圆底白字（`--dsw-static-deepseek-500`，勿用亮色下近黑的 `--dsw-alias-brand-primary`）。
+
+## 11. 执行与定时运行（M4/M5 宿主行为，host-runner / host-scheduler / host-ledger）
+
+- **会话**：钉了 `sessionId` → 复用（须存在且非 busy）；否则在目标/最近工作区新建。新建时 `sessions.create` 直接带 `agentPreset`；复用会话钉了预设 → `agentPresets.select` 重组（**仅空白会话合法**，已开聊的会话会 `agent-preset-locked` 失败关闭）。
+- **钉子顺序（全部在 prompt 前应用，失败即关闭，绝不在错误设置下运行）**：预设 → provider+model（`sessions.selectModel`，缺一即拒）→ **权限经命令注册表**（`ctx.commands.execute(agent, '/permission <preset>')`，`agent = ctx.agents.get(sessionId)`；`commands`/`agents` 为可选 `ctx.get`，缺失时权限钉子明确失败）→ rename（纯装饰，失败不阻断）→ `sessions.prompt`（任务 prompt 或标题）。
+- **坑（必读）**：① 进程内 ApiProxy 域对象是 **`agentPresets`（复数）**、wire 路径是 `agentPreset.*`（单数）——目录与 runner 的 face 都按复数命名；② **`sessions.prompt` 不路由斜杠命令**（文档注释声称支持，当前 build 未实现）——权限必须走命令注册表，经 prompt 会把 `/permission …` 当普通消息发给模型。
+- **定时**：`HostScheduleService` tick 扫描 `nextRunAt<=now` 的 enabled 调度 → 交 runner → **只接受后**才 `advanceSchedule` 滚动到下一 cron 匹配（被拒保留到期槽下轮重试）；一次性 dueAt 完成后由 ledger 整体清除调度（见 §5.2-6）。
+- **执行设置目录**：Host `/api/calendar/options` 聚合 workspaces / sessions（项目分组、归档排除）/ providers+models / **modes**（`agentPresets.list` → `name ?? id`，剔除 `broken`）；客户端经 `watchCatalogRefresh` 在会话列表变更或日历打开时防抖重拉（见 §9）。

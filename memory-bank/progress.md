@@ -3,7 +3,7 @@
 > ✏️ **2026 重命名记录**：包名/代码/文档统一由 `dsh-calender` 更正为 `dsh-calendar`（commit `970d53b`，51 文件）。仓库文件夹同步迁移到 **`D:\Dev\agents\dsh-calendar`（本份 memory-bank 即新目录内容，新会话请以它为工作区）**；旧 `dsh-calender` 目录因会话占用无法原位删除，会话结束后手动清除即可。账本数据已从 `~/.dsh/calender` 复制到 `~/.dsh/calendar`；profile 已卸载 `dsh-calender` 并重新挂载 `dsh-calendar`（`ui-calendar`），重启 dsh web 生效。localStorage 旧键 `dsh.calender.*` 已废弃（不触发重复导入）。
 
 ## 当前状态
-- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代落地；**122 单测全绿**。
+- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**149 单测全绿**（22 文件）。
 - 计划已批准（Host 权威架构）。
 - 📋 **验收清单见 [acceptance-checklist.md](memory-bank/acceptance-checklist.md)**：基线 / 挂载 / M0–M7 逐项 GUI 与 Host·工具行为验收。
 
@@ -42,7 +42,7 @@
 | M7 日历 Tool | ✅ `15a5a6d`（`calendar_task` tool：建/查/改/删/子任务/执行钉子/run，经同一 HostLedger.apply；113 单测） |
 
 ## M4 交付内容（真实执行）
-- **host-runner.ts**：打开执行记录 → 建/复用会话 → 应用钉子（provider+model 经 `sessions.selectModel`、agent 预设经 `agentPresets.select`、权限经 `/permission` 斜杠命令）→ rename → prompt('queue') → 结算执行记录。依赖注入的窄 ApiProxy face，测试用 fake 驱动。
+- **host-runner.ts**：打开执行记录 → 建/复用会话 → 应用钉子（provider+model 经 `sessions.selectModel`、agent 预设经 `agentPresets.select`、权限经 `/permission` 斜杠命令——**后改为经命令注册表 `ctx.commands.execute` 执行**，见文末「权限钉子改走命令注册表」节；早期用 `sessions.prompt` 发命令行的做法已废弃，那会把 `/permission` 当普通消息发给模型）→ rename → prompt('queue') → 结算执行记录。依赖注入的窄 ApiProxy face，测试用 fake 驱动。
 - **HostLedger** 新增 `openExecution`/`settleExecution`/`taskById`：运行中拒开第二条、结算附带会话 id、写回账本并通知浏览器；`run` action 现在要求任务存在。
 - **路由接线**：`POST /action` 遇到 `kind:'run'` 把任务交给 HostExecutionRunner（fire-and-forget，结算异步）。
 - **结算策略**：轮询 `sessions.list`；会话消失→cancelled、停止且带 prompt 证据→succeeded、超时→cancelled。
@@ -89,7 +89,7 @@
   | `970d53b` | 拼写重命名 dsh-calender→dsh-calendar |
   | `a27729b` | 重命名记录（docs） |
   | `5966aac` | 月视图任务条补全边框；周视图拖拽保留抓取偏移（跟手） |
-- **当前基线**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 个测试文件）。
+- **基线（当时计数）**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 个测试文件）。
 
 ## 客户端挂载重构（2026-08 后期 · 分支 `feature/calendar-slot-view`）
 
@@ -105,8 +105,8 @@
   - 渲染链：`CalendarEntry`（footer 入口）→ 根级 `root-open.ts` 开关 store → `CalendarOverlay`（shell.overlay 占用组件）→ `<CalendarView>`。
 
 **新增/删除文件**：新增 `src/client/root-open.ts`、`calendar-overlay.tsx`、`calendar-entry.tsx`；删除 `sidebar-entry.ts`、`calendar-mount.tsx`、`calendar-view-slot.tsx`。
-**验证**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 文件）。git：分支 `feature/calendar-slot-view`，提交 `9e16259`(slot 注册)→`4656bc1`(覆盖层)→`ec405a2`(shell.overlay+footer entry)→`432b04f`(收窄到侧栏右缘)→`6064953`/`ec38796`(入口样式对齐 Settings)。
-**当前基线**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 个测试文件）。
+**验证**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 文件，当时计数）。git：分支 `feature/calendar-slot-view`，提交 `9e16259`(slot 注册)→`4656bc1`(覆盖层)→`ec405a2`(shell.overlay+footer entry)→`432b04f`(收窄到侧栏右缘)→`6064953`/`ec38796`(入口样式对齐 Settings)。
+**基线（当时计数）**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 个测试文件）。
 
 ## 入口与跳转的后续打磨（分支 `feature/calendar-slot-view` 尾段）
 - **入口样式 1:1 对齐 Settings 触发按钮（commit `27b6db4`）**：从 ui-settings-general `SettingsRoot.module.css` 挖出 Settings 按钮的确切配方并复刻——宽栏为通栏 42px 行（`width:calc(100%+4px)`、`height:42px`、`margin:4px -2px`、`padding:0 10px 0 8px`、`border-radius:12px`、主文字色 `label-primary`、14px/行高22、hover `interactive-bg-hover`）；收窄为 36×36 圆形（半径 50%、`margin:8px 0 10px`、无文字）。图标由 hand-rolled SVG 跟随 16px(宽)/18px(rail)，描边风格同 Settings。**rail 判定改用 `wide` prop**（`sidebar.footer.action` slot 由 SidebarRoot 以 `{ wide }` 传入），不再依赖 `[data-sidebar-collapsed]` CSS 属性。改动：`calendar-entry.tsx`（改用 wide prop + rail 圆钮）、`calendar.module.css`（`.entry` 复刻 `.trigger` 配方、删除旧 rail 规则）。

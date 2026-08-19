@@ -1,27 +1,25 @@
 /**
  * dsh-calendar client half (browser). Wires the same-origin transport to the
- * view controller and registers the calendar as a session view tab through the
- * official `conversation.view` slot — the shell renders it (stable lifecycle),
- * instead of DOM-injecting into the React-owned center column.
+ * view controller and mounts the original session-independent surfaces — a
+ * top-left sidebar icon that toggles a full-column calendar overlay. Working
+ * without an active session means the calendar is reachable even from a blank /
+ * new-conversation window.
  *
- * Failure policy: problems are logged, never thrown; an external plugin must
- * not take the GUI down.
+ * Failure policy: DOM mounting problems are logged, never thrown; an external
+ * plugin must not take the GUI down.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { calendarClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpcalendarHostTransport } from './host-api.ts'
-import { createCalendarSlotView } from './calendar-view-slot.tsx'
+import { mountSidebarEntry } from './sidebar-entry.ts'
+import { mountcalendar } from './calendar-mount.tsx'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { en, zh } from './locales.ts'
 
 /** Locale namespace this plugin owns. */
 const NS = 'calendar'
-
-/** The conversation-view tab id this plugin owns. */
-export const CALENDAR_VIEW_ID = 'calendar'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -29,10 +27,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services: locale for copy, slots to register the calendar view tab,
- * and sessions for the session jump. Calendar domain state always comes from
- * the Host over HTTP. */
-export const inject = ['locale', 'slots', 'sessions']
+/** Required services: locale for copy; sessions only for the session jump from
+ * an execution record. All calendar domain state comes from the Host over
+ * HTTP. */
+export const inject = ['locale', 'sessions']
 
 /** Client plugin body. */
 export function apply(ctx: ClientContext): void {
@@ -41,8 +39,8 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-calendar: dictionaries')
 
-  // The transport + controller are wired eagerly so the view is ready when the
-  // tab is shown.
+  // The transport + controller are wired eagerly so the overlay is ready the
+  // moment the sidebar entry opens it.
   const transport = new HttpcalendarHostTransport(HTTP_PREFIX_DEFAULT)
   const controller = new calendarClientController(transport, initialState(Date.now(), 0))
   void controller.start()
@@ -58,27 +56,28 @@ export function apply(ctx: ClientContext): void {
     try {
       sessions?.open(sessionId)
     } catch {
-      // The session may not be listed yet; ignore and keep the view open.
+      // The session may not be listed yet; ignore and keep the overlay open.
     }
   }
 
-  // The calendar view body. The conversation.view slot passes session-focused
-  // props; the calendar is its own view so it ignores those and renders its own
-  // controller-backed tree.
-  const CalendarSlotView = createCalendarSlotView(controller, openSession)
+  let uiDisposer: (() => void) | undefined
+  const disposers: Array<() => void> = []
+  try {
+    // Sidebar icon toggles the calendar overlay; the overlay fills the center
+    // column and is region-independent (works in blank/new-session windows).
+    disposers.push(mountSidebarEntry(() => controller.toggleOpen()))
+    disposers.push(mountcalendar(controller, openSession))
+  } catch (error) {
+    console.error('[dsh-calendar] mount failed:', error)
+  }
 
-  // Register the calendar as one tab in the conversation view ring, beside the
-  // shipped chat and trajectory tabs. register disposal rides the caller's
-  // fiber, so plugin unload removes the tab.
-  ctx.slots.inject('conversation.view', () => ctx.slots.register({
-    name: 'conversation.view',
-    id: CALENDAR_VIEW_ID,
-    order: 20,
-    locale: NS,
-    label: () => '日历',
-  }, CalendarSlotView as never))
+  uiDisposer = () => {
+    for (const dispose of disposers.splice(0)) dispose()
+    controller.dispose()
+    uiDisposer = undefined
+  }
 
-  ctx.effect(() => () => controller.dispose(), 'dsh-calendar: dispose controller')
+  ctx.effect(() => uiDisposer ?? (() => {}), 'dsh-calendar: ui dispose')
 }
 
 /**

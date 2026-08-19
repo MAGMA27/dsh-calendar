@@ -93,5 +93,7 @@
 - 覆盖层动态测量侧边栏右缘收窄到侧栏右侧（保留侧栏可见）；
 - **入口样式 1:1 复刻 Settings 触发按钮**（ui-settings-general `SettingsRoot.module.css` `.trigger`）：宽栏为通栏 42px 行（`width:calc(100%+4px)`、`height:42px`、`margin:4px -2px`、`padding:0 10px 0 8px`、`border-radius:12px`、主文字色、14px/行高22）；收窄为 36×36 圆形（半径 50%）。rail 判定走 slot 传入的 **`wide` prop**（与 SettingsRoot 一致），不依赖 CSS 属性。
 渲染链：`CalendarEntry` → `root-open.ts` 开关 store → `CalendarOverlay` → `CalendarView`。
-**会话跳转**：日历页执行记录「打开会话」（`onOpenSession` → index.ts `openSession`）先 `setCalendarOpen(false)` 关闭覆盖层、再 `ctx.sessions.open`——点击会话即离开日历回到对话界面（commit `8d520ef`）。
+**会话跳转关日历（两层）**：
+- 日历页内执行记录「打开会话」（`onOpenSession` → index.ts `openSession`）先 `setCalendarOpen(false)` 再 `ctx.sessions.open`（commit `8d520ef`）；
+- 侧边栏点会话/新建会话（日历仍开着）由 `navigation-watch.ts`（`watchSessionNavigation`，纯函数）订阅 `ctx.sessions.list` 的 `current`，变化即关日历；基线随每次打开重种，避免打开时误关（commit `139c42f`）。
 client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-conversation`）。

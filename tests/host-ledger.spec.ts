@@ -205,7 +205,8 @@ describe('HostLedger repeat materialization', () => {
   function makeMaterializingLedger() {
     const persist = new MemoryPersist()
     let n = 0
-    const ledger = new HostLedger(persist, () => at(2025, 1, 6, 8), () => `copy-${++n}`)
+    // Small horizon so create/setSchedule materialize deterministically in tests.
+    const ledger = new HostLedger(persist, () => at(2025, 1, 6, 8), () => `copy-${++n}`, undefined, { repeatHorizonDays: 3 })
     return { ledger }
   }
 
@@ -219,13 +220,16 @@ describe('HostLedger repeat materialization', () => {
       schedule: { enabled: true, repeat: repeat as never },
     } })
     if (!r.ok) throw new Error('create failed')
-    return r.snapshot.tasks[r.snapshot.tasks.length - 1].id
+    // The template is the newest task without an originTaskId (copies follow it
+    // in the snapshot after the immediate materialization sweep).
+    const tpl = [...r.snapshot.tasks].reverse().find(t => t.originTaskId === undefined)!
+    return tpl.id
   }
 
   it('materializes daily copies from the day after the template through the horizon', () => {
     const { ledger } = makeMaterializingLedger()
     const id = createWithRepeat(ledger, { kind: 'daily' })
-    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(true)
+    // Creating with a repeat materializes immediately (no scheduler tick).
     const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
     expect(copies).toHaveLength(3) // 01-07, 01-08, 01-09
     expect(copies[0].startAt).toBe(at(2025, 1, 7, 9))
@@ -234,6 +238,17 @@ describe('HostLedger repeat materialization', () => {
     // Idempotent: a second sweep changes nothing.
     expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(false)
     expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(3)
+  })
+
+  it('arming a repeat via setSchedule materializes immediately', () => {
+    const { ledger } = makeMaterializingLedger()
+    const c = ledger.apply(createEnvelope('r0'))
+    if (!c.ok) throw new Error('create failed')
+    const id = c.snapshot.tasks[0].id
+    expect(ledger.apply({ requestId: 'sched', action: { kind: 'setSchedule', id, patch: { enabled: true, repeat: { kind: 'daily' } } } }).ok).toBe(true)
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies).toHaveLength(3) // 01-07..01-09
+    expect(copies[0].startAt).toBeGreaterThan(0)
   })
 
   it('honors weekly weekdays and the holiday skip', () => {
@@ -309,12 +324,13 @@ describe('HostLedger repeat materialization', () => {
 
   it('prunes orphaned copies at load when the template no longer has a repeat rule', () => {
     const persist = new MemoryPersist()
-    const a = new HostLedger(persist, () => at(2025, 1, 6, 8), () => 'copy')
+    let n = 0
+    const a = new HostLedger(persist, () => at(2025, 1, 6, 8), () => `t-${++n}`)
     const id = createWithRepeat(a, { kind: 'daily' })
     a.materializeRepeats(at(2025, 1, 6, 8), 3)
     // Clear the rule while "the Host is down" by editing the persisted doc.
     persist.doc!.tasks = persist.doc!.tasks.map(t => t.id === id ? { ...t, schedule: { enabled: false } } : t)
-    const b = new HostLedger(persist, () => at(2025, 1, 6, 8), () => 'copy')
+    const b = new HostLedger(persist, () => at(2025, 1, 6, 8), () => `t-${++n}`)
     expect(b.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(0)
     expect(b.taskById(id)).toBeDefined()
     expect(persist.doc!.tasks.length).toBe(1) // pruned state persisted

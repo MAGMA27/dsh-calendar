@@ -150,13 +150,16 @@ function fingerprintOf(envelope: calendarActionEnvelope): string {
 export class HostLedger {
   private state: LedgerState
   private readonly listeners = new Set<() => void>()
+  private readonly repeatHorizonDays: number
 
   constructor(
     private readonly persist: HostLedgerPersist,
     private readonly now: () => number = Date.now,
     private readonly uuid: () => string = randomId,
     private readonly timeZone: () => string = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
+    options: { repeatHorizonDays?: number } = {},
   ) {
+    this.repeatHorizonDays = options.repeatHorizonDays ?? REPEAT_HORIZON_DAYS
     const loaded = persist.load()
     this.state = loaded
       ? {
@@ -301,7 +304,19 @@ export class HostLedger {
    * one occurrence permanently removes it from future sweeps. Returns whether
    * anything changed (only then does it persist + notify).
    */
-  materializeRepeats(now: number, horizonDays: number = REPEAT_HORIZON_DAYS): boolean {
+  materializeRepeats(now: number, horizonDays?: number): boolean {
+    const changed = this.sweepRepeats(now, horizonDays ?? this.repeatHorizonDays)
+    if (changed) this.commit()
+    return changed
+  }
+
+  /**
+   * Pure materialization sweep: mutates this.state.tasks (adds missing copies)
+   * and returns whether anything changed, WITHOUT persisting. Browser actions
+   * that arm a repeat (create / setSchedule) run it inline so the returned
+   * snapshot already contains the copies — no waiting for the 30s tick.
+   */
+  private sweepRepeats(now: number, horizonDays: number): boolean {
     const tasks = this.state.tasks
     const today = startOfDayMs(now)
     const horizonEnd = addDays(today, horizonDays)
@@ -331,10 +346,7 @@ export class HostLedger {
         changed = true
       }
     }
-    if (changed) {
-      this.state.tasks = next
-      this.commit()
-    }
+    if (changed) this.state.tasks = next
     return changed
   }
 
@@ -378,6 +390,9 @@ export class HostLedger {
         if (task.schedule !== undefined) {
           this.state.scheduler.nextRuns[task.id] = mirrorOf(task.schedule)
         }
+        // Materialize immediately so the returned snapshot already shows the
+        // repeat copies (no waiting for the 30s scheduler tick).
+        if (task.schedule?.repeat !== undefined) this.sweepRepeats(now, this.repeatHorizonDays)
         return true
       }
       case 'update': {
@@ -508,6 +523,9 @@ export class HostLedger {
           })
         }
         this.state.tasks = tasks
+        // Materialize immediately (idempotent) so the returned snapshot already
+        // shows any newly-armed repeat's copies — no waiting for the 30s tick.
+        if (updated?.schedule?.repeat !== undefined) this.sweepRepeats(now, this.repeatHorizonDays)
         return true
       }
       case 'shiftRepeatTimes': {

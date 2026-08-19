@@ -1,9 +1,9 @@
 # dsh-calendar 进度（Progress）
 
-> ✏️ **2026 重命名记录**：包名/代码/文档统一由 `dsh-calender` 更正为 `dsh-calendar`（commit `970d53b`，51 文件）。仓库文件夹同步迁移到 `D:\Dev\agents\dsh-calendar`（旧 `dsh-calender` 目录因本会话占用无法原位删除，会话结束后可手动清除）；账本数据已从 `~/.dsh/calender` 迁移到 `~/.dsh/calendar`；profile 已卸载 `dsh-calender` 并重新挂载 `dsh-calendar`（`ui-calendar`），重启 dsh web 生效。localStorage 旧键 `dsh.calender.*` 已废弃（不触发重复导入）。
+> ✏️ **2026 重命名记录**：包名/代码/文档统一由 `dsh-calender` 更正为 `dsh-calendar`（commit `970d53b`，51 文件）。仓库文件夹同步迁移到 **`D:\Dev\agents\dsh-calendar`（本份 memory-bank 即新目录内容，新会话请以它为工作区）**；旧 `dsh-calender` 目录因会话占用无法原位删除，会话结束后手动清除即可。账本数据已从 `~/.dsh/calender` 复制到 `~/.dsh/calendar`；profile 已卸载 `dsh-calender` 并重新挂载 `dsh-calendar`（`ui-calendar`），重启 dsh web 生效。localStorage 旧键 `dsh.calender.*` 已废弃（不触发重复导入）。
 
 ## 当前状态
-- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）落地；**113 单测全绿**。
+- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代落地；**122 单测全绿**。
 - 计划已批准（Host 权威架构）。
 - 📋 **验收清单见 [acceptance-checklist.md](memory-bank/acceptance-checklist.md)**：基线 / 挂载 / M0–M7 逐项 GUI 与 Host·工具行为验收。
 
@@ -71,8 +71,28 @@
 - **依赖**：追加 devDep `@deepseek-ai/dsh-tools@0.1.0-rc.6`（host 侧 bundle）。
 - **测试**：host-tool.spec（8）覆盖建/查/列/改/象限/完成/子任务/定时/归档恢复删除/run/非法输入；**113 单测全绿**（原 105 + 8）。
 
+## 重命名与近期修复（M7 之后）
+- **拼写重命名（commit `970d53b`）**：包/代码/文档 `dsh-calender` → `dsh-calendar`（51 文件：`calender.module.css`→`calendar.module.css`、`scripts/dsh-calender.js`→`dsh-calendar.js`、`ui-calender`→`ui-calendar`、`/api/calender/*`→`/api/calendar/*`、账本 `$DSH_HOME/calendar/ledger-v1.json`、localStorage `dsh.calendar.*`）。
+- **导航说明（重要）**：**新会话请以 `D:\Dev\agents\dsh-calendar` 为工作区**。旧目录 `D:\Dev\agents\dsh-calender` 只是被会话占用的残留，可待会话结束后删除。
+- **pnpm 离线 store**：缓存留在旧目录 `D:\Dev\agents\dsh-calender\.pnpm-store\v11`；新目录 `pnpm install --store-dir <旧store路径>` 可离线复用。删除旧目录后如需离线，把该 store 复制到新目录 `.pnpm-store\v11`。
+- **M7 之后的 UI 迭代提交表**：
+  | commit | 内容 |
+  |---|---|
+  | `8fa7323` | 验收清单录入 memory-bank |
+  | `d2d6c98` | 周视图任务块显示时间段 + 网格加深 |
+  | `e8c90d5` | 时间放右上角与标题并排、标题优先保留 |
+  | `a596cd9` | 可折叠「显示时段」（隐藏睡眠/空闲） |
+  | `7a1f690` | 窗口拉伸铺满网格 + 支持跨午夜时段（start>end） |
+  | `016b13b` | 矩阵「立即做」改红色 |
+  | `1344061` | 矩阵/议程任务卡片丰富化（时间/徽标/进度条/描述摘要） |
+  | `d687fa9` | 阴影加深 + 议程分组卡片化现代化表头 |
+  | `970d53b` | 拼写重命名 dsh-calender→dsh-calendar |
+  | `a27729b` | 重命名记录（docs） |
+  | `5966aac` | 月视图任务条补全边框；周视图拖拽保留抓取偏移（跟手） |
+- **当前基线**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 个测试文件）。
+
 ## 下一步
-全部里程碑（M0–M7）已完成。后续可按需：合并交付 / 更多 tool 细化（如按日期范围查询）/ 真实组合验证。
+全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 
 ## 交付挂载（需用户环境）
 `dsh plugin --profile web add link:D:\Dev\agents\dsh-calendar` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calendar/state` + 侧边栏入口 + 中间列日历。
@@ -81,7 +101,10 @@
 包 `dsh-calendar` / 行 id `ui-calendar` / 命名空间 `calendar` / 账本 `$DSH_HOME/calendar/ledger-v1.json` / DOM `data-dsh-calendar-*` / 面板事件 `calendar`。
 
 ## 环境要点
-vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-write 即可；pnpm 设置放 `pnpm-workspace.yaml`。pwsh 里带 `2>&1` 的管道会触发 pnpm/node 的编码包装报错——改用重定向到文件或直接 `pnpm <cmd>; echo $LASTEXITCODE`。
+- vitest(esbuild) 需 `danger-full-access`；tsc/tsdown(rolldown) 在 workspace-write 即可。当前会话策略已是 `danger-full-access` + approvals 关闭（无需再要求授权）。
+- pwsh 里带 `2>&1` 的管道会触发 pnpm/node 的编码包装报错——改用重定向到文件（`*> 文件`）或直接 `pnpm <cmd>; echo $LASTEXITCODE`；`git ... | Select-Object` 之类管道同样会被沙箱拒绝，git 输出一律重定向到文件再读。
+- 工具侧重命名后注意**相对路径会解析到会话工作区**：新会话以 `D:\Dev\agents\dsh-calendar` 为工作区后正常；若跨目录编辑请用绝对路径。
+- pnpm 设置放 `pnpm-workspace.yaml`；store 位置见上文「pnpm 离线 store」注。
 
 ## 挂载与环境记录（2026-08，已由主代理处理）
 - **已挂载到 web profile ✓**：`dsh plugin --profile web add link:D:\Dev\agents\dsh-calendar` 成功；`dsh.profile.bundles=[base,web-app,dsh-web-ui-all,dsh-calendar]`；`--dump-config` 出现 `ui-calendar` 层。

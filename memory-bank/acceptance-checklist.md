@@ -3,13 +3,14 @@
 > 用途：一项功能/一个里程碑交付后，按本清单逐项验收。验收基线、挂载、GUI 与 Host/工具行为全部列出；每项通过打 ✓ 并记日期。
 > 里程碑代码：M0 脚手架 / M1 领域+Host 骨架 / M2 日历 UI / M3 任务编辑 / M4 真实执行 / M5 Host cron 定时调度 / M6 完善 / M7 日历 Tool。
 > 交付提交：M4 d3f8660 · M5 660b6f5 · M6 61f6f28 · M7 15a5a6d（另有各档 docs 提交）。
+> 重命名：970d53b（dsh-calender→dsh-calendar，验收之前全部改为新拼写）；后续 UI 迭代见 progress.md「M7 之后的 UI 迭代提交表」。
 
 ---
 
 ## 0. 基线（每次改动后必跑）
 - [x] `pnpm typecheck` 通过
 - [x] `pnpm build` 通过（产出 lib/index.js 与 lib/client.js）
-- [x] `pnpm test` 全绿 = **113 单测**（vitest run）
+- [x] `pnpm test` 全绿 = **122 单测**（vitest run，20 个测试文件）
 - [x] 工作树 git 干净，提交信息遵循 Conventional Commits
 
 ## 1. 挂载 / 生效 / 数据位置
@@ -60,6 +61,17 @@
 - [ ] `run` 触发真实执行（经 host-runner）
 - [ ] 与 UI 操作**共享同一账本与幂等**（无分身数据源）
 - [ ] 非法 action（enum 外）被 schema 校验**在 execute 前拒绝**
+
+## 7.5 重命名与 UI/交互迭代（dsh-calender→dsh-calendar 之后）
+- [x] 仓库/包/文档全部 `dsh-calendar` 拼写；文件夹位于 `D:\Dev\agents\dsh-calendar`
+- [x] 账本已迁移 `~/.dsh/calender` → `~/.dsh/calendar`；profile 重挂 `ui-calendar`；重启 dsh web 生效
+- [ ] 周视图任务块显示时间段（右上角、与标题并排、标题优先）
+- [ ] 周视图网格加深、整点横线可见
+- [ ] 可折叠「显示时段」+ 支持跨午夜时段（如 11:00–02:00），窗口放大铺满网格
+- [ ] 矩阵四象限「立即做」红色；矩阵/议程任务卡片含时间/徽标/进度条/描述
+- [ ] 议程分组卡片化（色点+计数）、阴影加深
+- [ ] 月视图任务条上下左右边框齐全
+- [ ] 周视图拖拽**跟手**：抓取点保持相对位置（不飘在块上方）
 
 ## 7. 安全 / 回归 / 边界
 - [ ] 客户端 apply **未访问任何未 inject 的 Cordis 服务**（避免 cannot get property 崩溃回归）

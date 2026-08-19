@@ -28,33 +28,29 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   display: none !important;
 }
 
-/* --- sidebar entry row ------------------------------------------------------- */
+/* --- footer entry button (sidebar.footer.action) ----------------------------- */
 
 .entry {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  height: 32px;
-  padding: 0 12px;
+  gap: 6px;
+  padding: 6px 8px;
   background: transparent;
   border: none;
   border-radius: 8px;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
 .entry:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
 }
 
 .entry[data-active] {
-  background: var(--dsw-specific-sidebar-nav-item-active);
   color: var(--dsw-alias-label-primary);
-  font-weight: 600;
 }
 
 .entryIcon {
@@ -64,19 +60,14 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   flex: none;
 }
 
-.entryLabel {
+/* Rail (collapsed) sidebar: icon only. */
+.entry:not([data-wide]) .entryLabel {
+  display: none;
+}
+
+.entry[data-wide] .entryLabel {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-[data-dsh-frame][data-sidebar-collapsed] .entry {
-  justify-content: center;
-  padding: 0;
-  width: 100%;
-}
-
-[data-dsh-frame][data-sidebar-collapsed] .entryLabel {
-  display: none;
 }
 
 /* --- calendar frame ---------------------------------------------------------- */

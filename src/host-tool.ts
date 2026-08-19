@@ -36,7 +36,9 @@ const parameters = {
   model: { type: 'string', description: 'LLM model pin (create/update).' },
   mode: { type: 'string', description: 'Agent preset pin (create/update).' },
   permission: { type: 'string', enum: ['read-only','workspace-write','danger-full-access'], description: 'Permission preset (create/update).' },
-  cron: { type: 'string', description: '5-field cron for a recurring schedule (setSchedule).' },
+  repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the Host copies the task onto each matching date (setSchedule).' },
+  weekdays: { type: 'array', items: { type: 'integer' }, description: 'Weekly repeat weekdays, JS numbering 0=Sunday..6=Saturday, non-empty (setSchedule).' },
+  skipHolidays: { type: 'boolean', description: 'Skip weekends + public holidays for the repeat rule (setSchedule).' },
   dueAt: { type: 'integer', description: 'One-off due ms epoch (setSchedule).' },
   enabled: { type: 'boolean', description: 'Whether the schedule is armed (setSchedule).' },
   subtasks: { type: 'array', items: { type: 'string' }, description: 'Optional subtask titles (create).' },
@@ -75,7 +77,7 @@ function taskSummary(task: TaskRecord): Record<string, unknown> {
 export function defineCalendarTool(deps: CalendarToolDeps) {
   return defineTool({
     name: 'calendar_task',
-    description: 'Manage calendar todo tasks: create, list, get, update, set Eisenhower urgency/importance, mark done, manage subtasks, set a cron/one-off schedule, archive/restore/delete, or trigger a real run. Times are ms epochs. Same authoritative ledger as the calendar view.',
+    description: 'Manage calendar todo tasks: create, list, get, update, set Eisenhower urgency/importance, mark done, manage subtasks, set a daily/weekly repeat (the task is copied onto each matching date) or a one-off due schedule, archive/restore/delete, or trigger a real run. Times are ms epochs. Same authoritative ledger as the calendar view.',
     parameters,
     output: {
       schema: { type: 'json' },
@@ -163,10 +165,17 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
     case 'setSchedule':
       if (id === undefined) return { ok: false, error: 'id is required' }
       {
-        const hasCron = typeof a.cron === 'string' && a.cron.trim() !== ''
+        const repeatKind = a.repeat
+        const hasRepeat = repeatKind === 'daily' || repeatKind === 'weekly'
+        const weekdays = Array.isArray(a.weekdays)
+          ? a.weekdays.filter((d): d is number => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6)
+          : undefined
         const hasDue = typeof a.dueAt === 'number'
-        const enabled = bool(a.enabled) !== false && (hasCron || hasDue)
-        const patch = { enabled, cron: hasCron ? (a.cron as string).trim() : null, dueAt: hasDue ? (a.dueAt as number) : null }
+        const repeat = hasRepeat
+          ? { kind: repeatKind as 'daily' | 'weekly', weekdays: repeatKind === 'weekly' ? weekdays : undefined, skipHolidays: a.skipHolidays === true }
+          : null
+        const enabled = bool(a.enabled) !== false && (hasRepeat || hasDue)
+        const patch = { enabled, repeat, dueAt: hasDue ? (a.dueAt as number) : null }
         return applyOk(ledger, id, { kind: 'setSchedule', id, patch })
       }
     case 'delete':

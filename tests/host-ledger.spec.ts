@@ -143,7 +143,7 @@ describe('HostLedger advanceSchedule', () => {
     const { ledger } = makeLedger()
     const c = ledger.apply({ requestId: 'c1', action: {
       kind: 'setSchedule', id: (() => { const r = ledger.apply(createEnvelope('r0')); return r.ok ? r.snapshot.tasks[0].id : '' })(),
-      patch: { enabled: true, cron: '0 9 * * *' },
+      patch: { enabled: true, dueAt: 5000 },
     } })
     if (!c.ok) throw new Error('setSchedule failed')
     const id = c.snapshot.tasks[0].id
@@ -175,24 +175,123 @@ describe('HostLedger advanceSchedule', () => {
     const id = c.snapshot.tasks[0].id
     expect(ledger.taskById(id)!.schedule?.nextRunAt).toBe(1000)
 
-    // The accepted one-shot run has no cron to roll forward to: the schedule
+    // The accepted one-shot run has nothing to roll forward to: the schedule
     // must be cleared, not left enabled with a stale due time.
     expect(ledger.advanceSchedule(id, undefined, 1000)).toBe(true)
     expect(ledger.taskById(id)!.schedule).toBeUndefined()
   })
 
-  it('keeps a cron schedule when the run rolls forward (even with a stale dueAt)', () => {
+  it('keeps a repeat rule when a schedule is rolled forward (repeat templates materialize, never run)', () => {
     const { ledger } = makeLedger()
     const c = ledger.apply({ requestId: 'c2', action: {
       kind: 'setSchedule',
       id: (() => { const r = ledger.apply(createEnvelope('r0')); return r.ok ? r.snapshot.tasks[0].id : '' })(),
-      patch: { enabled: true, cron: '0 9 * * *', dueAt: 1000 },
+      patch: { enabled: true, repeat: { kind: 'daily' } },
     } })
     if (!c.ok) throw new Error('setSchedule failed')
     const id = c.snapshot.tasks[0].id
-    expect(ledger.advanceSchedule(id, 9999, 1000)).toBe(true)
+    expect(ledger.taskById(id)!.schedule?.nextRunAt).toBeUndefined() // repeats have no run instant
+    expect(ledger.advanceSchedule(id, undefined, 1000)).toBe(true)
     const t = ledger.taskById(id)!
-    expect(t.schedule?.nextRunAt).toBe(9999)
-    expect(t.schedule?.dueAt).toBe(1000)
+    expect(t.schedule?.repeat?.kind).toBe('daily')
+  })
+})
+
+describe('HostLedger repeat materialization', () => {
+  function at(y: number, m: number, d: number, h = 0, min = 0): number {
+    return new Date(y, m - 1, d, h, min).getTime()
+  }
+
+  function makeMaterializingLedger() {
+    const persist = new MemoryPersist()
+    let n = 0
+    const ledger = new HostLedger(persist, () => at(2025, 1, 6, 8), () => `copy-${++n}`)
+    return { ledger }
+  }
+
+  function createWithRepeat(ledger: HostLedger, repeat: unknown): string {
+    const r = ledger.apply({ requestId: 'r-' + Math.random(), action: {
+      kind: 'create',
+      input: {
+        title: 'Daily', description: '', prompt: '', startAt: at(2025, 1, 6, 9), endAt: at(2025, 1, 6, 10),
+        urgency: 'high', importance: 'high',
+      },
+      schedule: { enabled: true, repeat: repeat as never },
+    } })
+    if (!r.ok) throw new Error('create failed')
+    return r.snapshot.tasks[0].id
+  }
+
+  it('materializes daily copies from the day after the template through the horizon', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(true)
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies).toHaveLength(3) // 01-07, 01-08, 01-09
+    expect(copies[0].startAt).toBe(at(2025, 1, 7, 9))
+    expect(copies[0].endAt).toBe(at(2025, 1, 7, 10))
+    expect(ledger.taskById(id)!.schedule?.materialized).toEqual(['2025-01-07', '2025-01-08', '2025-01-09'])
+    // Idempotent: a second sweep changes nothing.
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(false)
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(3)
+  })
+
+  it('honors weekly weekdays and the holiday skip', () => {
+    const { ledger } = makeMaterializingLedger()
+    // 2025-01-06 is Monday; weekly Mon with skipHolidays → 01-13 (beyond a 3-day horizon → none).
+    const id = createWithRepeat(ledger, { kind: 'weekly', weekdays: [1], skipHolidays: true })
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 7)).toBe(true)
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies).toHaveLength(1) // next Monday 01-13 only
+    expect(copies[0].startAt).toBe(at(2025, 1, 13, 9))
+  })
+
+  it('does not re-create a deleted copy for an already-materialized date', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    expect(ledger.apply({ requestId: 'del', action: { kind: 'delete', id: copy.id } }).ok).toBe(true)
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(false)
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(2)
+  })
+
+  it('deleting a repeat template cascades to its bound copies (unbound survive)', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    // Unbind one copy (as if the user picked "this copy only").
+    expect(ledger.apply({ requestId: 'unbind', action: { kind: 'update', id: copy.id, patch: { originTaskId: null } } }).ok).toBe(true)
+    const tasksBefore = ledger.getSnapshot().tasks
+    expect(ledger.apply({ requestId: 'del-tpl', action: { kind: 'delete', id } }).ok).toBe(true)
+    const remaining = ledger.getSnapshot().tasks
+    expect(remaining.some(t => t.id === id)).toBe(false)
+    expect(remaining.filter(t => t.originTaskId === id)).toHaveLength(0) // bound copies gone
+    expect(remaining.some(t => t.id === copy.id)).toBe(true) // unbound copy kept
+    expect(tasksBefore.length - remaining.length).toBe(3) // template + 2 bound copies removed
+  })
+
+  it('shifts the template + all bound copies by the same deltas', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    const r = ledger.apply({ requestId: 'shift', action: { kind: 'shiftRepeatTimes', id: copy.id, startDelta: 60 * 60 * 1000, endDelta: 60 * 60 * 1000 } })
+    expect(r.ok).toBe(true)
+    const snap = ledger.getSnapshot().tasks
+    expect(snap.find(t => t.id === id)!.startAt).toBe(at(2025, 1, 6, 10))
+    for (const c of snap.filter(t => t.originTaskId === id)) {
+      expect(c.startAt).toBe(at(new Date(c.startAt).getFullYear(), new Date(c.startAt).getMonth() + 1, new Date(c.startAt).getDate(), 10))
+    }
+  })
+
+  it('rejects shiftRepeatTimes for a non-copy task', () => {
+    const { ledger } = makeMaterializingLedger()
+    const r = ledger.apply(createEnvelope('r0'))
+    if (!r.ok) throw new Error('create failed')
+    const id = r.snapshot.tasks[0].id
+    const s = ledger.apply({ requestId: 's', action: { kind: 'shiftRepeatTimes', id, startDelta: 1, endDelta: 1 } })
+    expect(s.ok).toBe(false)
   })
 })

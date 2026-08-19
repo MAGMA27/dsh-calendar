@@ -3,7 +3,7 @@
 > ✏️ **2026 重命名记录**：包名/代码/文档统一由 `dsh-calender` 更正为 `dsh-calendar`（commit `970d53b`，51 文件）。仓库文件夹同步迁移到 **`D:\Dev\agents\dsh-calendar`（本份 memory-bank 即新目录内容，新会话请以它为工作区）**；旧 `dsh-calender` 目录因会话占用无法原位删除，会话结束后手动清除即可。账本数据已从 `~/.dsh/calender` 复制到 `~/.dsh/calendar`；profile 已卸载 `dsh-calender` 并重新挂载 `dsh-calendar`（`ui-calendar`），重启 dsh web 生效。localStorage 旧键 `dsh.calender.*` 已废弃（不触发重复导入）。
 
 ## 当前状态
-- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host cron 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**149 单测全绿**（22 文件）。
+- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**168 单测全绿**（24 文件）。**定时模型已从自由 cron 重构为「受限重复规则（每日/每周 + 跳过节假日，物化副本）+ 一次性到时」**（见文末「受限重复规则替代 cron」节）。
 - 计划已批准（Host 权威架构）。
 - 📋 **验收清单见 [acceptance-checklist.md](memory-bank/acceptance-checklist.md)**：基线 / 挂载 / M0–M7 逐项 GUI 与 Host·工具行为验收。
 
@@ -37,7 +37,7 @@
 | M2 日历 UI | ✅ `83e1599` + `213a43b` + 表头/重叠并排（`a1c7cc3`） |
 | M3 任务编辑 | ✅ 含 9 轮验收修复（全表单/详情/子任务/执行设置下拉/会话标题/归档/定时清除/象限拖拽） |
 | M4 真实执行 | ✅ `d3f8660`（host-runner 真实执行 + 执行记录回写 + 会话跳转 + provider/运行徽标；92 单测） |
-| M5 定时调度 | ✅ `660b6f5`（Host cron 到期触发 + 只接受后滚动 + 重启对账 + SSE 广播；105 单测） |
+| M5 定时调度 | ✅ `660b6f5`（Host cron 到期触发 + 只接受后滚动 + 重启对账 + SSE 广播；105 单测）——**2026 起 cron 已被「受限重复+一次性」模型替换**，见文末 |
 | M6 完善 | ✅ `61f6f28`（设置卡 calendar 命名空间 + SystemPrompt 段（可开关）+ scripts/dsh-calendar.js CLI + 文档；105 单测） |
 | M7 日历 Tool | ✅ `15a5a6d`（`calendar_task` tool：建/查/改/删/子任务/执行钉子/run，经同一 HostLedger.apply；113 单测） |
 
@@ -49,7 +49,7 @@
 - **UI**：任务块 **运行徽标**（有未结算执行时）+ provider/model 徽标（已有）；执行记录显示 **「打开会话」跳转**（`ctx.sessions.open`，客户端 `inject` 增加 `sessions`）。
 - **测试**：host-runner.spec（10）、host-ledger 执行记录、host-routes run→runner 接线；**92 单测全绿**（原 76 + 16）。
 
-## M5 交付内容（Host cron 定时调度）
+## M5 交付内容（Host 定时调度；当时为 cron 模型，2026 已替换为受限重复规则——见文末）
 - **host-scheduler.ts（HostScheduleService）**：tick 扫描账本里 enabled 且 `nextRunAt<=now` 的调度 → 交给 host-runner 触发真实执行 → **只在 run 被接受后**才 `advanceSchedule` 滚动到下一 cron 匹配点（被拒绝=已在运行=保留下一个到期槽，下个 tick 重试，绝不漏跑）。错过不补、`enabled=false` 暂停、单次 dueAt 触发后结束。
 - **HostLedger.advanceSchedule**：滚动 nextRunAt/lastTriggeredAt 并写回账本 + 通知。
 - **重启对账**：`runner.reconcile(taskId)`（会话消失→cancelled / 停止且有 prompt 证据→succeeded / 仍在 run→保留）+ `scheduler.reconcileAll()` 在 start 时对被遗留为 running 的执行结算。
@@ -136,6 +136,7 @@
 - **测试**：新增 `tests/catalog-refresh.spec.ts`（5 用例：列表变更重拉、突发合并为一次、关→开触发且持续开不重复、先开后装不误触发、dispose 清理）。**143 单测全绿**（22 文件）。
 
 ## 一次定时完成后清除定时（one-shot 跑完不再残留"默认定时"）
+> ⚠️ 本节描述的 cron 分支已于 2026 移除（定时模型重构），one-shot 清除语义不变。
 - **问题**：一次性 dueAt 定时触发并执行后，`advanceSchedule` 只把 `nextRunAt` 置 undefined，`schedule` 规则原样保留（`enabled:true` + 过期的 `dueAt`）→ 任务块 🕐「定时」徽标、详情面板「清除定时」按钮、已过期的到时时间一直显示，看起来像还有个默认定时没清掉。
 - **实现**：`src/host-ledger.ts` `advanceSchedule` 增加 one-shot 完结分支——`nextRunAt === undefined` 且任务无 cron（纯 dueAt）时**整体删除 schedule 规则**（`schedule: undefined`）并移除 `scheduler.nextRuns` 镜像；有 cron 的任务照旧滚进下一次 cron 匹配（即便同时残留过期 dueAt 也保留 cron 规则）。scheduler 侧行为不变（仍以 `undefined` 回调）。
 - **测试**：`tests/host-ledger.spec.ts` 新增 2 用例——one-shot 完结后 `schedule` 为 undefined；cron+dueAt 并存时滚进 cron 且 dueAt 保留。**145 单测全绿**（22 文件）。
@@ -149,6 +150,15 @@
 - **问题**：用户切权限后观察会话——`/permission danger-full-access` 被当作普通用户消息发给了模型，然后任务 prompt 跟上。根因：runner 之前用 `sessions.prompt(mode:'queue', '/permission …')` 应用权限钉子，但 **ApiProxy 的 prompt 路径不路由斜杠命令**（文档声称支持，本 build 未实现，`unknown-command` 错误码无人产出）——命令行原样进会话、到达模型。
 - **实现**：`src/host-runner.ts` 权限钉子改为**在会话的 live Agent 上执行命令注册表**：`env.commands.execute(agent, '/permission <preset>', signal)`（`agent = env.agents.get(sessionId)`），结果 `kind:'error'` / 命令不存在 / 无命令注册表 / 无 live agent 均按 fail-closed 失败并给出明确原因；不再经 `sessions.prompt`。`src/index.ts` 用 `ctx.get('commands')/ctx.get('agents')`（**可选注入**，不阻塞 apply）接真实服务。
 - **测试**：`tests/host-runner.spec.ts` 重构权限组——成功路径断言 `commands=1` 且 `prompt=1`（只有任务 prompt 进模型）；命令被拒（unknown preset）/ 未注册 / 部署无 commands / 会话无 live agent 四种失败路径。**149 单测全绿**（22 文件）。
+
+## 受限重复规则替代 cron（2026；用户：cron 崩溃 + 权限过高 → 约束粒度）
+- **问题**：自由 5 段 cron 输入被用户尝试后**直接崩溃**，且任意表达式权限过宽（如每分钟/每小时跑 LLM）。用户要求约束粒度：**每周的周几重复或每日重复 + 跳过节假日的开关**即可；设了重复要**把任务拷贝到对应的日期上**。另要求：**对任何重复副本做时间改动，必须确认「改这一个（解绑）」还是「改所有」**。
+- **模型**：`src/core/tasks.ts` `ScheduleRule` 删除 `cron`，改 `repeat?: {kind:'daily'|'weekly', weekdays?, skipHolidays?}`（`materialized?: string[]` 为 Host 物化台账）；`TaskRecord` 新增 `originTaskId`（副本指回模板）。`src/core/schedule.ts`（cron 解析）**整体删除**，新增 `src/core/repeat.ts`（周几匹配 + 周末/中国法定节假日集合（2025 官方/2026 预估）+ 区间枚举 + `buildRepeatCopy`）。
+- **物化（Host 权威）**：`HostLedger.materializeRepeats(now, 60天)` 在 scheduler 每个 tick 调用——对 enabled 且未归档的重复模板，从「模板日期/今天较晚者的次日」起至「今天+60天」，按规则逐日补副本；副本是**普通任务**（继承内容/执行钉子、时刻与时长取自模板、无 schedule、`done:false`）。已物化日期记入 `schedule.materialized`，**删除副本后不补回**；重复模板自身不自动执行。
+- **副本时间改动确认（commit 本轮）**：周视图拖拽副本（`originTaskId` 存在）松手不再直接 `update`，而是 `controller.requestRepeatTimeEdit` 挂起 → `RepeatTimeConfirm` 弹窗——「**只改这一个并解绑**」（`update` + `originTaskId:null`）或「**改所有副本**」（新协议动作 `shiftRepeatTimes`：模板+全部仍绑定副本按同一 startDelta/endDelta 平移，未来新副本同步）。普通任务照旧直接提交。
+- **级联删除**：删模板 → 连带删仍绑定副本；删单个副本只删它自己。详情面板副本显示 ↻ +「查看模板」跳转；任务块/卡片加 ↻ 徽标。
+- **Host 侧**：`host-scheduler.ts` tick 改为「先触发到期一次性 dueAt（只接受后 `advanceSchedule(undefined)` 清除）→ 再 `materializeRepeats`」；`host-tool.ts` `setSchedule` 参数 cron → `repeat/kind/weekdays/skipHolidays`；`store.ts` 归一化 repeat + `originTaskId`、**旧账本 cron 规则在加载时丢弃**（清理崩溃现场）。
+- **测试**：删 `schedule.spec.ts` → 新增 `repeat.spec.ts`（10）；host-ledger 物化/级联/shift/解绑（7）；host-scheduler 重写（7）；新增 `repeat-time-edit.spec.tsx`（拖拽副本→挂起→this/all 解析，3）与 `schedule-settings.spec.tsx`（模式/周几 chips/节假日开关，3）；tasks/store/host-tool 同步。**168 单测全绿**（24 文件）。
 
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。

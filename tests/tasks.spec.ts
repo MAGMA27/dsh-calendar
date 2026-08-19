@@ -112,20 +112,28 @@ describe('execution lifecycle', () => {
 })
 
 describe('setSchedule / setNextRun', () => {
-  it('merges schedule fields', () => {
-    const [s] = setSchedule([one()], 't1', { enabled: true, cron: '0 9 * * *' }, 1)
+  it('merges schedule fields (repeat rule)', () => {
+    const [s] = setSchedule([one()], 't1', { enabled: true, repeat: { kind: 'daily', skipHolidays: true } }, 1)
     expect(s.schedule?.enabled).toBe(true)
-    expect(s.schedule?.cron).toBe('0 9 * * *')
-    const [next] = setSchedule([s], 't1', { cron: '' }, 2)
-    expect(next.schedule?.cron).toBeUndefined()
+    expect(s.schedule?.repeat?.kind).toBe('daily')
+    expect(s.schedule?.repeat?.skipHolidays).toBe(true)
+    const [next] = setSchedule([s], 't1', { repeat: null }, 2)
+    expect(next.schedule?.repeat).toBeUndefined()
   })
 
-  it('clears the schedule (enabled false, no cron/dueAt) so the week badge drops', () => {
-    const [armed] = setSchedule([one()], 't1', { enabled: true, cron: '0 9 * * *' }, 1)
+  it('keeps materialization bookkeeping when only enabled flips', () => {
+    const [armed] = setSchedule([one()], 't1', { enabled: true, repeat: { kind: 'weekly', weekdays: [1, 3] } }, 1)
+    const withHistory = { ...armed, schedule: { ...armed.schedule!, materialized: ['2025-01-06'] } }
+    const [next] = setSchedule([withHistory], 't1', { enabled: false }, 2)
+    expect(next.schedule?.materialized).toEqual(['2025-01-06'])
+  })
+
+  it('clears the schedule (enabled false, no repeat/dueAt) so the week badge drops', () => {
+    const [armed] = setSchedule([one()], 't1', { enabled: true, repeat: { kind: 'daily' } }, 1)
     expect(armed.schedule?.enabled).toBe(true)
-    const [cleared] = setSchedule([armed], 't1', { enabled: false, cron: null, dueAt: null }, 2)
+    const [cleared] = setSchedule([armed], 't1', { enabled: false, repeat: null, dueAt: null }, 2)
     expect(cleared.schedule?.enabled).toBe(false)
-    expect(cleared.schedule?.cron).toBeUndefined()
+    expect(cleared.schedule?.repeat).toBeUndefined()
     expect(cleared.schedule?.dueAt).toBeUndefined()
   })
 })

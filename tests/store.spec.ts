@@ -36,16 +36,35 @@ describe('parseTasks', () => {
   it('repairs a malformed schedule to undefined', () => {
     const [t] = parseTasks(JSON.stringify([{
       id: 't1', title: 'A', description: '', prompt: '', startAt: 1, endAt: 2, createdAt: 1, updatedAt: 1,
-      schedule: { enabled: true, cron: 'not cron' },
+      schedule: { enabled: true, repeat: { kind: 'weekly' } }, // weekly without weekdays
     }]))
     expect(t.schedule).toBeUndefined()
   })
-  it('keeps a valid schedule', () => {
+  it('drops a legacy cron schedule (free-form cron is gone)', () => {
     const [t] = parseTasks(JSON.stringify([{
       id: 't1', title: 'A', description: '', prompt: '', startAt: 1, endAt: 2, createdAt: 1, updatedAt: 1,
-      schedule: { enabled: true, cron: '0 9 * * *', dueAt: 5 },
+      schedule: { enabled: true, cron: '0 9 * * *' },
     }]))
-    expect(t.schedule?.cron).toBe('0 9 * * *')
-    expect(t.schedule?.dueAt).toBe(5)
+    expect(t.schedule).toBeUndefined()
+  })
+  it('keeps a valid repeat schedule with normalized weekdays + materialized', () => {
+    const [t] = parseTasks(JSON.stringify([{
+      id: 't1', title: 'A', description: '', prompt: '', startAt: 1, endAt: 2, createdAt: 1, updatedAt: 1,
+      schedule: {
+        enabled: true, repeat: { kind: 'weekly', weekdays: [1, 3, 1, 9, 'x'], skipHolidays: true },
+        materialized: ['2025-01-06', 'bad'],
+      },
+    }]))
+    expect(t.schedule?.repeat?.kind).toBe('weekly')
+    expect(t.schedule?.repeat?.weekdays).toEqual([1, 3]) // dedup + invalid dropped
+    expect(t.schedule?.repeat?.skipHolidays).toBe(true)
+    expect(t.schedule?.materialized).toEqual(['2025-01-06'])
+  })
+  it('carries originTaskId for repeat copies', () => {
+    const [t] = parseTasks(JSON.stringify([{
+      id: 't1', title: 'A', description: '', prompt: '', startAt: 1, endAt: 2, createdAt: 1, updatedAt: 1,
+      originTaskId: 'tpl',
+    }]))
+    expect(t.originTaskId).toBe('tpl')
   })
 })

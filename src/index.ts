@@ -1,8 +1,8 @@
 /**
  * dsh-calendar host half (node). Loader entry for the plugin's host face:
- * owns the ledger + HTTP/SSE routes. The cron scheduler (M5) and the
- * real-execution runner (M4) and the SystemPrompt announcement (M6) build on
- * this service.
+ * owns the ledger + HTTP/SSE routes. The scheduler (repeat materialization +
+ * one-shot runs), the real-execution runner (M4) and the SystemPrompt
+ * announcement (M6) build on this service.
  */
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the service Context augmentations.
@@ -35,7 +35,7 @@ export const calendar_SETTINGS_NAMESPACE = settingsNamespace('calendar')
 
 /** Model-facing announcement: the calendar plugin's presence and capabilities. */
 export const calendar_GUIDANCE =
-  'The user has a calendar todo plugin (dsh-calendar): tasks carry a start/end block, an Eisenhower urgency/importance quadrant, subtasks, pinned execution settings (workspace / session / provider+model / preset / permission) and an optional recurring cron or one-off due schedule. Scheduled tasks run automatically in the Host and settle their execution records. When the user asks about tasks, appointments or scheduling, the calendar is the source of truth.'
+  'The user has a calendar todo plugin (dsh-calendar): tasks carry a start/end block, an Eisenhower urgency/importance quadrant, subtasks, pinned execution settings (workspace / session / provider+model / preset / permission), and an optional schedule — either a constrained daily/weekly repeat (the task is copied onto each matching date, optionally skipping weekends/holidays) or a one-off due instant that runs automatically in the Host and settles its execution records. When the user asks about tasks, appointments or scheduling, the calendar is the source of truth.'
 
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
@@ -69,12 +69,13 @@ export function apply(ctx: Context, config?: Config): void {
   if (commands !== undefined) env.commands = commands as unknown as RunnerCommandsFace
   if (agents !== undefined) env.agents = agents as unknown as RunnerAgentsFace
   const runner = new HostExecutionRunner(service.ledger, env)
-  // Host cron scheduler: fires due scheduled tasks through the runner and
-  // reconciles executions left running across a restart.
+  // Host scheduler: fires due one-shot tasks through the runner, materializes
+  // repeat copies, and reconciles executions left running across a restart.
   const scheduler = new HostScheduleService(
     {
       tasks: () => service.ledger.getSnapshot().tasks,
       advanceSchedule: (id, next, last) => service.ledger.advanceSchedule(id, next, last),
+      materializeRepeats: (now, horizon) => service.ledger.materializeRepeats(now, horizon),
     },
     runner,
   )

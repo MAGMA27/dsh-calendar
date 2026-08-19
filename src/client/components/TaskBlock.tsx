@@ -40,6 +40,7 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
   const subDone = completedSubtaskCount(task)
   const hasProvider = task.provider !== undefined && task.model !== undefined
   const scheduled = task.schedule?.enabled === true
+  const isCopy = task.originTaskId !== undefined
   const running = task.executions.some(e => e.endedAt === undefined)
 
   const editable = onEditStart !== undefined
@@ -69,10 +70,11 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
         <span className={css.taskBlockTitle} data-done={task.done || undefined}>{task.title}</span>
         <span className={css.taskBlockTime}>{fmtTime(task.startAt)}–{fmtTime(task.endAt)}</span>
       </span>
-      {(scheduled || running || subCount > 0 || hasProvider) && (
+      {(scheduled || running || subCount > 0 || hasProvider || isCopy) && (
         <span className={css.taskBlockMeta}>
           {running && <span className={css.taskBadge} title={t('task.running')}>{t('task.running')}</span>}
           {scheduled && <span className={css.taskBadge} title={t('task.scheduled')}>🕐</span>}
+          {isCopy && <span className={css.taskBadge} title={t('task.repeatCopy')}>↻</span>}
           {subCount > 0 && <span className={css.taskBadge}>{t('task.progress', { done: subDone, total: subCount })}</span>}
           {hasProvider && (
             <span className={css.taskBadge}>{t('task.provider', { provider: task.provider!, model: task.model! })}</span>

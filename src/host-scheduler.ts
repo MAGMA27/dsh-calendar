@@ -1,12 +1,15 @@
 /**
- * Host-side cron scheduler (M5). On a tick it scans the ledger for enabled
- * schedules whose next-run instant is due, triggers the real-execution runner
- * for each, and — only after the run is accepted — rolls the schedule forward
- * to the next cron match. A rejected run (the task is already running, e.g. a
- * long turn still settling) keeps its due slot and is retried on the next
- * tick, so a recurring task is never skipped. Missed runs (the Host was
- * down, or the tab was closed) are not backfilled: a due task fires on the
- * next tick and otherwise waits for its next cron match.
+ * Host-side scheduler. On a tick it does two jobs:
+ *  1. Fire due one-shot schedules: scans the ledger for enabled schedules whose
+ *     next-run instant is due, triggers the real-execution runner for each, and
+ *     — only after the run is accepted — clears the schedule (advanceSchedule
+ *     removes a completed one-shot entirely). A rejected run (the task is
+ *     already running, e.g. a long turn still settling) keeps its due slot and
+ *     is retried on the next tick, so a scheduled task is never skipped.
+ *     Missed runs (the Host was down, or the tab was closed) are not backfilled.
+ *  2. Materialize repeat copies: repeat templates never run themselves; the
+ *     ledger's materializeRepeats() sweep ensures one plain copy exists on each
+ *     matching date (idempotent, tracked per date).
  *
  * reconcileAll() settles executions left 'running' across a Host restart by
  * inspecting the current session status (delegated to the runner). It runs
@@ -17,12 +20,14 @@
  * intervals.
  */
 import type { TaskRecord } from './core/tasks.ts'
-import { isValidCron, nextRunAtMs } from './core/schedule.ts'
+import { REPEAT_HORIZON_DAYS } from './core/repeat.ts'
 
 /** The narrow ledger face the scheduler needs. */
 export interface SchedulerLedgerFace {
   tasks(): readonly TaskRecord[]
   advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined): boolean
+  /** Materialize repeat copies for the rolling horizon; true when anything changed. */
+  materializeRepeats(now: number, horizonDays?: number): boolean
 }
 
 /** The narrow runner face the scheduler calls. */
@@ -49,15 +54,6 @@ export interface HostSchedulerOptions {
   now?: () => number
   tickMs?: number
   timers?: HostSchedulerTimers
-}
-
-/** Compute the next run instant after the due point; undefined ends a one-shot. */
-function nextAfterDue(schedule: NonNullable<TaskRecord['schedule']>, from: number): number | undefined {
-  const cron = schedule.cron
-  if (cron !== undefined && cron.trim() !== '' && isValidCron(cron)) {
-    return nextRunAtMs(cron, from)
-  }
-  return undefined
 }
 
 /**
@@ -88,7 +84,8 @@ export class HostScheduleService {
     if (this.disposed || this.started) return
     this.started = true
     // Immediate catch-up after a restart: fire anything that became due while
-    // the Host was down, and reconcile executions left 'running'.
+    // the Host was down, materialize missed repeat copies, and reconcile
+    // executions left 'running'.
     this.immediateTimer = this.timers.immediate(() => {
       void this.tick()
       void this.reconcileAll()
@@ -108,18 +105,21 @@ export class HostScheduleService {
     if (this.intervalTimer !== undefined) { this.timers.clear(this.intervalTimer); this.intervalTimer = undefined }
   }
 
-  /** Fire every due schedule, rolling each forward only once its run is accepted. */
+  /** Fire due one-shots (advancing each only once its run is accepted), then
+   * materialize repeat copies. */
   async tick(): Promise<void> {
     const now = this.now()
     for (const task of this.ledger.tasks()) {
       const schedule = task.schedule
       if (schedule === undefined || schedule.enabled !== true) continue
+      // Repeat templates never run here (no nextRunAt); the sweep below copies
+      // them onto their dates. One-shots fire at their due instant.
       const due = schedule.nextRunAt
       if (due === undefined || due > now) continue
-      const next = nextAfterDue(schedule, due)
       const result = await this.runner.run(task.id)
-      if (result.accepted) this.ledger.advanceSchedule(task.id, next, now)
+      if (result.accepted) this.ledger.advanceSchedule(task.id, undefined, now)
     }
+    this.ledger.materializeRepeats(now, REPEAT_HORIZON_DAYS)
   }
 
   /** Settle executions left 'running' across a Host restart (delegates to the runner). */

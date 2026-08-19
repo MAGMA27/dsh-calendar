@@ -10,6 +10,7 @@ import { MatrixPanel } from './MatrixPanel.tsx'
 import { AgendaPanel } from './AgendaPanel.tsx'
 import { CreateTaskModal } from './CreateTaskModal.tsx'
 import { TaskDetailPanel } from './TaskDetailPanel.tsx'
+import { RepeatTimeConfirm } from './RepeatTimeConfirm.tsx'
 import { t, type calendarKey } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -87,6 +88,7 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
       {snap.draft !== undefined && snap.status === 'ready' && (
         <CreateTaskModal controller={controller} onClose={() => controller.setDraft(undefined)} />
       )}
+      {snap.pendingRepeatTimeEdit !== undefined && <RepeatTimeConfirm controller={controller} />}
     </div>
   )
 }

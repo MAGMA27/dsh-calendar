@@ -1,7 +1,7 @@
 # dsh-calendar —— DSH Web GUI 日历待办插件
 
 ## 项目概览 (Project Overview)
-一个可热插拔的 DeepSeek Harness (DSH) Web GUI 客户端插件：侧边栏「日历」入口，点击后中间列切换为日历视图；支持周视图时间网格**拖选时间段**建任务、**艾森豪威尔紧急/重要矩阵**、**子任务**、任务可**钉住执行会话与 LLM provider**、**Host cron 定时让 LLM 响应**。采用 **Host 权威架构**：任务账本、定时调度、执行结算全部在 DSH Host 进程内，浏览器只是同源异步视图。
+一个可热插拔的 DeepSeek Harness (DSH) Web GUI 客户端插件：侧边栏「日历」入口，点击后中间列切换为日历视图；支持周视图时间网格**拖选时间段**建任务、**艾森豪威尔紧急/重要矩阵**、**子任务**、任务可**钉住执行会话与 LLM provider**、**Host 定时调度**（受限每日/每周重复物化副本 + 一次性到时自动执行）。采用 **Host 权威架构**：任务账本、定时调度、执行结算全部在 DSH Host 进程内，浏览器只是同源异步视图。
 
 - 核心技术：TypeScript + React 18 + CSS Modules；Cordis 4 / DSH rc.6 SDK；tsdown（官方 client bundle 预设，产物为 `window.__ModuleLoader__.load({id, factory})`）；vitest + jsdom。
 - 运行形态：DSH profile-bundle 双面插件（`package.json` 声明 `dsh.bundle.patch` + `dsh.client`）。
@@ -40,8 +40,8 @@
 - 每次改动后以 `pnpm typecheck && pnpm build && pnpm test` 为基线；涉及 apply/挂载的改动再补一条「客户端不引用未 inject 服务」的静态检查或评审
 
 ## 目录结构与职责 (Project Structure)
-- `src/index.ts` + `src/host-*.ts`: Host 半边（host-ledger 账本、host-service cron 调度、host-runner 执行、host-routes HTTP/SSE、SystemPrompt 段）
-- `src/core/`: 纯函数领域层（tasks 任务模型 / calendar 网格数学 / schedule cron / store 账本解析），host 与 client 共享
+- `src/index.ts` + `src/host-*.ts`: Host 半边（host-ledger 账本、host-scheduler 定时调度、host-runner 执行、host-routes HTTP/SSE、SystemPrompt 段）
+- `src/core/`: 纯函数领域层（tasks 任务模型 / calendar 网格数学 / repeat 重复规则+节假日 / store 账本解析），host 与 client 共享
 - `src/client/`: 浏览器半边（视图组件、host-api HTTP transport、sidebar-entry / calendar-mount DOM 挂载、设置卡、locales）
 - `src/protocol.ts`: Host↔浏览器共享的 action/snapshot 判别联合协议
 - `build/`: 官方 client-bundle tsdown 预设（`tsdown.client.ts` + `web-platform.ts`，复制自 deepseek-harness / dsh-web-ui）

@@ -4,7 +4,7 @@
 # `dsh plugin --profile web add link:<path>`.
 #
 # The row is a bare plugin by package name: the node half (exports ".") runs
-# in the host process (ledger, cron scheduler, execution runner, HTTP/SSE
+# in the host process (ledger, scheduler, execution runner, HTTP/SSE
 # routes, the system-prompt announcement section), and the `dsh.client`
 # declaration in package.json makes the browser half (exports "./client",
 # served at /plugins/<id>/client.js) load in the web GUI.

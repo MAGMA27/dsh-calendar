@@ -1,5 +1,6 @@
 /** Full create-task form: title, time range, urgency/importance, description,
- * prompt, quick subtasks, optional schedule, and execution settings.
+ * prompt, quick subtasks, optional schedule (repeat or one-off), and execution
+ * settings.
  */
 import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
@@ -7,6 +8,7 @@ import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
 import type { SubtaskRecord, Urgency, Importance } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
+import { ScheduleSettings, type ScheduleSettingsValue } from './ScheduleSettings.tsx'
 import { t, type calendarKey } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -25,8 +27,7 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
   const [importance, setImportance] = useState<Importance>('medium')
   const [subtaskInput, setSubtaskInput] = useState('')
   const [subtasks, setSubtasks] = useState<SubtaskRecord[]>([])
-  const [cron, setCron] = useState('')
-  const [dueAt, setDueAt] = useState('')
+  const [schedule, setSchedule] = useState<ScheduleSettingsValue>({ mode: 'none', weekdays: [], skipHolidays: false, dueAt: '' })
   const [exec, setExec] = useState<ExecutionSettingsValue>({})
   const [error, setError] = useState<string | null>(null)
 
@@ -39,15 +40,19 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
 
   const submit = async (): Promise<void> => {
     if (title.trim() === '' || draft === undefined) { setError('title required'); return }
-    const dueMs = dueAt.trim() === '' ? undefined : new Date(dueAt).getTime()
+    if (schedule.mode === 'weekly' && schedule.weekdays.length === 0) { setError(t('schedule.weeklyRequired')); return }
+    const dueMs = schedule.dueAt.trim() === '' ? undefined : new Date(schedule.dueAt).getTime()
+    const repeat = schedule.mode === 'none'
+      ? undefined
+      : { kind: schedule.mode, weekdays: schedule.mode === 'weekly' ? schedule.weekdays : undefined, skipHolidays: schedule.skipHolidays }
     await controller.dispatch({
       kind: 'create',
       input: {
         title, description, prompt, startAt: draft.start, endAt: draft.end,
         urgency, importance, subtasks, ...exec,
       },
-      schedule: (cron.trim() !== '' || dueMs !== undefined)
-        ? { enabled: true, cron: cron.trim() === '' ? undefined : cron.trim(), dueAt: dueMs }
+      schedule: (repeat !== undefined || dueMs !== undefined)
+        ? { enabled: true, repeat, dueAt: dueMs }
         : undefined,
     })
     controller.setDraft(undefined)
@@ -104,9 +109,8 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
         )}
         <div className={css.formRow}>
           <label className={css.formLabel}>{t('new.schedule')}</label>
-          <input className={css.input} value={cron} placeholder={t('new.scheduleCron')} onChange={e => setCron(e.target.value)} />
-          <input className={css.input} type="datetime-local" value={dueAt} onChange={e => setDueAt(e.target.value)} />
         </div>
+        <ScheduleSettings value={schedule} onChange={setSchedule} />
         <ExecutionSettings value={exec} catalog={controller.getSnapshot().catalog} onChange={setExec} />
         {error !== null && <div className={css.modalError}>{error}</div>}
         <div className={css.modalActions}>

@@ -58,12 +58,12 @@
 3. 艾森豪威尔 knobs：紧急/重要选择，改即 `setQuadrant`。
 4. 子任务 checklist：勾选 `setSubtaskDone`；新增/删除；父任务进度条（3px 圆角、`state-success-primary` 填充）。
 5. 执行设置 ExecutionSettings：工作区 / 执行会话（新建或复用）/ **provider + model + reasoningEffort** / agent 预设 / 权限；下拉 + 徽标预览；留空 = 运行时默认。**agent 预设是下拉**：Host 经 `agentPreset.list`（ApiProxy）读 preset roster 投影为 `catalog.modes`（`name ?? id` 作标签、剔除 `broken`），有 roster 渲染 `<select>`，无则回退自由文本。
-6. 定时：启用开关 + 5 段 cron + 预设按钮组（每天09:00/每小时/每10分钟/每周一09:00）+ 下次运行。**一次性 dueAt 触发并执行后自动清除**：`advanceSchedule` 在 `nextRunAt===undefined` 且无 cron 时整体删除 schedule 规则（徽标/清除按钮/到时全部消失）；cron 任务照旧滚进下一次匹配。
+6. 定时：**受限重复规则**（不重复/每日/每周 + 周几多选 + 跳过周末与节假日开关）或**一次性到时**（datetime-local）。**不再有自由 cron 输入**（曾因权限过高/崩溃被移除）。规则模型：`ScheduleRule { enabled, repeat?: {kind:'daily'|'weekly', weekdays?, skipHolidays?}, dueAt?, nextRunAt?, materialized? }`——重复模板**不会自动执行**，Host 把它**物化为各匹配日期的普通副本**（见 §11）；一次性 dueAt 到点自动执行，完成后由 `advanceSchedule` 整体清除调度（徽标/清除按钮/到时全部消失）。
 7. 执行记录 + 会话跳转（M4）：sessionId/起止/结果/错误；「查看会话」跳 transcript。
 8. 删除 / 归档（danger 按钮）。
 
 ### 5.3 创建/编辑弹窗 CreateTaskModal **[M3 已实现]**
-拖选或"新建"触发的居中弹窗（`bg-layer-2` 底、`border-l2` 边、圆角 12px、阴影 `bg-mask-3`、Escape 关闭）：预填起止、标题、紧急/重要、创建/取消。已扩展为完整表单：标题、描述、Prompt、紧急/重要、子任务（回车添加）、定时（cron + 一次到时）、执行设置、创建/取消。
+拖选或"新建"触发的居中弹窗（`bg-layer-2` 底、`border-l2` 边、圆角 12px、阴影 `bg-mask-3`、Escape 关闭）：预填起止、标题、紧急/重要、创建/取消。已扩展为完整表单：标题、描述、Prompt、紧急/重要、子任务（回车添加）、定时（每日/每周重复 + 一次到时，共享 `ScheduleSettings` 组件）、执行设置、创建/取消。
 
 ### 5.4 表单控件 / 按钮
 输入 `--dsw-specific-input-major` 底、`border-l2` 边、圆角 8px、focus `brand-primary` 2px 描边；选择器为下拉 + 徽标预览；primary = `button-primary-fill`（hover `-hover`）；ghost = 透明 + `border-l2`；danger = `state-error-primary`。
@@ -110,5 +110,9 @@ client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-c
 - **会话**：钉了 `sessionId` → 复用（须存在且非 busy）；否则在目标/最近工作区新建。新建时 `sessions.create` 直接带 `agentPreset`；复用会话钉了预设 → `agentPresets.select` 重组（**仅空白会话合法**，已开聊的会话会 `agent-preset-locked` 失败关闭）。
 - **钉子顺序（全部在 prompt 前应用，失败即关闭，绝不在错误设置下运行）**：预设 → provider+model（`sessions.selectModel`，缺一即拒）→ **权限经命令注册表**（`ctx.commands.execute(agent, '/permission <preset>')`，`agent = ctx.agents.get(sessionId)`；`commands`/`agents` 为可选 `ctx.get`，缺失时权限钉子明确失败）→ rename（纯装饰，失败不阻断）→ `sessions.prompt`（任务 prompt 或标题）。
 - **坑（必读）**：① 进程内 ApiProxy 域对象是 **`agentPresets`（复数）**、wire 路径是 `agentPreset.*`（单数）——目录与 runner 的 face 都按复数命名；② **`sessions.prompt` 不路由斜杠命令**（文档注释声称支持，当前 build 未实现）——权限必须走命令注册表，经 prompt 会把 `/permission …` 当普通消息发给模型。
-- **定时**：`HostScheduleService` tick 扫描 `nextRunAt<=now` 的 enabled 调度 → 交 runner → **只接受后**才 `advanceSchedule` 滚动到下一 cron 匹配（被拒保留到期槽下轮重试）；一次性 dueAt 完成后由 ledger 整体清除调度（见 §5.2-6）。
+- **定时**：`HostScheduleService` tick 每 30s 干两件事——① **一次性**：扫描 `nextRunAt<=now` 的 enabled 调度 → 交 runner → **只接受后**才 `advanceSchedule` 清除（被拒保留到期槽下轮重试；错过不补）；② **重复物化**：调 ledger `materializeRepeats(now, 60天)`，把每个 enabled 且未归档的重复模板按规则补出副本（见下）。
+- **重复规则 = 物化副本，不自动执行**：模板自身的块就是当天的那个任务；副本从「模板日期/今天 较晚者的次日」起、到「今天 + 60 天」为止，按规则（周几过滤 + 可选跳过周末/节假日）逐日物化。副本是**普通任务**（`originTaskId` 指回模板、无 schedule、时间=模板时刻/时长、继承内容与执行钉子、done=false）。`schedule.materialized`（YYYY-MM-DD）记录已物化日期——**删掉某一天的副本后不会被重新补回**；清掉重复规则不会删除已有副本；模板自身的日期不产生副本。
+- **副本时间改动的确认（commit 本轮）**：对任何带 `originTaskId` 的副本做时间改动（周视图拖拽移动/缩放）会先弹确认——「**只改这一个并解绑**」（`update` + `originTaskId:null`，从此 ↻ 徽标消失、不再随模板级联删除、也不再被「改所有」波及）或「**改所有副本**」（`shiftRepeatTimes` 动作：模板 + 全部仍绑定副本按同一 startDelta/endDelta 平移，未来新副本也同步）。普通任务拖拽照旧直接提交。
+- **级联删除**：删除重复**模板** → 连带删除其仍绑定的副本（未解绑的）；删除单个**副本**只删它自己（日期仍在 `materialized` 里，不会被补回）。
+- **节假日**：`src/core/repeat.ts` 内置「周末 + 中国法定节假日（2025 官方 / 2026 预估）」集合，`skipHolidays` 开启时跳过（周六周日照跳，周几自选的场景也受此约束——选了周末又开跳过 = 永不物化）。
 - **执行设置目录**：Host `/api/calendar/options` 聚合 workspaces / sessions（项目分组、归档排除）/ providers+models / **modes**（`agentPresets.list` → `name ?? id`，剔除 `broken`）；客户端经 `watchCatalogRefresh` 在会话列表变更或日历打开时防抖重拉（见 §9）。

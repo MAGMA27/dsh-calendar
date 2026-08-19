@@ -1030,3 +1030,51 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .modalError { font-size: 12px; color: var(--dsw-alias-state-error-primary); }
 
 .modalActions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* --- repeat schedule + copy confirm ---------------------------------------- */
+
+.weekdayChips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.weekdayChip {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.weekdayChip:hover {
+  border-color: var(--dsw-static-deepseek-500);
+  color: var(--dsw-alias-label-primary);
+}
+
+.weekdayChip[data-active] {
+  border-color: var(--dsw-static-deepseek-500);
+  background: var(--dsw-static-deepseek-500);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-weight: 600;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.copyNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.scheduleSummary { font-size: 12px; color: var(--dsw-alias-label-secondary); }
+
+.repeatConfirmText { font-size: 13px; color: var(--dsw-alias-label-secondary); margin: 0; }
+.repeatConfirmTask { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); margin: 0; }

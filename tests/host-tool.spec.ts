@@ -75,12 +75,15 @@ describe('calendar_task tool', () => {
     expect(((got3.task as Record<string, unknown>).subtasks as unknown[]).length).toBe(2)
   })
 
-  it('sets a cron schedule and archives/restores/deletes', async () => {
+  it('sets a repeat schedule and archives/restores/deletes', async () => {
     const { tool, ledger } = mk()
     const created = await exec(tool, { action: 'create', title: 'z' })
     const id = (created.task as Record<string, unknown>).id as string
-    const sched = await exec(tool, { action: 'setSchedule', id, cron: '0 9 * * *' })
-    expect((sched.task as Record<string, unknown>).schedule).not.toBeNull()
+    const sched = await exec(tool, { action: 'setSchedule', id, repeat: 'weekly', weekdays: [1, 3], skipHolidays: true })
+    const s = (sched.task as Record<string, unknown>).schedule as Record<string, unknown>
+    expect(s).not.toBeNull()
+    expect((s.repeat as Record<string, unknown>).kind).toBe('weekly')
+    expect((s.repeat as Record<string, unknown>).weekdays).toEqual([1, 3])
     await exec(tool, { action: 'archive', id })
     expect(ledger.taskById(id)!.archivedAt).toBeDefined()
     await exec(tool, { action: 'restore', id })

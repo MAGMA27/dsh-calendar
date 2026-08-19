@@ -6,7 +6,7 @@
  * the types; the schemas live in the Host half).
  */
 import type {
-  NewTaskInput, TaskUpdatePatch, TaskPermission, Urgency, Importance,
+  NewTaskInput, TaskUpdatePatch, TaskPermission, Urgency, Importance, RepeatRule,
 } from './core/tasks.ts'
 
 /** Ledger schema version this build reads/writes. */
@@ -45,7 +45,8 @@ export interface calendarEventPayload {
 /** Requested schedule expressed in a create action. */
 export interface CreateScheduleInput {
   enabled: boolean
-  cron?: string
+  /** Constrained repeat rule (daily/weekly); absent for a one-shot dueAt. */
+  repeat?: RepeatRule
   dueAt?: number
 }
 
@@ -90,11 +91,25 @@ export interface DeleteTaskAction { kind: 'delete'; id: string }
 export interface ArchiveTaskAction { kind: 'archive'; id: string }
 export interface RestoreTaskAction { kind: 'restore'; id: string }
 
-/** Set a task's scheduled-run rule (`null` clears cron/dueAt). */
+/** Set a task's scheduled-run rule (`null` clears repeat/dueAt). */
 export interface SetScheduleAction {
   kind: 'setSchedule'
   id: string
-  patch: { enabled?: boolean; cron?: string | null; dueAt?: number | null }
+  patch: { enabled?: boolean; repeat?: RepeatRule | null; dueAt?: number | null }
+}
+
+/**
+ * Apply the same time change to every bound copy of a repeat template (and the
+ * template itself): shift each task's startAt/endAt by the deltas. The browser
+ * sends this only after the user picks "change all" in the repeat-time
+ * confirmation; `id` is the copy that was edited (its originTaskId resolves
+ * the template + sibling copies).
+ */
+export interface ShiftRepeatTimesAction {
+  kind: 'shiftRepeatTimes'
+  id: string
+  startDelta: number
+  endDelta: number
 }
 
 /** Request a real dsh execution of a task (manual run). */
@@ -120,6 +135,7 @@ export type calendarAction =
   | ArchiveTaskAction
   | RestoreTaskAction
   | SetScheduleAction
+  | ShiftRepeatTimesAction
   | RunTaskAction
   | ImportAction
 

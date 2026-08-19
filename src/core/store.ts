@@ -7,9 +7,8 @@
  */
 import {
   isImportance, isTaskPermission, isUrgency,
-  type ExecutionRecord, type ScheduleRule, type TaskRecord,
+  type ExecutionRecord, type RepeatRule, type ScheduleRule, type TaskRecord,
 } from './tasks.ts'
-import { isValidCron } from './schedule.ts'
 
 /** Structural row check. The task's schedule is repaired separately. */
 function isTaskRecordShape(value: unknown): value is Record<string, unknown> {
@@ -37,19 +36,39 @@ function normalizeEnum<T extends string>(value: unknown, allowed: readonly T[]):
   return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : undefined
 }
 
+/** Repair a persisted repeat rule; drops it when unusable. */
+function normalizeRepeat(value: unknown): RepeatRule | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const r = value as Record<string, unknown>
+  if (r.kind !== 'daily' && r.kind !== 'weekly') return undefined
+  const rule: RepeatRule = { kind: r.kind, skipHolidays: r.skipHolidays === true }
+  if (rule.kind === 'weekly') {
+    const weekdays = Array.isArray(r.weekdays)
+      ? r.weekdays.filter((d): d is number => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6)
+      : []
+    if (weekdays.length === 0) return undefined
+    rule.weekdays = [...new Set(weekdays)]
+  }
+  return rule
+}
+
 /** Repair a persisted schedule rule; drops it when unusable. */
 function normalizeSchedule(value: unknown): ScheduleRule | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const r = value as Record<string, unknown>
-  const cron = typeof r.cron === 'string' && r.cron.trim() !== '' && isValidCron(r.cron) ? r.cron.trim() : undefined
+  const repeat = normalizeRepeat(r.repeat)
   const dueAt = typeof r.dueAt === 'number' ? r.dueAt : undefined
-  if (cron === undefined && dueAt === undefined) return undefined
+  if (repeat === undefined && dueAt === undefined) return undefined
+  const materialized = Array.isArray(r.materialized)
+    ? r.materialized.filter((k): k is string => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k))
+    : undefined
   return {
     enabled: r.enabled === true,
-    cron,
+    repeat,
     dueAt,
     nextRunAt: typeof r.nextRunAt === 'number' ? r.nextRunAt : undefined,
     lastTriggeredAt: typeof r.lastTriggeredAt === 'number' ? r.lastTriggeredAt : undefined,
+    materialized: materialized !== undefined && materialized.length > 0 ? materialized : undefined,
   }
 }
 
@@ -126,6 +145,7 @@ export function parseTasks(raw: string | null): TaskRecord[] {
       reasoningEffort: normalizeTargetId(row.reasoningEffort),
       mode: normalizeTargetId(row.mode),
       permission: isTaskPermission(row.permission) ? row.permission : undefined,
+      originTaskId: normalizeTargetId(row.originTaskId),
       archivedAt: typeof row.archivedAt === 'number' ? row.archivedAt : undefined,
       createdAt: row.createdAt as number,
       updatedAt: row.updatedAt as number,

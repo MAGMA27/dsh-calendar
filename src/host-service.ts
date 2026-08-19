@@ -1,7 +1,8 @@
 /**
  * Host-side service container for dsh-calendar: owns the ledger and the
  * lifecycle of the Host half. M1 carries no scheduler/execution yet — the
- * cron scheduler (M5) and the real-execution runner (M4) mount here.
+ * scheduler (repeat materialization + one-shot runs) and the real-execution
+ * runner (M4) mount here.
  */
 import { AtomicFileLedgerPersist, HostLedger, type HostLedgerPersist } from './host-ledger.ts'
 

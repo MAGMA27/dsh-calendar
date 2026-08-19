@@ -58,6 +58,21 @@ function saveDayWindow(win: DayWindow): void {
   }
 }
 
+/** A pending time change on a repeat copy awaiting the user's confirmation:
+ * apply to this copy only (unbind), or shift the whole repeat (template + all
+ * bound copies). Populated by the week-grid drag end; resolved by the confirm
+ * dialog. */
+export interface PendingRepeatTimeEdit {
+  taskId: string
+  originTaskId: string
+  /** The copy's times before the drag. */
+  origStart: number
+  origEnd: number
+  /** The dragged new times. */
+  startAt: number
+  endAt: number
+}
+
 export interface calendarClientState {
   snapshot: calendarSnapshot
   /** The calendar cursor (a ms epoch); week view centers on its week. */
@@ -73,6 +88,8 @@ export interface calendarClientState {
   open: boolean
   /** Read endpoint option lists (workspaces/sessions/providers/models). */
   catalog: ExecutionCatalog
+  /** A repeat-copy time change awaiting "this copy" vs "all copies". */
+  pendingRepeatTimeEdit: PendingRepeatTimeEdit | undefined
   status: 'loading' | 'ready' | 'error'
   error: string | null
 }
@@ -155,6 +172,31 @@ export class calendarClientController {
   /** Replace the execution-settings option catalog (runtime data). */
   setCatalog(catalog: ExecutionCatalog): void { this.set({ catalog }) }
 
+  // --- repeat-copy time change confirmation ---------------------------------
+  /** Stage a repeat-copy time change; the confirm dialog resolves it. */
+  requestRepeatTimeEdit(edit: PendingRepeatTimeEdit): void { this.set({ pendingRepeatTimeEdit: edit }) }
+  cancelRepeatTimeEdit(): void { this.set({ pendingRepeatTimeEdit: undefined }) }
+  /**
+   * Resolve the staged repeat-copy time change:
+   *  - 'this': update only the edited copy and unbind it (originTaskId cleared);
+   *  - 'all': shift the template + every bound copy by the same deltas.
+   */
+  async resolveRepeatTimeEdit(choice: 'this' | 'all'): Promise<void> {
+    const edit = this.state.pendingRepeatTimeEdit
+    if (edit === undefined) return
+    this.set({ pendingRepeatTimeEdit: undefined })
+    if (choice === 'this') {
+      await this.dispatch({ kind: 'update', id: edit.taskId, patch: { startAt: edit.startAt, endAt: edit.endAt, originTaskId: null } })
+    } else {
+      await this.dispatch({
+        kind: 'shiftRepeatTimes',
+        id: edit.taskId,
+        startDelta: edit.startAt - edit.origStart,
+        endDelta: edit.endAt - edit.origEnd,
+      })
+    }
+  }
+
   /** Read the catalog from the transport. */
   transportOptions(): Promise<ExecutionCatalog> { return this.transport.options() }
 
@@ -180,6 +222,7 @@ export function initialState(cursor: number = Date.now(), weekStart: WeekStart =
     dayWindow: loadDayWindow(),
     open: false,
     catalog: { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [] },
+    pendingRepeatTimeEdit: undefined,
     status: 'loading',
     error: null,
   }

@@ -8,6 +8,7 @@ function mkTask(p: Partial<TaskRecord> & { id: string }): TaskRecord {
 function fakeLedger(tasks: TaskRecord[]) {
   const state = { tasks: [...tasks] }
   const advanced: Array<{ id: string; next: number | undefined; last: number | undefined }> = []
+  const sweeps: number[] = []
   const face: SchedulerLedgerFace = {
     tasks: () => state.tasks,
     advanceSchedule: (id: string, next: number | undefined, last: number | undefined) => {
@@ -15,8 +16,9 @@ function fakeLedger(tasks: TaskRecord[]) {
       state.tasks = state.tasks.map(t => t.id === id && t.schedule !== undefined ? { ...t, schedule: { ...t.schedule, nextRunAt: next, lastTriggeredAt: last } } : t)
       return true
     },
+    materializeRepeats: (now: number) => { sweeps.push(now); return false },
   }
-  return { face, advanced }
+  return { face, advanced, sweeps }
 }
 function fakeRunner(accept: boolean) {
   const runs: string[] = []
@@ -29,8 +31,8 @@ function fakeRunner(accept: boolean) {
 }
 
 describe('HostScheduleService', () => {
-  it('fires a due cron task and rolls it forward after acceptance', async () => {
-    const t = mkTask({ id: 'a', schedule: { enabled: true, cron: '0 9 * * *', nextRunAt: 1000 } })
+  it('fires a due one-shot and advances it to undefined (schedule cleared after acceptance)', async () => {
+    const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 900, nextRunAt: 1000 } })
     const { face, advanced } = fakeLedger([t])
     const { face: runner, runs } = fakeRunner(true)
     const s = new HostScheduleService(face, runner, { now: () => 2000 })
@@ -38,13 +40,12 @@ describe('HostScheduleService', () => {
     expect(runs).toEqual(['a'])
     expect(advanced).toHaveLength(1)
     expect(advanced[0].id).toBe('a')
+    expect(advanced[0].next).toBeUndefined()
     expect(advanced[0].last).toBe(2000)
-    expect(typeof advanced[0].next).toBe('number')
-    expect(advanced[0].next! >= 1000).toBe(true)
   })
 
   it('does not roll forward when the run is rejected (already running)', async () => {
-    const t = mkTask({ id: 'a', schedule: { enabled: true, cron: '0 9 * * *', nextRunAt: 1000 } })
+    const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 900, nextRunAt: 1000 } })
     const { face, advanced } = fakeLedger([t])
     const { face: runner, runs } = fakeRunner(false)
     const s = new HostScheduleService(face, runner, { now: () => 2000 })
@@ -53,14 +54,26 @@ describe('HostScheduleService', () => {
     expect(advanced).toHaveLength(0)
   })
 
-  it('skips disabled and not-yet-due schedules', async () => {
-    const off = mkTask({ id: 'off', schedule: { enabled: false, cron: '0 9 * * *', nextRunAt: 1000 } })
-    const fut = mkTask({ id: 'fut', schedule: { enabled: true, cron: '0 9 * * *', nextRunAt: 5000 } })
-    const { face } = fakeLedger([off, fut])
+  it('never runs a repeat template; it only materializes copies', async () => {
+    const t = mkTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily' } } })
+    const { face, advanced, sweeps } = fakeLedger([t])
+    const { face: runner, runs } = fakeRunner(true)
+    const s = new HostScheduleService(face, runner, { now: () => 2000 })
+    await s.tick()
+    expect(runs).toEqual([]) // no execution for the template
+    expect(advanced).toHaveLength(0)
+    expect(sweeps).toEqual([2000]) // the materialization sweep ran
+  })
+
+  it('skips disabled and not-yet-due schedules, and still sweeps', async () => {
+    const off = mkTask({ id: 'off', schedule: { enabled: false, dueAt: 1000, nextRunAt: 1000 } })
+    const fut = mkTask({ id: 'fut', schedule: { enabled: true, dueAt: 5000, nextRunAt: 5000 } })
+    const { face, sweeps } = fakeLedger([off, fut])
     const { face: runner, runs } = fakeRunner(true)
     const s = new HostScheduleService(face, runner, { now: () => 2000 })
     await s.tick()
     expect(runs).toEqual([])
+    expect(sweeps).toEqual([2000])
   })
 
   it('ends a one-shot dueAt schedule (next becomes undefined)', async () => {

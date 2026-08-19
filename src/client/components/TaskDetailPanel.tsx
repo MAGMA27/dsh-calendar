@@ -1,13 +1,16 @@
 /** Right-side task detail panel: edit the selected task's title, quadrant,
- * description/prompt, subtask checklist, schedule, execution settings, and
- * view its execution records; run / delete / archive from here.
+ * description/prompt, subtask checklist, schedule (repeat or one-off),
+ * execution settings, and view its execution records; run / delete / archive
+ * from here.
  */
 import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
-import type { TaskRecord, Urgency, Importance } from '../../core/tasks.ts'
+import { nextRepeatDate } from '../../core/repeat.ts'
+import type { TaskRecord, Urgency, Importance, RepeatRule } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
+import { ScheduleSettings, type ScheduleSettingsValue } from './ScheduleSettings.tsx'
 import { t, type calendarKey } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -26,13 +29,32 @@ function quadKnobs(task: TaskRecord): Partial<ExecutionSettingsValue> {
   }
 }
 
+/** Human repeat-rule summary, e.g. "每周 周一、周三 · 跳过节假日". */
+function repeatSummary(rule: RepeatRule): string {
+  const head = rule.kind === 'daily' ? t('schedule.daily') : t('schedule.weekly')
+  const days = rule.kind === 'weekly' && rule.weekdays !== undefined && rule.weekdays.length > 0
+    ? ` ${(rule.weekdays as number[]).slice().sort((a, b) => a - b).map(d => t(`weekday.${(d + 6) % 7}` as calendarKey)).join('、')}`
+    : ''
+  return head + days + (rule.skipHolidays === true ? ` · ${t('schedule.skipHolidays')}` : '')
+}
+
+function initialSchedule(task: TaskRecord): ScheduleSettingsValue {
+  const s = task.schedule
+  const repeat = s?.repeat
+  return {
+    mode: repeat?.kind ?? 'none',
+    weekdays: repeat?.weekdays ?? [],
+    skipHolidays: repeat?.skipHolidays === true,
+    dueAt: s !== undefined && s.dueAt !== undefined ? new Date(s.dueAt).toISOString().slice(0, 16) : '',
+  }
+}
+
 export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: TaskDetailPanelProps) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [prompt, setPrompt] = useState(task.prompt)
   const [subtaskInput, setSubtaskInput] = useState('')
-  const [cron, setCron] = useState(task.schedule?.cron ?? '')
-  const [dueAt, setDueAt] = useState(task.schedule && task.schedule.dueAt !== undefined ? new Date(task.schedule.dueAt).toISOString().slice(0, 16) : '')
+  const [schedule, setSchedule] = useState<ScheduleSettingsValue>(initialSchedule(task))
   const [exec, setExec] = useState<ExecutionSettingsValue>(quadKnobs(task))
   const [dirty, setDirty] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -42,6 +64,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
 
   const save = async (): Promise<void> => {
     if (title.trim() === '') { setError('title required'); return }
+    if (schedule.mode === 'weekly' && schedule.weekdays.length === 0) { setError(t('schedule.weeklyRequired')); return }
     await controller.dispatch({
       kind: 'update',
       id: task.id,
@@ -52,15 +75,17 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
         mode: exec.mode ?? null, permission: exec.permission ?? null,
       },
     })
-    const dueMs = dueAt.trim() === '' ? undefined : new Date(dueAt).getTime()
-    const hasCron = cron.trim() !== ''
-    // A schedule exists only when a cron or a one-off due time is actually set;
-    // clearing both must switch the schedule off (and drop the week badge).
-    const enabled = hasCron || dueMs !== undefined
+    const dueMs = schedule.dueAt.trim() === '' ? undefined : new Date(schedule.dueAt).getTime()
+    // A schedule exists only when a repeat rule or a one-off due time is set;
+    // clearing both must switch the schedule off (and drop the 🕐 badge).
+    const repeat = schedule.mode === 'none'
+      ? null
+      : { kind: schedule.mode, weekdays: schedule.mode === 'weekly' ? schedule.weekdays : undefined, skipHolidays: schedule.skipHolidays }
+    const enabled = repeat !== null || dueMs !== undefined
     await controller.dispatch({
       kind: 'setSchedule',
       id: task.id,
-      patch: { enabled, cron: hasCron ? cron.trim() : null, dueAt: dueMs ?? null },
+      patch: { enabled, repeat, dueAt: dueMs ?? null },
     })
     setDirty(false)
     setMessage(t('detail.saved'))
@@ -68,10 +93,9 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   }
 
   const clearSchedule = (): void => {
-    setCron('')
-    setDueAt('')
+    setSchedule({ mode: 'none', weekdays: [], skipHolidays: false, dueAt: '' })
     setDirty(true)
-    void controller.dispatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, cron: null, dueAt: null } })
+    void controller.dispatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, repeat: null, dueAt: null } })
   }
 
   const runNow = async (): Promise<void> => {
@@ -97,6 +121,15 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
         <h3 className={css.detailTitle}>{t('detail.title')}</h3>
         <button type="button" className={css.btnGhost} onClick={onClose}>{t('detail.close')}</button>
       </div>
+
+      {task.originTaskId !== undefined && (
+        <div className={css.copyNote}>
+          <span>↻ {t('detail.repeatCopy')}</span>
+          <button type="button" className={css.execSession} onClick={() => controller.selectTask(task.originTaskId)}>
+            {t('detail.openTemplate')}
+          </button>
+        </div>
+      )}
 
       <div className={css.formRow}>
         <input className={css.input} value={title} placeholder={t('new.titlePlaceholder')}
@@ -149,19 +182,23 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
 
       <div className={css.detailSection}>
         <h4 className={css.execTitle}>{t('detail.schedule')}</h4>
-        <div className={css.formRow}>
-          <label className={css.formLabel}>{t('detail.cron')}</label>
-          <input className={css.input} value={cron} placeholder={t('detail.cronPlaceholder')} onChange={e => { setCron(e.target.value); markDirty() }} />
-        </div>
-        <div className={css.formRow}>
-          <label className={css.formLabel}>{t('detail.dueAt')}</label>
-          <input className={css.input} type="datetime-local" value={dueAt} onChange={e => { setDueAt(e.target.value); markDirty() }} />
-        </div>
-        {(task.schedule?.enabled === true) && (
-          <button type="button" className={css.btnGhost} onClick={clearSchedule}>{t('detail.clearSchedule')}</button>
+        <ScheduleSettings value={schedule} onChange={(v) => { setSchedule(v); markDirty() }} />
+        {task.schedule?.repeat !== undefined && (
+          <div className={css.scheduleSummary}>
+            {repeatSummary(task.schedule.repeat)}
+            {(() => {
+              const next = nextRepeatDate(task.schedule!.repeat!, Date.now())
+              return next !== undefined
+                ? <div className={css.scheduleNext}>{t('schedule.next', { date: new Date(next).toLocaleDateString() })}</div>
+                : null
+            })()}
+          </div>
         )}
         {task.schedule?.nextRunAt !== undefined && (
           <div className={css.scheduleNext}>{new Date(task.schedule.nextRunAt).toLocaleString()}</div>
+        )}
+        {(task.schedule?.enabled === true) && (
+          <button type="button" className={css.btnGhost} onClick={clearSchedule}>{t('detail.clearSchedule')}</button>
         )}
       </div>
 

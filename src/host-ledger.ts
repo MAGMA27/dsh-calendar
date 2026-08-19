@@ -16,11 +16,12 @@ import {
 import { dirname, join } from 'node:path'
 import { randomId, SCHEMA_VERSION, type calendarAction, type calendarActionResult, type calendarActionEnvelope, type calendarSnapshot } from './protocol.ts'
 import {
-  addSubtask, archiveTask, attachExecutionSession, createTask, deleteTask,
+  addSubtask, archiveTask, attachExecutionSession, createTask,
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
   setTaskDone, settleExecution, startExecution, updateTask, type TaskRecord,
 } from './core/tasks.ts'
-import { isValidCron, nextRunAtMs } from './core/schedule.ts'
+import { REPEAT_HORIZON_DAYS, buildRepeatCopy, isValidRepeat, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
+import { addDays, dayKey } from './core/calendar.ts'
 import { parseTasks } from './core/store.ts'
 import { calendarDir, ledgerPath } from './dsh-home.ts'
 
@@ -260,17 +261,18 @@ export class HostLedger {
   }
 
   /** Roll a task's schedule forward (scheduler callback after an accepted
-   * run): set the next-run instant and the last-triggered instant. A one-shot
-   * dueAt schedule (no cron) whose run was accepted has no next run — the
+   * one-shot run): set the next-run instant and the last-triggered instant. A
+   * one-shot dueAt schedule whose run was accepted has no next run — the
    * schedule has served its purpose and is REMOVED entirely, so the task stops
    * reading as scheduled (no 🕐 badge, no stale due time, no "clear schedule"
-   * affordance). No-op when the task or its schedule is missing. Always
-   * persists + notifies. */
+   * affordance). Repeat templates are never advanced here (they materialize
+   * copies instead of running); if one is, its rule is simply kept. No-op when
+   * the task or its schedule is missing. Always persists + notifies. */
   advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined): boolean {
     const task = this.taskById(taskId)
     if (task === undefined || task.schedule === undefined) return false
-    const hasCron = task.schedule.cron !== undefined && task.schedule.cron.trim() !== ''
-    if (nextRunAt === undefined && !hasCron) {
+    const hasRepeat = task.schedule.repeat !== undefined
+    if (nextRunAt === undefined && !hasRepeat) {
       // One-shot completed: drop the schedule rule and its mirror.
       this.state.tasks = this.state.tasks.map(t => (t.id === taskId ? { ...t, schedule: undefined, updatedAt: this.now() } : t))
       delete this.state.scheduler.nextRuns[taskId]
@@ -280,6 +282,52 @@ export class HostLedger {
     }
     this.commit()
     return true
+  }
+
+  /**
+   * Materialize repeat copies (scheduler heartbeat): for every enabled,
+   * non-archived repeat template, ensure one plain copy exists on each matching
+   * date in the rolling horizon (from the day after the template's own date /
+   * today, whichever is later, up to today + horizonDays). Already-copied
+   * dates (tracked in schedule.materialized) are never re-created, so deleting
+   * one occurrence permanently removes it from future sweeps. Returns whether
+   * anything changed (only then does it persist + notify).
+   */
+  materializeRepeats(now: number, horizonDays: number = REPEAT_HORIZON_DAYS): boolean {
+    const tasks = this.state.tasks
+    const today = startOfDayMs(now)
+    const horizonEnd = addDays(today, horizonDays)
+    let changed = false
+    let next: TaskRecord[] = tasks
+    for (const template of tasks) {
+      const s = template.schedule
+      if (s === undefined || s.enabled !== true || s.repeat === undefined) continue
+      if (template.archivedAt !== undefined) continue
+      if (!isValidRepeat(s.repeat)) continue
+      const materialized = new Set(s.materialized ?? [])
+      // The template occupies its own date; copies start the day after, never
+      // backfilling into the past.
+      const cursor = addDays(Math.max(today, startOfDayMs(template.startAt)), 1)
+      const added: string[] = []
+      for (const dateMs of repeatDatesBetween(s.repeat, cursor, horizonEnd)) {
+        const key = dayKey(dateMs)
+        if (materialized.has(key)) continue
+        next = [...next, buildRepeatCopy(template, dateMs, now, this.uuid())]
+        materialized.add(key)
+        added.push(key)
+      }
+      if (added.length > 0) {
+        next = next.map(t => t.id === template.id
+          ? { ...t, updatedAt: this.now(), schedule: { ...t.schedule!, materialized: [...materialized] } }
+          : t)
+        changed = true
+      }
+    }
+    if (changed) {
+      this.state.tasks = next
+      this.commit()
+    }
+    return changed
   }
 
   /** Persist + bump revision + notify after a Host-side ledger mutation. */
@@ -346,7 +394,14 @@ export class HostLedger {
         this.state.tasks = removeSubtask(this.state.tasks, action.id, action.subtaskId, now)
         return true
       case 'delete': {
-        const { tasks } = deleteTask(this.state.tasks, undefined, action.id)
+        // Deleting a repeat template cascades to its bound copies (a rule
+        // without its template is meaningless); deleting one copy removes only
+        // that copy, and its date stays marked materialized so the sweep never
+        // re-creates it. Unbound copies survive a template delete.
+        const target = this.state.tasks.find(t => t.id === action.id)
+        const tasks = target?.originTaskId === undefined
+          ? this.state.tasks.filter(t => t.id !== action.id && t.originTaskId !== action.id)
+          : this.state.tasks.filter(t => t.id !== action.id)
         if (tasks.length === this.state.tasks.length) return false
         this.state.tasks = tasks
         delete this.state.scheduler.nextRuns[action.id]
@@ -365,11 +420,11 @@ export class HostLedger {
         return true
       }
       case 'setSchedule': {
-        if (typeof action.patch.cron === 'string' && action.patch.cron.trim() !== '' && !isValidCron(action.patch.cron)) return false
+        if (action.patch.repeat !== undefined && action.patch.repeat !== null && !isValidRepeat(action.patch.repeat)) return false
         let tasks = setSchedule(this.state.tasks, action.id, action.patch, now)
         const task = tasks.find(t => t.id === action.id)
         if (task === undefined) return false
-        if (task.schedule !== undefined && (task.schedule.enabled || task.schedule.cron !== undefined || task.schedule.dueAt !== undefined)) {
+        if (task.schedule !== undefined && (task.schedule.enabled || task.schedule.repeat !== undefined || task.schedule.dueAt !== undefined)) {
           const nextRunAt = computeNextRun(task.schedule, now)
           tasks = setNextRun(tasks, action.id, nextRunAt, task.schedule.lastTriggeredAt, now)
         }
@@ -378,6 +433,20 @@ export class HostLedger {
         if (updated?.schedule !== undefined) this.state.scheduler.nextRuns[action.id] = mirrorOf(updated.schedule)
         this.state.tasks = tasks
         return true
+      }
+      case 'shiftRepeatTimes': {
+        // "Change all copies": shift the template + every bound copy by the
+        // same start/end deltas. The edited task must be a bound copy.
+        const copy = this.state.tasks.find(t => t.id === action.id)
+        if (copy === undefined || copy.originTaskId === undefined) return false
+        const origin = copy.originTaskId
+        let hit = false
+        this.state.tasks = this.state.tasks.map(t => {
+          if (t.id !== origin && t.originTaskId !== origin) return t
+          hit = true
+          return { ...t, startAt: t.startAt + action.startDelta, endAt: t.endAt + action.endDelta, updatedAt: now }
+        })
+        return hit
       }
       case 'run':
         // The Host runner is invoked after apply from the route handler (it
@@ -413,20 +482,18 @@ function mirrorOf(schedule: NonNullable<TaskRecord['schedule']>): { nextRunAt?: 
   return { nextRunAt: schedule.nextRunAt, lastTriggeredAt: schedule.lastTriggeredAt }
 }
 
-/** Arm a fresh schedule: compute the next run instant (cron or one-shot dueAt). */
+/** Arm a fresh schedule: compute the one-shot next run instant (repeat rules
+ * have none — they materialize copies instead of running). */
 function armSchedule(task: TaskRecord, now: number): TaskRecord['schedule'] | undefined {
   const s = task.schedule
   if (s === undefined) return undefined
-  if (!s.enabled && (s.cron === undefined || s.cron === '') && s.dueAt === undefined) return undefined
+  if (!s.enabled && s.repeat === undefined && s.dueAt === undefined) return undefined
   const next = computeNextRun(s, now)
   return { ...s, nextRunAt: next ?? undefined }
 }
 
-/** Compute the next run instant for a schedule (cron repeated or one-shot dueAt). */
+/** Compute the one-shot next run instant for a schedule (repeat rules → none). */
 function computeNextRun(s: NonNullable<TaskRecord['schedule']>, now: number): number | undefined {
-  if (s.cron !== undefined && s.cron.trim() !== '' && isValidCron(s.cron)) {
-    return nextRunAtMs(s.cron, now)
-  }
   if (s.dueAt !== undefined && s.dueAt > now) return s.dueAt
   return undefined
 }

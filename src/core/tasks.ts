@@ -35,6 +35,30 @@ export const QUADRANTS: readonly Quadrant[] = ['do', 'schedule', 'delegate', 'el
 export const TASK_PERMISSIONS = ['read-only', 'workspace-write', 'danger-full-access'] as const
 export type TaskPermission = (typeof TASK_PERMISSIONS)[number]
 
+/**
+ * Constrained repeat kinds (replaces free-form cron). `daily` repeats on every
+ * day; `weekly` repeats on the chosen weekdays only.
+ */
+export type RepeatKind = 'daily' | 'weekly'
+
+/** A constrained repeat rule; the Host materializes a copy on each matching date. */
+export interface RepeatRule {
+  kind: RepeatKind
+  /** Weekly only: JS weekdays 0=Sun..6=Sat; must be non-empty when kind is weekly. */
+  weekdays?: number[]
+  /** Skip weekends + curated public holidays when materializing. */
+  skipHolidays?: boolean
+}
+
+/** Whether a value is structurally a repeat rule. */
+export function isRepeatRule(value: unknown): value is RepeatRule {
+  if (typeof value !== 'object' || value === null) return false
+  const r = value as Record<string, unknown>
+  if (r.kind !== 'daily' && r.kind !== 'weekly') return false
+  if (r.weekdays !== undefined && (!Array.isArray(r.weekdays) || r.weekdays.some(d => typeof d !== 'number' || !Number.isInteger(d) || d < 0 || d > 6))) return false
+  return true
+}
+
 /** One checklist subtask under a parent task. */
 export interface SubtaskRecord {
   id: string
@@ -55,18 +79,28 @@ export interface ExecutionRecord {
   error?: string
 }
 
-/** A scheduled-run rule. The Host scheduler drives it on a heartbeat. */
+/**
+ * A scheduled-run rule. Two mutually exclusive shapes:
+ *  - a repeat rule (`repeat`): the Host materializes one plain copy of the
+ *    task on each matching date (no auto-run on the template itself);
+ *  - a one-shot absolute instant (`dueAt`): the Host scheduler fires a real
+ *    execution at that instant and then clears the schedule.
+ * `nextRunAt`/`lastTriggeredAt` are the one-shot scheduler mirror;
+ * `materialized` is Host-owned bookkeeping of already-copied dates.
+ */
 export interface ScheduleRule {
   /** Whether the schedule is armed. */
   enabled: boolean
-  /** Optional 5-field cron for repetition; absent for a one-shot dueAt. */
-  cron?: string
+  /** Constrained repeat rule; absent for a one-shot dueAt. */
+  repeat?: RepeatRule
   /** One-shot absolute instant (ms epoch, typically seeded from the drag slot). */
   dueAt?: number
-  /** Next due instant (ms epoch); maintained by the scheduler. */
+  /** Next due instant (ms epoch); maintained by the scheduler (one-shots only). */
   nextRunAt?: number
   /** Instant of the most recent scheduled trigger. */
   lastTriggeredAt?: number
+  /** Host-owned: YYYY-MM-DD keys already copied as repeat occurrences. */
+  materialized?: string[]
 }
 
 /** One calendar todo task. */
@@ -102,6 +136,8 @@ export interface TaskRecord {
   mode?: string
   /** Execution target: /permission preset; absent → session default. */
   permission?: TaskPermission
+  /** For repeat copies: the template task id that spawned this copy. */
+  originTaskId?: string
   archivedAt?: number
   createdAt: number
   updatedAt: number
@@ -126,7 +162,7 @@ export interface NewTaskInput {
   mode?: string
   permission?: TaskPermission
   /** Requested schedule at creation (armed only when valid). */
-  schedule?: { enabled: boolean; cron?: string; dueAt?: number }
+  schedule?: { enabled: boolean; repeat?: RepeatRule; dueAt?: number }
 }
 
 /** An update patch (partial; only present keys change). */
@@ -147,6 +183,8 @@ export interface TaskUpdatePatch {
   reasoningEffort?: string | null
   mode?: string | null
   permission?: TaskPermission | null
+  /** `null` unbinds a repeat copy from its template. */
+  originTaskId?: string | null
 }
 
 /** Whether a value is one of the closed urgency values. */
@@ -186,7 +224,7 @@ export function createTask(input: NewTaskInput, now: number, id: string): TaskRe
   const startAt = input.startAt
   const endAt = input.endAt > startAt ? input.endAt : startAt + 60_000
   const schedule: ScheduleRule | undefined = input.schedule?.enabled === true
-    ? { enabled: true, cron: input.schedule.cron, dueAt: input.schedule.dueAt }
+    ? { enabled: true, repeat: isRepeatRule(input.schedule.repeat) ? input.schedule.repeat : undefined, dueAt: input.schedule.dueAt }
     : undefined
   return {
     id,
@@ -235,6 +273,7 @@ export function updateTask(tasks: readonly TaskRecord[], id: string, patch: Task
     if (patch.reasoningEffort !== undefined) next.reasoningEffort = normalizeTargetId(patch.reasoningEffort ?? undefined)
     if (patch.mode !== undefined) next.mode = normalizeTargetId(patch.mode ?? undefined)
     if (patch.permission !== undefined) next.permission = isTaskPermission(patch.permission) ? patch.permission : undefined
+    if (patch.originTaskId !== undefined) next.originTaskId = normalizeTargetId(patch.originTaskId ?? undefined)
     return next
   })
 }
@@ -319,7 +358,7 @@ export function restoreTask(tasks: readonly TaskRecord[], id: string, now: numbe
 /** Schedule patch: `undefined` leaves a field untouched; `null` clears it. */
 export interface SchedulePatch {
   enabled?: boolean
-  cron?: string | null
+  repeat?: RepeatRule | null
   dueAt?: number | null
 }
 
@@ -330,13 +369,16 @@ export function setSchedule(tasks: readonly TaskRecord[], id: string, patch: Sch
     const current = task.schedule ?? { enabled: false }
     const schedule: ScheduleRule = {
       enabled: patch.enabled ?? current.enabled,
-      cron: patch.cron === null
+      repeat: patch.repeat === null
         ? undefined
-        : patch.cron !== undefined ? (patch.cron.trim() === '' ? undefined : patch.cron.trim()) : current.cron,
+        : patch.repeat !== undefined && isRepeatRule(patch.repeat) ? patch.repeat : current.repeat,
       dueAt: patch.dueAt === null ? undefined : (patch.dueAt !== undefined ? patch.dueAt : current.dueAt),
       nextRunAt: current.nextRunAt,
       lastTriggeredAt: current.lastTriggeredAt,
     }
+    // Repeating templates keep their materialization bookkeeping; a one-shot
+    // roll-forward leaves it untouched.
+    if (schedule.repeat !== undefined && current.materialized !== undefined) schedule.materialized = current.materialized
     return { ...task, schedule, updatedAt: now }
   })
 }

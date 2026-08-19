@@ -607,7 +607,8 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 }
 
 /* Date row: the day number (larger than the chips) plus an optional month
- * label on the 1st of each month. No band — the grid lines stay visible. */
+ * label on the 1st of each month — same size and weight as the day number so
+ * the first-of-month cell reads uniformly. */
 .monthCellDateRow {
   display: flex;
   align-items: baseline;
@@ -617,13 +618,14 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 
 .monthCellMonthLabel {
   flex: none;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
   color: var(--dsw-alias-label-secondary);
 }
 
 .monthCellDay {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1.2;
   color: var(--dsw-alias-label-primary);

@@ -145,6 +145,11 @@
 - **实现**：`src/host-runner.ts` face 改为 `agentPresets`（注释记录单/复数差异）；并把 create/预设/模型/权限/prompt 的拒绝错误改为**透传 ApiProxy 的 `error.message`**（如复用会话非空白时 `agent preset switch to X rejected: session ... has already started; its agent preset is fixed`），不再只有干巴巴的通用文案。fail-closed 语义不变：钉了预设的复用会话若已开聊（非 blank），预设确实无法应用 → 仍失败并说明原因。
 - **测试**：`tests/host-runner.spec.ts`、`tests/host-reconcile.spec.ts` fixture 同步改 `agentPresets`（typecheck 强制）。**145 单测全绿**（22 文件）。
 
+## 权限钉子改走命令注册表（不再把 /permission 当普通消息发给模型）
+- **问题**：用户切权限后观察会话——`/permission danger-full-access` 被当作普通用户消息发给了模型，然后任务 prompt 跟上。根因：runner 之前用 `sessions.prompt(mode:'queue', '/permission …')` 应用权限钉子，但 **ApiProxy 的 prompt 路径不路由斜杠命令**（文档声称支持，本 build 未实现，`unknown-command` 错误码无人产出）——命令行原样进会话、到达模型。
+- **实现**：`src/host-runner.ts` 权限钉子改为**在会话的 live Agent 上执行命令注册表**：`env.commands.execute(agent, '/permission <preset>', signal)`（`agent = env.agents.get(sessionId)`），结果 `kind:'error'` / 命令不存在 / 无命令注册表 / 无 live agent 均按 fail-closed 失败并给出明确原因；不再经 `sessions.prompt`。`src/index.ts` 用 `ctx.get('commands')/ctx.get('agents')`（**可选注入**，不阻塞 apply）接真实服务。
+- **测试**：`tests/host-runner.spec.ts` 重构权限组——成功路径断言 `commands=1` 且 `prompt=1`（只有任务 prompt 进模型）；命令被拒（unknown preset）/ 未注册 / 部署无 commands / 会话无 live agent 四种失败路径。**149 单测全绿**（22 文件）。
+
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 

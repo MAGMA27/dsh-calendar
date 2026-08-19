@@ -31,8 +31,11 @@ function makeHarness(opts: {
   promptOk?: boolean
   modelOk?: boolean
   presetOk?: boolean
+  commandOk?: boolean
+  commandFound?: boolean
+  hasAgent?: boolean
 } = {}) {
-  const calls = { create: 0, selectModel: 0, prompt: 0, rename: 0, presetsSelect: 0, list: 0 }
+  const calls = { create: 0, selectModel: 0, prompt: 0, rename: 0, presetsSelect: 0, list: 0, commands: 0 }
   const rows: RunnerSessionRow[] = opts.rows ?? []
   const gates: SleepGate[] = []
   const env: HostExecutionEnv = {
@@ -63,6 +66,16 @@ function makeHarness(opts: {
       },
     },
     agentPresets: { select: async () => { calls.presetsSelect++; return { result: { ok: opts.presetOk ?? true } } } },
+    commands: {
+      execute: async () => {
+        calls.commands++
+        if ((opts.commandFound ?? true) === false) return undefined
+        return { result: (opts.commandOk ?? true)
+          ? { kind: 'success' as const, text: 'preset workspace-write' }
+          : { kind: 'error' as const, text: 'unknown preset "yolo"' } }
+      },
+    },
+    agents: { get: () => ((opts.hasAgent ?? true) ? {} : undefined) },
   }
   return { env, calls, rows, gates }
 }
@@ -155,14 +168,59 @@ describe('HostExecutionRunner', () => {
     expect(calls.prompt).toBe(0)
   })
 
+  it('applies the permission preset via the /permission command, never as a queued prompt', async () => {
+    const { ledger, id } = mkLedger({ permission: 'workspace-write' })
+    const { env, calls, gates, rows } = makeHarness()
+    const p = mkRunner(ledger, env, gates).run(id)
+    await toSettleLoop()
+    expect(calls.commands).toBe(1)
+    expect(calls.prompt).toBe(1) // only the real task prompt; the command line never reached the model
+    rows[0].running = false
+    rows[0].updatedAt = 3000
+    gates.shift()?.()
+    const res = await p
+    await res.settleFinished
+    expect(ledger.taskById(id)!.executions[0].result).toBe('succeeded')
+  })
+
   it('fails the run when the permission command is rejected', async () => {
     const { ledger, id } = mkLedger({ permission: 'danger-full-access' })
-    const { env, calls, gates } = makeHarness({ promptOk: false }) // permission prompt rejected
+    const { env, calls, gates } = makeHarness({ commandOk: false })
     await mkRunner(ledger, env, gates).run(id)
     const ex = ledger.taskById(id)!.executions[0]
     expect(ex.result).toBe('failed')
     expect(ex.error).toContain('permission command rejected')
-    expect(calls.prompt).toBe(1) // the permission slash command went out
+    expect(ex.error).toContain('unknown preset')
+    expect(calls.commands).toBe(1)
+    expect(calls.prompt).toBe(0) // the command line must NOT be queued as a prompt
+  })
+
+  it('fails when the permission command is not registered', async () => {
+    const { ledger, id } = mkLedger({ permission: 'read-only' })
+    const { env, gates } = makeHarness({ commandFound: false })
+    await mkRunner(ledger, env, gates).run(id)
+    const ex = ledger.taskById(id)!.executions[0]
+    expect(ex.result).toBe('failed')
+    expect(ex.error).toContain('permission command not found')
+  })
+
+  it('fails when the deployment supports no slash commands', async () => {
+    const { ledger, id } = mkLedger({ permission: 'read-only' })
+    const { env, gates } = makeHarness()
+    delete env.commands
+    await mkRunner(ledger, env, gates).run(id)
+    const ex = ledger.taskById(id)!.executions[0]
+    expect(ex.result).toBe('failed')
+    expect(ex.error).toContain('does not support slash commands')
+  })
+
+  it('fails when the session has no live agent to run the command on', async () => {
+    const { ledger, id } = mkLedger({ permission: 'read-only' })
+    const { env, gates } = makeHarness({ hasAgent: false })
+    await mkRunner(ledger, env, gates).run(id)
+    const ex = ledger.taskById(id)!.executions[0]
+    expect(ex.result).toBe('failed')
+    expect(ex.error).toContain('no live agent')
   })
 
   it('settles failed when the task prompt is rejected', async () => {

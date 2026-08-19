@@ -48,6 +48,22 @@ export interface RunnerPresetsFace {
   select(request: { rpcId: unknown; payload: { sessionId: unknown; agentPreset: string } }): Promise<{ result?: { ok?: boolean } }>
 }
 
+/** A settled slash-command execution (structural slice of CommandExecution). */
+export interface RunnerCommandExecution {
+  result: { kind: 'success' | 'error'; text?: string }
+}
+
+/** The narrow commands face (structural slice of the CommandRuntime). */
+export interface RunnerCommandsFace {
+  /** Execute a slash-command line on a session's live agent; undefined = unknown command. */
+  execute(agent: unknown, line: string, signal: AbortSignal): Promise<RunnerCommandExecution | undefined>
+}
+
+/** The narrow agents face (structural slice of the agents registry). */
+export interface RunnerAgentsFace {
+  get(sessionId: string): unknown
+}
+
 /** Everything the runner needs from the runtime. */
 export interface HostExecutionEnv {
   sessions: RunnerSessionsFace
@@ -55,6 +71,10 @@ export interface HostExecutionEnv {
   // NOTE: the in-process ApiProxy domain object is `agentPresets` (plural),
   // even though the wire method path is `agentPreset.select` (singular).
   agentPresets?: RunnerPresetsFace
+  /** The host slash-command registry; absent → permission pins are refused. */
+  commands?: RunnerCommandsFace
+  /** The host agents registry (resolves a sessionId to its live Agent). */
+  agents?: RunnerAgentsFace
 }
 
 /** The narrow ledger face the runner writes executions through. */
@@ -251,18 +271,20 @@ export class HostExecutionRunner {
       // A provider without a model (or vice versa) is an incomplete pin: refuse.
       throw new Error('incomplete model pin: provider and model must be set together')
     }
-    // Permission preset via the /permission slash command.
+    // Permission preset via the `/permission` slash command executed on the
+    // session's live agent. A queued prompt would send the line to the MODEL
+    // as ordinary text (the ApiProxy prompt path does not route slash
+    // commands), so the command registry is the only correct channel.
     if (task.permission !== undefined) {
-      const res = await this.env.sessions.prompt(req({
-        sessionId,
-        mode: 'queue',
-        content: [{ type: 'text', text: `/permission ${task.permission}` }],
-      }))
-      if (res?.result?.ok !== true) {
-        const reason = rpcError(res)
-        throw new Error(reason !== undefined
-          ? `permission command rejected: /permission ${task.permission} (${reason})`
-          : `permission command rejected: /permission ${task.permission}`)
+      const commands = this.env.commands
+      if (commands === undefined) throw new Error('this deployment does not support slash commands (cannot apply permission preset)')
+      const agent = this.env.agents?.get?.(sessionId)
+      if (agent === undefined) throw new Error(`cannot apply permission preset: session ${sessionId} has no live agent`)
+      const execution = await commands.execute(agent, `/permission ${task.permission}`, new AbortController().signal)
+      if (execution === undefined) throw new Error(`permission command not found: /permission ${task.permission}`)
+      if (execution.result.kind === 'error') {
+        const text = execution.result.text ?? ''
+        throw new Error(text !== '' ? `permission command rejected: ${text}` : 'permission command rejected')
       }
     }
     // Cosmetic rename; failures do not fail the run.

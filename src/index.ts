@@ -15,7 +15,7 @@ import { defineCalendarTool } from './host-tool.ts'
 import { calendarHostService } from './host-service.ts'
 import { mountcalendarRoutes } from './host-routes.ts'
 import { acquireLedgerLock } from './host-ledger.ts'
-import { HostExecutionRunner, type HostExecutionEnv } from './host-runner.ts'
+import { HostExecutionRunner, type HostExecutionEnv, type RunnerAgentsFace, type RunnerCommandsFace } from './host-runner.ts'
 import { HostScheduleService } from './host-scheduler.ts'
 import { dshHome } from './dsh-home.ts'
 import type { CatalogApiFace } from './host-options.ts'
@@ -60,7 +60,15 @@ export function apply(ctx: Context, config?: Config): void {
   const api = ctx.apiProxy as unknown as CatalogApiFace
   // The real-execution runner drives dsh sessions through the same ApiProxy
   // (sessions.create/selectModel/prompt, workspace.list, agentPresets.select).
-  const runner = new HostExecutionRunner(service.ledger, ctx.apiProxy as unknown as HostExecutionEnv)
+  // Permission pins need the host slash-command registry + agents registry;
+  // both are optional (ctx.get, not inject) so a deployment without them
+  // degrades the permission pin to a clear failure instead of blocking apply.
+  const env: HostExecutionEnv = { ...(ctx.apiProxy as unknown as HostExecutionEnv) }
+  const commands = ctx.get('commands')
+  const agents = ctx.get('agents')
+  if (commands !== undefined) env.commands = commands as unknown as RunnerCommandsFace
+  if (agents !== undefined) env.agents = agents as unknown as RunnerAgentsFace
+  const runner = new HostExecutionRunner(service.ledger, env)
   // Host cron scheduler: fires due scheduled tasks through the runner and
   // reconciles executions left running across a restart.
   const scheduler = new HostScheduleService(

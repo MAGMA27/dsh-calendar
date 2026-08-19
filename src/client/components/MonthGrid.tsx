@@ -60,7 +60,6 @@ export function MonthGrid({ controller, query = '' }: MonthGridProps) {
             >
               <span className={css.monthCellDateRow}>
                 <span className={css.monthCellDay}>{new Date(day.dateMs).getDate()}</span>
-                <span className={css.monthCellBar} aria-hidden="true" />
               </span>
               <span className={css.monthChips}>
                 {dayTasks.slice(0, 4).map(task => (

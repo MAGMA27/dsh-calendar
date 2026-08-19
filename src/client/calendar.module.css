@@ -606,22 +606,26 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   text-align: left;
 }
 
-/* Date row: the day number plus a full-width color bar that covers the date's
- * line. Current-month days get the brand bar; adjacent months get grey. */
+/* Date band: the day number floats on a color capsule that covers the date's
+ * line. Current-month days get the brand band; adjacent months get grey. */
 .monthCellDateRow {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
+  justify-content: center;
+  align-self: flex-start;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--dsw-alias-brand-primary);
+  color: var(--dsw-alias-label-primary-foreground);
 }
 
-.monthCellBar {
-  flex: 1;
-  min-width: 0;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--dsw-alias-brand-primary);
-  opacity: 0.7;
+.monthCellDay {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 /* Adjacent-month days: muted to keep the current month obvious. */
@@ -629,39 +633,19 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   background: var(--dsw-alias-bg-layer-1);
 }
 
-.monthCell[data-outside] .monthCellDay {
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.monthCell[data-outside] .monthCellBar {
+.monthCell[data-outside] .monthCellDateRow {
   background: var(--dsw-alias-label-tertiary);
-  opacity: 0.5;
+  color: var(--dsw-alias-label-primary-foreground);
+  opacity: 0.75;
 }
 
 .monthCell[data-outside] .taskChip {
   opacity: 0.55;
 }
 
-.monthCell[data-today] .monthCellBar {
-  background: var(--dsw-alias-brand-primary);
-  opacity: 1;
-}
-
-.monthCell[data-today] .monthCellDay {
-  background: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-label-primary-foreground);
-  border-radius: 50%;
-}
-
-.monthCellDay {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  line-height: 20px;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--dsw-alias-label-secondary);
+/* Today: a ring around the band sets it apart from the other brand bands. */
+.monthCell[data-today] .monthCellDateRow {
+  box-shadow: 0 0 0 2px var(--dsw-alias-bg-base), 0 0 0 3.5px var(--dsw-alias-brand-primary);
 }
 
 .monthChips { display: flex; flex-direction: column; gap: 2px; overflow: hidden; }

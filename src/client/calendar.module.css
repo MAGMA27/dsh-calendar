@@ -29,45 +29,49 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 }
 
 /* --- footer entry button (sidebar.footer.action) ----------------------------- */
+/* Geometry, ink and hover chrome replicate the Settings trigger
+   (ui-settings-general SettingsRoot.module.css `.trigger`) 1:1 so the two
+   sidebar-foot rows look identical. */
 
 .entry {
-  display: inline-flex;
+  flex: none;
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
-  background: transparent;
+  width: calc(100% + 4px);
+  height: 42px;
+  margin: 4px -2px;
+  padding: 0 10px 0 8px;
+  box-sizing: border-box;
   border: none;
-  border-radius: 8px;
-  color: var(--dsw-alias-label-secondary);
+  border-radius: 12px;
+  background: transparent;
   cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 .entry:hover {
   background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
 }
 
-.entry[data-active] {
-  color: var(--dsw-alias-label-primary);
-}
-
-.entryIcon {
-  display: inline-flex;
-  align-items: center;
+/* Rail trigger: the same 36x36 circle box as the other rail controls. */
+.entry.rail {
+  width: 36px;
+  height: 36px;
+  margin: 8px 0 10px;
   justify-content: center;
-  flex: none;
+  gap: 0;
+  padding: 0;
+  border-radius: 50%;
 }
 
 .entryLabel {
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Rail (collapsed) sidebar: icon only. */
-[data-dsh-frame][data-sidebar-collapsed] .entryLabel {
-  display: none;
+  white-space: nowrap;
 }
 
 /* --- calendar frame ---------------------------------------------------------- */

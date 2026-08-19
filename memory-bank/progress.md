@@ -122,6 +122,7 @@
 3. **月视图信息补全 + 区分相邻月**：原月视图无周几表头、无月份信息、上月/本月无区分。重构 `MonthGrid.tsx`：顶部 sticky 周几表头（随 weekStart 周一起始）、`sameMonth` 判当前月、相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、日期 `label-tertiary`、chips 半透明）、今天仍圆形高亮；外层包 `.monthWrap`（表头 + 可滚动 `.monthGrid`）。CSS 新增 `.dateNav*`、`.monthWrap/.monthWeekHeader/.monthWeekDay`、`.monthCell[data-outside]`。
 4. **月视图日期样式（commit `a003320` 系列→`78f027d`，用户复测多轮）**：色带方案反复迭代（3px 细线→胶囊→横贯整格→贴边品牌蓝）后**最终弃用**，改为干净方案：日期数字加大到 **18px/700**、**每月 1 号在数字旁标月份短名且字号与日期一致**（`monthShortLabel`，如「9月 1」；月份用 `label-secondary`、日期用 `label-primary` 区分主次）、今天数字套品牌蓝圆底白字（`--dsw-static-deepseek-500`；文档已记 token 坑：亮色下勿用 `--dsw-alias-brand-primary`，它映射近黑 bluish-1000）。改动：`MonthGrid.tsx`、`calendar.module.css`。
 - **测试**：`tests/calendar.spec.ts` 新增 date navigation 组（addDays/addMonths/sameMonth/monthLabel/weekRangeLabel）；`tests/tasks.spec.ts` 新增 taskMatchesQuery 组。**140 单测全绿**（21 文件）。
+5. **矩阵标题美化（commit `017467c`，用户复测追加）**：象限标题从 13px 放大到 **18px/700** 并按象限着色（do 红 / schedule 蓝 / delegate 琥珀 / eliminate 灰），标题行底部加 3px 同色横条（header border-bottom），计数徽标放大到 12px/22px。改动：`calendar.module.css`。
 
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。

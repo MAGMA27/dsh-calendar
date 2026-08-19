@@ -97,3 +97,9 @@
 - 日历页内执行记录「打开会话」（`onOpenSession` → index.ts `openSession`）先 `setCalendarOpen(false)` 再 `ctx.sessions.open`（commit `8d520ef`）；
 - 侧边栏点会话/新建会话（日历仍开着）由 `navigation-watch.ts` 处理，两层：`watchSessionNavigation` 订阅 `ctx.sessions.list` 的 `current`，变化即关日历（基线随每次打开重种）；`closeOnSessionOpen` 包装共享 `sessions.open`——**点当前会话**不改变 `current`，但任何 open 调用（含点当前会话）都关日历（dispose 还原）。提交 `139c42f` + `51ca679`。
 client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-conversation`）。
+
+## 10. 视图增强（commit `c5ec7b1`）
+
+- **任务搜索**：顶栏搜索框真正可用——`core/tasks.ts` 的 `taskMatchesQuery(task, query)`（大小写不敏感匹配 title/description/prompt，空串匹配全部）；周/月/矩阵/议程四个视图均接 `query` prop 过滤各自任务源。
+- **周/月日期导航 `DateNav`**：`‹ 期标签 › + 今天`。core `calendar.ts` 新增 `addDays / addMonths / sameMonth / monthLabel / weekRangeLabel`；`addMonths` 按目标月天数钳制日（1月31日+1月→2月28/29）。周视图步进 ±7 天、月视图 ±1 月；期标签带年份，`aria-live` 播报。
+- **月视图**：顶部 sticky 周几表头（随 `weekStart` 周一起始）；`sameMonth` 判当前月，相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、日期 `label-tertiary`、任务 chips 半透明）；今天圆形高亮；`.monthWrap`（表头 + 可滚动 `.monthGrid`）替代原单一网格。

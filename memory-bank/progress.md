@@ -115,6 +115,13 @@
 - **点「当前会话」也关日历（commit `51ca679`）**：用户复测反馈——日历开着时点侧边栏里**已经在看的那个会话**，日历不关。原因：`manager.select` 对同 id 也无条件 notify，但 `list.current` 不变，watcher 无法与后台更新（jobs/rename）区分。修复：`navigation-watch.ts` 新增 `closeOnSessionOpen`——包装共享的 `ctx.sessions.open`（侧边栏点击/fork/workflow 子会话全部经它），任何 open 调用（含点当前会话）都先关日历，dispose 还原原方法；`watchSessionNavigation` 保留以覆盖 `clear()` 等 current 变化路径。测试增至 9 用例（新增点当前会话/还原/链式 3 个）。
 - **验证**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **131 单测全绿**（21 文件）。
 
+## 日历视图功能增强（commit `c5ec7b1`）
+用户三项反馈一并落地：
+1. **搜索栏真正可用**：原来 `query` state 只存不用，纯摆设。现在新增纯函数 `taskMatchesQuery(task, query)`（`src/core/tasks.ts`，大小写不敏感匹配 title/description/prompt，空串匹配全部），四个视图（周/月/矩阵/议程）都接上 `query` prop 过滤任务。改动：`CalendarView.tsx`（trim 后透传）+ `WeekGrid/MonthGrid/MatrixPanel/AgendaPanel`（过滤各自任务源）。
+2. **周/月日期导航**：原来只有「今天」按钮，无上一/下一期。新增 `DateNav` 组件（`CalendarView.tsx`）：`‹ 期标签 › + 今天`。core 新增 `addDays/addMonths/sameMonth/monthLabel/weekRangeLabel`（`src/core/calendar.ts`）——addMonths 按目标月天数钳制日（1月31日+1月→2月28/29）；周视图步进 ±7 天、月视图 ±1 月；标签带年份（如「2024年1月15日 – 1月21日」「2024年1月」）。`DateNav` 含 `aria-live` 标签。
+3. **月视图信息补全 + 区分相邻月**：原月视图无周几表头、无月份信息、上月/本月无区分。重构 `MonthGrid.tsx`：顶部 sticky 周几表头（随 weekStart 周一起始）、`sameMonth` 判当前月、相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、日期 `label-tertiary`、chips 半透明）、今天仍圆形高亮；外层包 `.monthWrap`（表头 + 可滚动 `.monthGrid`）。CSS 新增 `.dateNav*`、`.monthWrap/.monthWeekHeader/.monthWeekDay`、`.monthCell[data-outside]`。
+- **测试**：`tests/calendar.spec.ts` 新增 date navigation 组（addDays/addMonths/sameMonth/monthLabel/weekRangeLabel）；`tests/tasks.spec.ts` 新增 taskMatchesQuery 组。**140 单测全绿**（21 文件）。
+
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 

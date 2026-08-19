@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { calendarClientController, initialState } from '../src/client/controller.ts'
 import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
 import type { calendarAction, calendarSnapshot } from '../src/protocol.ts'
+import type { TaskRecord } from '../src/core/tasks.ts'
 
 function emptySnap(): calendarSnapshot {
   return { schemaVersion: 1, revision: 0, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }
@@ -55,5 +56,27 @@ describe('calendarClientController', () => {
     c.subscribe(() => { n += 1 })
     c.setView('matrix')
     expect(n).toBe(1)
+  })
+  it('schedule-clear confirm stages a pending choice and resolves day/all/cancel', async () => {
+    const tpl: TaskRecord = { id: 'tpl', title: 'T', description: '', prompt: '', startAt: 0, endAt: 1000, urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [], schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } }, createdAt: 0, updatedAt: 0 }
+    const copy: TaskRecord = { id: 'c1', title: 'T', description: '', prompt: '', startAt: 0, endAt: 1000, urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [], originTaskId: 'tpl', schedule: { enabled: true, dueAt: 5000 }, createdAt: 0, updatedAt: 0 }
+    const snap: calendarSnapshot = { schemaVersion: 1, revision: 1, tasks: [tpl, copy], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const transport = new MemorycalendarHostTransport(snap, (a) => { void a; return snap })
+    const c = new calendarClientController(transport, initialState(0, 0))
+    await c.start()
+
+    const p1 = c.requestScheduleClear('c1')
+    expect(c.getSnapshot().pendingScheduleClear).toEqual({ taskId: 'c1' })
+    c.confirmScheduleClearDay()
+    expect(await p1).toBe('day')
+
+    const p2 = c.requestScheduleClear('c1')
+    c.confirmScheduleClearAll()
+    expect(await p2).toBe('all')
+
+    const p3 = c.requestScheduleClear('c1')
+    c.cancelScheduleClear()
+    expect(await p3).toBe('cancel')
+    expect(c.getSnapshot().pendingScheduleClear).toBeUndefined()
   })
 })

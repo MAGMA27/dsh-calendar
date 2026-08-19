@@ -92,6 +92,8 @@ export interface calendarClientState {
   catalog: ExecutionCatalog
   /** A repeat-copy time change awaiting "this copy" vs "all copies". */
   pendingRepeatTimeEdit: PendingRepeatTimeEdit | undefined
+  /** A repeat-series schedule clear awaiting "this day" vs "the whole series". */
+  pendingScheduleClear: { taskId: string } | undefined
   status: 'loading' | 'ready' | 'error'
   error: string | null
 }
@@ -205,6 +207,31 @@ export class calendarClientController {
     }
   }
 
+  // --- repeat-series schedule-clear confirmation -----------------------------
+  private scheduleClearResolve: ((choice: 'day' | 'all' | 'cancel') => void) | undefined
+  /**
+   * Stage a repeat-series schedule clear and return a promise for the user's
+   * choice: 'day' (this copy only — clear its own trigger one-shot) | 'all'
+   * (cancel the whole series) | 'cancel' (abort). Used by the "clear schedule"
+   * button and by saving a repeat series as "no repeat".
+   */
+  requestScheduleClear(taskId: string): Promise<'day' | 'all' | 'cancel'> {
+    this.scheduleClearResolve?.('cancel')
+    return new Promise<'day' | 'all' | 'cancel'>(resolve => {
+      this.scheduleClearResolve = resolve
+      this.set({ pendingScheduleClear: { taskId } })
+    })
+  }
+  private resolveScheduleClear(choice: 'day' | 'all' | 'cancel'): void {
+    const resolve = this.scheduleClearResolve
+    this.scheduleClearResolve = undefined
+    this.set({ pendingScheduleClear: undefined })
+    resolve?.(choice)
+  }
+  confirmScheduleClearDay(): void { this.resolveScheduleClear('day') }
+  confirmScheduleClearAll(): void { this.resolveScheduleClear('all') }
+  cancelScheduleClear(): void { this.resolveScheduleClear('cancel') }
+
   /** Read the catalog from the transport. */
   transportOptions(): Promise<ExecutionCatalog> { return this.transport.options() }
 
@@ -231,6 +258,7 @@ export function initialState(cursor: number = Date.now(), weekStart: WeekStart =
     open: false,
     catalog: { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [] },
     pendingRepeatTimeEdit: undefined,
+    pendingScheduleClear: undefined,
     status: 'loading',
     error: null,
   }

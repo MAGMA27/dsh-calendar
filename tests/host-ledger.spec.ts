@@ -465,4 +465,21 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.taskById(copy.id)!.schedule?.dueAt).toBe(9999)
     expect(ledger.taskById(id)!.schedule?.repeat?.kind).toBe('daily') // template untouched
   })
+
+  it('clearInstanceSchedule drops one copy trigger without touching the series', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true })
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies).toHaveLength(3)
+    const copy = copies[0]
+    expect(copy.schedule?.enabled).toBe(true)
+
+    const r = ledger.apply({ requestId: 'day', action: { kind: 'clearInstanceSchedule', id: copy.id } })
+    expect(r.ok).toBe(true)
+    const after = ledger.getSnapshot().tasks
+    expect(after.find(t => t.id === copy.id)!.schedule).toBeUndefined() // own one-shot gone
+    expect(after.find(t => t.id === copy.id)!.originTaskId).toBe(id) // still bound
+    expect(ledger.taskById(id)!.schedule?.repeat?.triggerAgent).toBe(true) // series intact
+    expect(after.filter(t => t.originTaskId === id)).toHaveLength(3) // copy kept on the calendar
+  })
 })

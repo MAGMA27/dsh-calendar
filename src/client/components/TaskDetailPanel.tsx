@@ -76,6 +76,25 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
 
   const markDirty = (): void => setDirty(true)
 
+  /** Dispatch the schedule part of a save; repeat-series clears go through the
+   * "this day vs all" confirmation (a copy may only want to stop one day's
+   * auto-run). Returns the user's choice when a confirm was shown. */
+  const applySchedulePatch = async (patch: Parameters<calendarClientController['dispatch']>[0]): Promise<'day' | 'all' | 'cancel' | undefined> => {
+    const seriesActive = seriesTask.schedule?.repeat !== undefined
+    if (!seriesActive || patch.kind !== 'setSchedule' || patch.patch.repeat !== null) {
+      await controller.dispatch(patch)
+      return undefined
+    }
+    // Clearing a repeat series must ask: one day only, or the whole series?
+    const choice = await controller.requestScheduleClear(task.id)
+    if (choice === 'day' && task.originTaskId !== undefined) {
+      await controller.dispatch({ kind: 'clearInstanceSchedule', id: task.id })
+    } else if (choice === 'all') {
+      await controller.dispatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, repeat: null, dueAt: null } })
+    }
+    return choice
+  }
+
   const save = async (): Promise<void> => {
     if (title.trim() === '') { setError('title required'); return }
     if (schedule.mode === 'weekly' && schedule.weekdays.length === 0) { setError(t('schedule.weeklyRequired')); return }
@@ -104,20 +123,22 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
         triggerAt: schedule.triggerAgent && triggerAt !== '' ? triggerAt : undefined,
       }
     const enabled = repeat !== null || dueMs !== undefined
-    await controller.dispatch({
-      kind: 'setSchedule',
-      id: task.id,
-      patch: { enabled, repeat, dueAt: dueMs ?? null },
-    })
+    await applySchedulePatch({ kind: 'setSchedule', id: task.id, patch: { enabled, repeat, dueAt: dueMs ?? null } })
     setDirty(false)
     setMessage(t('detail.saved'))
     setError(null)
   }
 
-  const clearSchedule = (): void => {
+  const clearSchedule = async (): Promise<void> => {
     setSchedule({ mode: 'none', weekdays: [], skipHolidays: false, triggerAgent: false, triggerAt: '', dueAt: '' })
     setDirty(true)
-    void controller.dispatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, repeat: null, dueAt: null } })
+    const choice = await applySchedulePatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, repeat: null, dueAt: null } })
+    // Reflect the truth after a series-clear confirm: 'day' keeps the series
+    // rule (re-seed the form), 'all' leaves it cleared, 'cancel' restores it.
+    if (choice === 'day' || choice === 'cancel') {
+      setSchedule(initialSchedule(seriesTask))
+      setDirty(false)
+    }
   }
 
   const runNow = async (): Promise<void> => {

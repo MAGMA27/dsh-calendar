@@ -11,6 +11,7 @@ import { AgendaPanel } from './AgendaPanel.tsx'
 import { CreateTaskModal } from './CreateTaskModal.tsx'
 import { TaskDetailPanel } from './TaskDetailPanel.tsx'
 import { RepeatTimeConfirm } from './RepeatTimeConfirm.tsx'
+import { ScheduleClearConfirm } from './ScheduleClearConfirm.tsx'
 import { t, type calendarKey } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -89,6 +90,7 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
         <CreateTaskModal controller={controller} onClose={() => controller.setDraft(undefined)} />
       )}
       {snap.pendingRepeatTimeEdit !== undefined && <RepeatTimeConfirm controller={controller} />}
+      {snap.pendingScheduleClear !== undefined && <ScheduleClearConfirm controller={controller} />}
     </div>
   )
 }

@@ -528,6 +528,16 @@ export class HostLedger {
         if (updated?.schedule?.repeat !== undefined) this.sweepRepeats(now, this.repeatHorizonDays)
         return true
       }
+      case 'clearInstanceSchedule': {
+        // "Cancel this day only": drop the target task's own schedule WITHOUT
+        // series routing — a repeat copy keeps its place and its binding, only
+        // its trigger one-shot goes away.
+        const target = this.state.tasks.find(t => t.id === action.id)
+        if (target === undefined || target.schedule === undefined) return false
+        this.state.tasks = this.state.tasks.map(t => t.id === action.id ? { ...t, schedule: undefined, updatedAt: now } : t)
+        delete this.state.scheduler.nextRuns[action.id]
+        return true
+      }
       case 'shiftRepeatTimes': {
         // "Change all copies": shift the whole series — the template + every
         // bound copy — by the same start/end deltas. The edited task may be a

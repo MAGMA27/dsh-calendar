@@ -112,6 +112,17 @@ export interface ShiftRepeatTimesAction {
   endDelta: number
 }
 
+/**
+ * Clear ONLY the target task's own schedule (no series routing): used for the
+ * "cancel this day only" choice on a repeat copy — the copy's trigger one-shot
+ * is removed, it stays on the calendar as a plain task, and the repeat rule
+ * (template + sibling copies) is untouched.
+ */
+export interface ClearInstanceScheduleAction {
+  kind: 'clearInstanceSchedule'
+  id: string
+}
+
 /** Request a real dsh execution of a task (manual run). */
 export interface RunTaskAction { kind: 'run'; id: string }
 
@@ -136,6 +147,7 @@ export type calendarAction =
   | RestoreTaskAction
   | SetScheduleAction
   | ShiftRepeatTimesAction
+  | ClearInstanceScheduleAction
   | RunTaskAction
   | ImportAction
 

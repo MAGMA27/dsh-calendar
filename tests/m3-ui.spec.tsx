@@ -86,6 +86,32 @@ describe('TaskDetailPanel', () => {
 
     await act(async () => { root.unmount(); host.remove() })
   })
+
+  it('clearing the schedule on a repeat copy stages a this-day-vs-all confirm (no direct dispatch)', async () => {
+    const tpl = makeTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } } })
+    const copy = makeTask({ id: 'c1', originTaskId: 'tpl', schedule: { enabled: true, dueAt: 5000 } })
+    const snap: calendarSnapshot = { schemaVersion: 1, revision: 1, tasks: [tpl, copy], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const { transport, dispatched } = recordTransport(snap)
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={copy} onClose={() => {}} />) })
+
+    const clearBtn = [...host.querySelectorAll('button')].find(b => b.textContent === '清除定时' || b.textContent === 'Clear schedule') as HTMLButtonElement | undefined
+    expect(clearBtn).toBeTruthy()
+    await act(async () => { clearBtn!.click() })
+
+    // The clear is staged, not dispatched: the user must pick day vs all.
+    expect(controller.getSnapshot().pendingScheduleClear).toEqual({ taskId: 'c1' })
+    expect(dispatched.some(a => a.kind === 'setSchedule' || a.kind === 'clearInstanceSchedule')).toBe(false)
+
+    // Picking "this day" dispatches clearInstanceSchedule on the copy.
+    await act(async () => { controller.confirmScheduleClearDay() })
+    expect(dispatched.some(a => a.kind === 'clearInstanceSchedule' && a.id === 'c1')).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
 })
 
 describe('ExecutionSettings', () => {

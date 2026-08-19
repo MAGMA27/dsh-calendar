@@ -182,6 +182,13 @@
 - **实现**：`HostLedger` 抽出纯扫描 `sweepRepeats`（只改 state、不落盘）；`create` 与 `setSchedule` 分发在返回前**内联执行**，因此 apply 返回的快照已含全部副本，浏览器即时刷新。`materializeRepeats` 保持 commit 语义给 scheduler；tick 保留为重启兜底 + 日期滚动。测试账本支持 `{ repeatHorizonDays }` 选项以固定物化规模。
 - **测试**：host-ledger 首用例改为断言「创建即物化」+ 新增「setSchedule 即物化」；`createWithRepeat` 助手改为取最新模板 id（快照尾部是副本）。**184 单测全绿**（24 文件）。
 
+## 取消定时的确认：一天 vs 整个系列（2026；用户：万一是想取消一天的定时）
+- **问题**：清除定时会直接取消整个系列；用户有时只想取消**某一天**的定时（如某天不让 Agent 自动跑），没有退路。
+- **实现**：
+  - 新协议动作 **`clearInstanceSchedule`**：只清除目标任务自己的调度、**不做系列路由**——副本保留在日历上（仍是绑定副本），仅它的触发到时消失。
+  - 详情面板「清除定时」按钮与「改成不重复后保存」都先走 `controller.requestScheduleClear` 弹确认（Promise 化，调用方按选择分发）：「**取消这一天**」（仅当打开的是仍带自待到时的副本时出现）或「**取消整个系列**」（现行为：规则清除 + 级联删全部副本）；模板/无自待到时的副本只提供后者。普通任务清除照旧直接执行。`ScheduleClearConfirm` 弹窗挂载在 CalendarView。
+- **测试**：host-ledger +1（clearInstanceSchedule 只清当天、系列/其他副本/绑定关系不动）；controller +1（确认流程 day/all/cancel 解析）；m3-ui +1（副本上点清除定时 → 先挂起确认、不直接分发，选「这一天」→ 派发 clearInstanceSchedule）。**187 单测全绿**（24 文件）。
+
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 

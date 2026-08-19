@@ -10,7 +10,7 @@
 ## 0. 基线（每次改动后必跑）
 - [x] `pnpm typecheck` 通过
 - [x] `pnpm build` 通过（产出 lib/index.js 与 lib/client.js）
-- [x] `pnpm test` 全绿 = **202 单测**（vitest run，24 个测试文件）
+- [x] `pnpm test` 全绿 = **198 单测**（vitest run，24 个测试文件）
 - [x] 工作树 git 干净，提交信息遵循 Conventional Commits
 
 ## 1. 挂载 / 生效 / 数据位置

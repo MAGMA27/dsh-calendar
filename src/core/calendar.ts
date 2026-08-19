@@ -190,45 +190,18 @@ export interface DragSelection {
 }
 
 /**
- * Normalize a drag to a non-empty, start<end snapped selection. The START
- * rounds UP (snapCeil) and the END rounds DOWN (snapFloor). A degenerate snapped
- * range becomes one cell from the start.
+ * Normalize a drag to a non-empty, start<end snapped selection. Both ends round
+ * DOWN to the start of their `snapMinutes` cell (snapFloor): the start absorbs
+ * 9:50 -> 9:30, 10:20 -> 10:00, 10:35 -> 10:30. A degenerate snapped range
+ * becomes one cell from the start. No forward drift is applied.
  */
 export function normalizeDrag(anchor: number, from: number, to: number, snapMinutes: number): { start: number; end: number } {
   void anchor
   const minutes = effectiveSnap(snapMinutes)
-  const lo = snapCeil(Math.min(from, to), minutes)
+  const lo = snapFloor(Math.min(from, to), minutes)
   const hi = snapFloor(Math.max(from, to), minutes)
   if (hi <= lo) return { start: lo, end: lo + minutes * 60_000 }
   return { start: lo, end: hi }
-}
-
-/**
- * Push a drag-created task's start forward so it never begins strictly inside
- * an already-existing task's block. This only ever fires when snapping pulled
- * the start back INTO an earlier task (e.g. a task that ends off-grid): the
- * start is moved to that task's actual end, so the new task sits neatly below
- * it. Free-form overlaps via the drag END are left untouched (the calendar
- * supports intentional side-by-side overlap).
- */
-export function alignCreateStart(
-  start: number,
-  end: number,
-  blocked: ReadonlyArray<{ start: number; end: number }>,
-): { start: number; end: number } {
-  let s = start
-  let guard = 0
-  while (guard++ < 64) {
-    const keeper = blocked.find(b => s >= b.start && s < b.end && end > b.start)
-    if (keeper === undefined) break
-    if (keeper.end > end) {
-      // The whole drag landed inside one task; nudge its start to the boundary.
-      s = end === keeper.end ? end : Math.min(end, keeper.end)
-      break
-    }
-    s = keeper.end
-  }
-  return { start: s, end }
 }
 
 /** Whether a task's block falls on the given day cell. */

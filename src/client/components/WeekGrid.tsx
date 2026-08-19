@@ -10,7 +10,7 @@
 import { useRef, useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import {
-  alignCreateStart, blockOnDay, dayKey, dayWindowFraction, dayWindowLength, inDayWindow, layoutDayTasks,
+  blockOnDay, dayKey, dayWindowFraction, dayWindowLength, inDayWindow, layoutDayTasks,
   minutesOfDay, normalizeDrag, weekDays,
   type DayCell,
 } from '../../core/calendar.ts'
@@ -98,13 +98,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   const moveDrag = (dayCell: DayCell) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragOrigin.current === undefined) return
     const d = normalizeDrag(dragOrigin.current.dayCell.dateMs, yToMs(dragOrigin.current.dayCell, dragOrigin.current.y), yToMs(dayCell, e.clientY), snapMinutes)
-    // Don't let snapping pull the create start back inside an existing task in
-    // this column; nudge it to sit just below that task so an adjacent task can
-    // always be created along its bottom edge.
-    const colTasks = snap.snapshot.tasks
-      .filter(t => !t.archivedAt && blockOnDay(t.startAt, t.endAt, dayCell.dateMs, dayCell.dateMs + 24 * 60 * 60_000))
-      .map(t => ({ start: t.startAt, end: t.endAt }))
-    setDrag(alignCreateStart(d.start, d.end, colTasks))
+    setDrag(d)
   }
   const endDrag = () => {
     if (drag === undefined) return

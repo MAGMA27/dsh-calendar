@@ -140,6 +140,11 @@
 - **实现**：`src/host-ledger.ts` `advanceSchedule` 增加 one-shot 完结分支——`nextRunAt === undefined` 且任务无 cron（纯 dueAt）时**整体删除 schedule 规则**（`schedule: undefined`）并移除 `scheduler.nextRuns` 镜像；有 cron 的任务照旧滚进下一次 cron 匹配（即便同时残留过期 dueAt 也保留 cron 规则）。scheduler 侧行为不变（仍以 `undefined` 回调）。
 - **测试**：`tests/host-ledger.spec.ts` 新增 2 用例——one-shot 完结后 `schedule` 为 undefined；cron+dueAt 并存时滚进 cron 且 dueAt 保留。**145 单测全绿**（22 文件）。
 
+## 复用现有会话的执行任务修复（runner 的 agentPresets 域名 + 错误透传）
+- **问题**：钉了现有会话的任务执行 fail——账本错误为 `this deployment does not support agent presets (task asks for minimal)`。根因与目录一样的命名坑：`HostExecutionEnv` face 声明的是 `presets`，而进程内 ApiProxy 域对象是 **`agentPresets`（复数）** → `env.presets` 恒 undefined → 复用会话路径（`fresh:false` 且钉了预设）直接抛错。新会话路径不受影响（预设走 `sessions.create` 的 `agentPreset` 参数），所以表现为"只能向新会话发信息"。
+- **实现**：`src/host-runner.ts` face 改为 `agentPresets`（注释记录单/复数差异）；并把 create/预设/模型/权限/prompt 的拒绝错误改为**透传 ApiProxy 的 `error.message`**（如复用会话非空白时 `agent preset switch to X rejected: session ... has already started; its agent preset is fixed`），不再只有干巴巴的通用文案。fail-closed 语义不变：钉了预设的复用会话若已开聊（非 blank），预设确实无法应用 → 仍失败并说明原因。
+- **测试**：`tests/host-runner.spec.ts`、`tests/host-reconcile.spec.ts` fixture 同步改 `agentPresets`（typecheck 强制）。**145 单测全绿**（22 文件）。
+
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 

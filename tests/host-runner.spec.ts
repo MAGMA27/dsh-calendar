@@ -62,7 +62,7 @@ function makeHarness(opts: {
         return { result: { ok: opts.promptOk ?? true } }
       },
     },
-    presets: { select: async () => { calls.presetsSelect++; return { result: { ok: opts.presetOk ?? true } } } },
+    agentPresets: { select: async () => { calls.presetsSelect++; return { result: { ok: opts.presetOk ?? true } } } },
   }
   return { env, calls, rows, gates }
 }

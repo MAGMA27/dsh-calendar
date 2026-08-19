@@ -23,7 +23,7 @@ function makeEnv(rows?: RunnerSessionRow[], listEmpty = false): HostExecutionEnv
       rename: async () => ({ result: { ok: true } }),
       prompt: async () => ({ result: { ok: true } }),
     },
-    presets: { select: async () => ({ result: { ok: true } }) },
+    agentPresets: { select: async () => ({ result: { ok: true } }) },
   }
 }
 

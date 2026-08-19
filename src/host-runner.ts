@@ -52,7 +52,9 @@ export interface RunnerPresetsFace {
 export interface HostExecutionEnv {
   sessions: RunnerSessionsFace
   workspace?: RunnerWorkspaceFace
-  presets?: RunnerPresetsFace
+  // NOTE: the in-process ApiProxy domain object is `agentPresets` (plural),
+  // even though the wire method path is `agentPreset.select` (singular).
+  agentPresets?: RunnerPresetsFace
 }
 
 /** The narrow ledger face the runner writes executions through. */
@@ -86,6 +88,11 @@ function defaultSleep(ms: number): Promise<void> {
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+/** The API's own error message when an RPC result is rejected, else undefined. */
+function rpcError(res: { result?: { ok?: boolean; error?: { message?: string } } } | undefined): string | undefined {
+  return res?.result?.error?.message
 }
 
 let rpcSeq = 0
@@ -188,7 +195,8 @@ export class HostExecutionRunner {
     const agentPreset = task.mode !== undefined && task.mode !== '' ? task.mode : undefined
     const created = await this.env.sessions.create(req({ workspaceId, agentPreset }))
     if (created?.result?.ok !== true || created.result.value?.sessionId === undefined) {
-      throw new Error('failed to create the execution session')
+      const reason = rpcError(created)
+      throw new Error(reason !== undefined ? `failed to create the execution session: ${reason}` : 'failed to create the execution session')
     }
     return { sessionId: String(created.result.value.sessionId), fresh: true }
   }
@@ -215,10 +223,15 @@ export class HostExecutionRunner {
     // Agent preset: fresh sessions were created under it already; a reused
     // session must be recomposed (only legal while still blank).
     if (task.mode !== undefined && task.mode !== '' && !fresh) {
-      const preset = this.env.presets
+      const preset = this.env.agentPresets
       if (preset === undefined) throw new Error(`this deployment does not support agent presets (task asks for ${task.mode})`)
       const res = await preset.select(req({ sessionId, agentPreset: task.mode }))
-      if (res?.result?.ok !== true) throw new Error(`agent preset switch to ${task.mode} rejected`)
+      if (res?.result?.ok !== true) {
+        const reason = rpcError(res)
+        throw new Error(reason !== undefined
+          ? `agent preset switch to ${task.mode} rejected: ${reason}`
+          : `agent preset switch to ${task.mode} rejected`)
+      }
     }
     // Provider + model route.
     if (task.provider !== undefined && task.provider !== '' && task.model !== undefined && task.model !== '') {
@@ -228,7 +241,12 @@ export class HostExecutionRunner {
         model: task.model,
         reasoningEffort: task.reasoningEffort,
       }))
-      if (res?.result?.ok !== true) throw new Error(`model selection rejected: ${task.provider}/${task.model}`)
+      if (res?.result?.ok !== true) {
+        const reason = rpcError(res)
+        throw new Error(reason !== undefined
+          ? `model selection rejected: ${task.provider}/${task.model} (${reason})`
+          : `model selection rejected: ${task.provider}/${task.model}`)
+      }
     } else if (task.provider !== undefined || task.model !== undefined) {
       // A provider without a model (or vice versa) is an incomplete pin: refuse.
       throw new Error('incomplete model pin: provider and model must be set together')
@@ -240,7 +258,12 @@ export class HostExecutionRunner {
         mode: 'queue',
         content: [{ type: 'text', text: `/permission ${task.permission}` }],
       }))
-      if (res?.result?.ok !== true) throw new Error(`permission command rejected: /permission ${task.permission}`)
+      if (res?.result?.ok !== true) {
+        const reason = rpcError(res)
+        throw new Error(reason !== undefined
+          ? `permission command rejected: /permission ${task.permission} (${reason})`
+          : `permission command rejected: /permission ${task.permission}`)
+      }
     }
     // Cosmetic rename; failures do not fail the run.
     await this.env.sessions.rename(req({ sessionId, title: task.title })).catch(() => { /* rename is cosmetic */ })
@@ -250,7 +273,10 @@ export class HostExecutionRunner {
   private async sendPrompt(task: TaskRecord, sessionId: string): Promise<void> {
     const text = task.prompt.trim() !== '' ? task.prompt : task.title
     const res = await this.env.sessions.prompt(req({ sessionId, mode: 'queue', content: [{ type: 'text', text }] }))
-    if (res?.result?.ok !== true) throw new Error('task prompt rejected by the session')
+    if (res?.result?.ok !== true) {
+      const reason = rpcError(res)
+      throw new Error(reason !== undefined ? `task prompt rejected by the session: ${reason}` : 'task prompt rejected by the session')
+    }
   }
 
   /**

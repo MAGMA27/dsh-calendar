@@ -215,11 +215,11 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   grid-template-columns: 56px repeat(7, minmax(0, 1fr));
   min-width: 760px;
   background: var(--dsw-alias-bg-base);
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
 }
 
 .weekHeaderCorner {
-  border-right: 1px solid var(--dsw-alias-border-l1);
+  border-right: 1px solid var(--dsw-alias-border-l2);
 }
 
 .weekHeaderCell {
@@ -231,7 +231,7 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   padding: 6px 4px;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
-  border-right: 1px solid var(--dsw-alias-border-l1);
+  border-right: 1px solid var(--dsw-alias-border-l2);
 }
 
 .weekHeaderCell[data-today] { color: var(--dsw-alias-label-primary); font-weight: 600; }
@@ -263,7 +263,7 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   left: 0;
   z-index: 3;
   background: var(--dsw-alias-bg-base);
-  border-right: 1px solid var(--dsw-alias-border-l1);
+  border-right: 1px solid var(--dsw-alias-border-l2);
 }
 
 .weekGutterLabel {
@@ -276,10 +276,19 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 
 .weekColumn {
   position: relative;
-  border-right: 1px solid var(--dsw-alias-border-l1);
+  border-right: 1px solid var(--dsw-alias-border-l2);
+  /* Visible hourly grid lines (48px per hour at 24h × 48px). */
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(48px - 1px),
+    var(--dsw-alias-border-l2) calc(48px - 1px),
+    var(--dsw-alias-border-l2) 48px
+  );
 }
 
-.weekColumn[data-weekend='true'] { background: var(--dsw-alias-bg-layer-2); }
+.weekColumn[data-weekend='true'] { background-color: var(--dsw-alias-bg-layer-2); }
 
 .slotOverlay {
   position: absolute;
@@ -335,6 +344,24 @@ html[data-dsh-calender-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   text-align: left;
   cursor: pointer;
   font-family: var(--dsw-font-family);
+}
+
+.taskBlockTime {
+  font-size: 10px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.taskBlockTimeOnly {
+  font-size: 10px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  align-self: center;
+  margin: auto;
 }
 
 .taskBlockTitle {

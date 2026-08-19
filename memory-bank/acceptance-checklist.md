@@ -7,26 +7,26 @@
 ---
 
 ## 0. 基线（每次改动后必跑）
-- [ ] `pnpm typecheck` 通过
-- [ ] `pnpm build` 通过（产出 lib/index.js 与 lib/client.js）
-- [ ] `pnpm test` 全绿 = **113 单测**（vitest run）
-- [ ] 工作树 git 干净，提交信息遵循 Conventional Commits
+- [x] `pnpm typecheck` 通过
+- [x] `pnpm build` 通过（产出 lib/index.js 与 lib/client.js）
+- [x] `pnpm test` 全绿 = **113 单测**（vitest run）
+- [x] 工作树 git 干净，提交信息遵循 Conventional Commits
 
 ## 1. 挂载 / 生效 / 数据位置
-- [ ] `dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` 成功（自动对账 dsh.profile.bundles）
-- [ ] `dsh --profile web --dump-config` 出现 ui-calender 层
-- [ ] **重启 dsh web 进程**后插件上线（页面刷新不够；host/client 改动都需重启）
-- [ ] 侧边栏出现「日历」入口，点击后中间列切换为日历视图
-- [ ] 卸载（`dsh plugin --profile web remove dsh-calender`）后 GUI 恢复原状、无崩溃
-- [ ] 账本 $DSH_HOME/calender/ledger-v1.json 存在且随操作更新
-- [ ] API 冒烟：GET /api/calender/state 返回带 schemaVersion/revision/tasks/scheduler 的 snapshot
+- [x] `dsh plugin --profile web add link:D:\Dev\agents\dsh-calender` 成功（自动对账 dsh.profile.bundles）
+- [x] `dsh --profile web --dump-config` 出现 ui-calender 层
+- [x] **重启 dsh web 进程**后插件上线（页面刷新不够；host/client 改动都需重启）
+- [x] 侧边栏出现「日历」入口，点击后中间列切换为日历视图
+- [x] 卸载（`dsh plugin --profile web remove dsh-calender`）后 GUI 恢复原状、无崩溃
+- [x] 账本 $DSH_HOME/calender/ledger-v1.json 存在且随操作更新
+- [x] API 冒烟：GET /api/calender/state 返回带 schemaVersion/revision/tasks/scheduler 的 snapshot
 
 ## 2. M0–M3 日历与任务编辑（GUI 手测）
-- [ ] 周视图**拖选时间段**新建任务，起止自动预填
-- [ ] 周视图：任务块**移动 / 拉伸**调时间；顶部 sticky 表头（周几+日期）；**重叠任务并排**不遮盖
-- [ ] 周/月视图「今天」按钮可用；矩阵/议程视图正确分组（含「已完成」组）
-- [ ] 主任务挂**子任务**：添加/勾选完成/删除 + 进度汇总
-- [ ] **艾森豪威尔矩阵**四象限显示 + 象限间**拖拽改紧急/重要**
+- [x] 周视图**拖选时间段**新建任务，起止自动预填
+- [x] 周视图：任务块**移动 / 拉伸**调时间；顶部 sticky 表头（周几+日期）；**重叠任务并排**不遮盖
+- [x] 周/月视图「今天」按钮可用；矩阵/议程视图正确分组（含「已完成」组）
+- [x] 主任务挂**子任务**：添加/勾选完成/删除 + 进度汇总
+- [x] **艾森豪威尔矩阵**四象限显示 + 象限间**拖拽改紧急/重要**
 - [ ] 详情面板：改标题/描述/Prompt、象限 knobs、定时（cron/一次到时 + 下次运行显示）、保存
 - [ ] 执行设置下拉：**provider→model 联动**、工作区→会话**二级分组 + 级联**、隐藏归档会话、会话显示**真实标题**
 - [ ] 归档/恢复/删除、定时清除（周视图定时徽标随之消失）

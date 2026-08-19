@@ -28,6 +28,12 @@ const ACCENT: Record<string, string> = {
   eliminate: css.quadrantEliminate,
 }
 
+function fmtTime(ms: number): string {
+  const d = new Date(ms)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect, onEditStart, editing }: TaskBlockProps) {
   const q = quadrantOf(task.urgency, task.importance)
   const subCount = task.subtasks.length
@@ -37,6 +43,7 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
   const running = task.executions.some(e => e.endedAt === undefined)
 
   const editable = onEditStart !== undefined
+  const compact = heightPct < 4
 
   const startMove = (e: React.PointerEvent<HTMLElement>): void => {
     if (onEditStart === undefined) return
@@ -59,8 +66,13 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
       onPointerDown={editable ? startMove : undefined}
       aria-label={task.title}
     >
-      <span className={css.taskBlockTitle} data-done={task.done || undefined}>{task.title}</span>
-      {(scheduled || running || subCount > 0 || hasProvider) && (
+      <span
+        className={compact ? css.taskBlockTimeOnly : css.taskBlockTime}
+      >
+        {fmtTime(task.startAt)}–{fmtTime(task.endAt)}
+      </span>
+      {!compact && <span className={css.taskBlockTitle} data-done={task.done || undefined}>{task.title}</span>}
+      {!compact && (scheduled || running || subCount > 0 || hasProvider) && (
         <span className={css.taskBlockMeta}>
           {running && <span className={css.taskBadge} title={t('task.running')}>{t('task.running')}</span>}
           {scheduled && <span className={css.taskBadge} title={t('task.scheduled')}>🕐</span>}

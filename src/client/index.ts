@@ -7,7 +7,7 @@
  * Failure policy: registration problems are logged, never thrown; an external
  * plugin must not take the GUI down.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -15,7 +15,8 @@ import { calendarClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpcalendarHostTransport } from './host-api.ts'
 import { createCalendarOverlay } from './calendar-overlay.tsx'
 import { CalendarEntry } from './calendar-entry.tsx'
-import { setCalendarOpen } from './root-open.ts'
+import { isCalendarOpen, setCalendarOpen, subscribeCalendarOpen } from './root-open.ts'
+import { watchSessionNavigation } from './navigation-watch.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { en, zh } from './locales.ts'
 
@@ -50,14 +51,30 @@ export function apply(ctx: ClientContext): void {
   // titles / LLM providers+models) is assembled on the Host and fetched here.
   void refreshCatalog(controller)
 
+  // The sessions service is typed by the runtime's Context merge; read it once
+  // so both the navigation watcher and the session jump share the same handle.
+  const sessions = (ctx as unknown as { sessions: ISessions }).sessions
+
+  // Navigation watcher: while the calendar overlay is open, switching the
+  // current session — clicking a session in the sidebar workspace browser, or
+  // starting a new session — closes the calendar so the conversation shows
+  // through (see navigation-watch.ts for the exact baseline rules).
+  ctx.effect(() => watchSessionNavigation({
+    isOpen: isCalendarOpen,
+    setOpen: setCalendarOpen,
+    subscribeOpen: subscribeCalendarOpen,
+    list: sessions.list,
+  }), 'dsh-calendar: watch session navigation')
+
   // Session jump: opening an execution's session in the GUI is a deliberate
   // leave-the-calendar action, so the calendar overlay is closed first; the
   // session then opens below the now-visible conversation surface.
   const openSession = (sessionId: string): void => {
     setCalendarOpen(false)
-    const sessions = (ctx as unknown as { sessions?: { open(id: string): void } }).sessions
     try {
-      sessions?.open(sessionId)
+      // Execution-record ids are plain strings; the branded SessionId is a
+      // structural subtype, so the cast is a pure narrowing.
+      sessions.open(sessionId as SessionId)
     } catch {
       // The session may not be listed yet; ignore. The calendar is already
       // closed: the click was an explicit leave intent.

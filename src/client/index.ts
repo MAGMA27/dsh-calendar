@@ -16,7 +16,7 @@ import { HTTP_PREFIX_DEFAULT, HttpcalendarHostTransport } from './host-api.ts'
 import { createCalendarOverlay } from './calendar-overlay.tsx'
 import { CalendarEntry } from './calendar-entry.tsx'
 import { isCalendarOpen, setCalendarOpen, subscribeCalendarOpen } from './root-open.ts'
-import { watchSessionNavigation } from './navigation-watch.ts'
+import { closeOnSessionOpen, watchSessionNavigation } from './navigation-watch.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { en, zh } from './locales.ts'
 
@@ -65,6 +65,15 @@ export function apply(ctx: ClientContext): void {
     subscribeOpen: subscribeCalendarOpen,
     list: sessions.list,
   }), 'dsh-calendar: watch session navigation')
+
+  // Clicking the ALREADY-current session changes no `list.current`, so the
+  // list watcher cannot see that gesture; every explicit session-open flows
+  // through `sessions.open`, so wrapping it closes the calendar on any open
+  // (including the current session). Restored on dispose.
+  ctx.effect(() => closeOnSessionOpen(
+    sessions,
+    () => setCalendarOpen(false),
+  ), 'dsh-calendar: close calendar on any session open')
 
   // Session jump: opening an execution's session in the GUI is a deliberate
   // leave-the-calendar action, so the calendar overlay is closed first; the

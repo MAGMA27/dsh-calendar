@@ -7,9 +7,16 @@
  * re-seeded every time the calendar opens, so opening the calendar over an
  * already-current session does not instantly close it.
  *
- * The two subscriptions (open-store + sessions list) are the only dependency,
- * passed in so this stays a plain function that unit tests can drive without a
- * cordis context.
+ * Clicking the ALREADY-current session changes no `list.current` (the manager
+ * still notifies, but with the same value), so the list watcher alone cannot
+ * see that gesture. `closeOnSessionOpen` patches the shared `sessions.open`
+ * method — every explicit session-open (sidebar click, fork, workflow child)
+ * flows through it — and closes the calendar on any call, then restores the
+ * original on dispose.
+ *
+ * The two subscriptions (open-store + sessions list) plus the open wrap are the
+ * only dependencies, passed in so this stays a plain function that unit tests
+ * can drive without a cordis context.
  */
 
 /** The slice of `sessions.list` this watcher reads (kept minimal for tests). */
@@ -60,5 +67,27 @@ export function watchSessionNavigation(deps: NavigationWatchDeps): () => void {
   return () => {
     unsubOpen()
     unsubList()
+  }
+}
+
+/**
+ * Close the calendar on any explicit session-open. Patches the shared
+ * `sessions.open` method so a click on the already-current session (which
+ * changes no `list.current`) also closes the overlay; every open flows through
+ * this method. Returns a disposer that restores the original method.
+ * @param sessions - the sessions service face (open patched in place).
+ * @param close - the calendar-close callback.
+ */
+export function closeOnSessionOpen(
+  sessions: { open(id: string): void },
+  close: () => void,
+): () => void {
+  const original = sessions.open.bind(sessions)
+  sessions.open = (id: string): void => {
+    close()
+    original(id)
+  }
+  return () => {
+    sessions.open = original
   }
 }

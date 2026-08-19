@@ -5,6 +5,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import {
+  closeOnSessionOpen,
   watchSessionNavigation,
   type SessionNavigationList,
 } from '../src/client/navigation-watch.ts'
@@ -104,5 +105,40 @@ describe('watchSessionNavigation', () => {
     h.dispose()
     h.setCurrent('session-b')
     expect(h.open()).toBe(true) // no longer watching
+  })
+})
+
+describe('closeOnSessionOpen', () => {
+  it('closes the calendar and opens the session on any open, including the current one', () => {
+    const original = vi.fn()
+    const sessions = { open: original }
+    const close = vi.fn()
+    const dispose = closeOnSessionOpen(sessions, close)
+    sessions.open('session-a') // the already-current session
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(original).toHaveBeenCalledWith('session-a')
+    dispose()
+  })
+
+  it('restores the original method on dispose', () => {
+    const original = vi.fn()
+    const sessions = { open: original }
+    const close = vi.fn()
+    const dispose = closeOnSessionOpen(sessions, close)
+    dispose()
+    sessions.open('session-b')
+    expect(close).not.toHaveBeenCalled()
+    expect(original).toHaveBeenCalledWith('session-b')
+  })
+
+  it('chains through the original implementation after closing', () => {
+    const seen: string[] = []
+    const sessions = { open: (id: string) => { seen.push(id) } }
+    const close = vi.fn()
+    const dispose = closeOnSessionOpen(sessions, close)
+    sessions.open('session-c')
+    dispose()
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(seen).toEqual(['session-c'])
   })
 })

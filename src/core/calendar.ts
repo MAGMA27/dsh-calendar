@@ -153,6 +153,22 @@ export function snapCeil(ms: number, snapMinutes: number): number {
   return d.getTime()
 }
 
+/**
+ * Round a ms timestamp to the NEAREST `snapMinutes` boundary (0..59 clamp, same
+ * day). Task move/resize already snap to nearest; making the create gesture do
+ * the same means a half-hour boundary is reachable from ~15 min on either side
+ * ("a broader pointer"), so a new task can start exactly at an existing task's
+ * edge instead of being pulled back into the previous cell by floor-snapping.
+ */
+export function snapNearest(ms: number, snapMinutes: number): number {
+  const minutes = effectiveSnap(snapMinutes)
+  const d = new Date(ms)
+  const dayTotal = minutesOfDay(ms)
+  const snapped = Math.min(1439, Math.max(0, Math.round(dayTotal / minutes) * minutes))
+  d.setHours(Math.floor(snapped / 60), snapped % 60, 0, 0)
+  return d.getTime()
+}
+
 /** Clamp a snap interval into [5, 60], defaulting invalid values to 30. */
 function effectiveSnap(snapMinutes: number): number {
   const minutes = Math.floor(snapMinutes)
@@ -173,14 +189,46 @@ export interface DragSelection {
   end: number
 }
 
-/** Normalize a drag to a non-empty, start<end snapped selection. */
+/**
+ * Normalize a drag to a non-empty, start<end snapped selection. Both ends snap
+ * to the NEAREST boundary, matching task move/resize, so a boundary like 10:00
+ * is easy to hit from either ~15 minutes around it.
+ */
 export function normalizeDrag(anchor: number, from: number, to: number, snapMinutes: number): { start: number; end: number } {
   void anchor
   const minutes = effectiveSnap(snapMinutes)
-  const lo = snapFloor(Math.min(from, to), minutes)
-  const hi = snapFloor(Math.max(from, to), minutes)
+  const lo = snapNearest(Math.min(from, to), minutes)
+  const hi = snapNearest(Math.max(from, to), minutes)
   if (lo === hi) return { start: lo, end: lo + minutes * 60_000 }
   return { start: lo, end: hi }
+}
+
+/**
+ * Push a drag-created task's start forward so it never begins strictly inside
+ * an already-existing task's block. This only ever fires when snapping pulled
+ * the start back INTO an earlier task (e.g. a task that ends off-grid): the
+ * start is moved to that task's actual end, so the new task sits neatly below
+ * it. Free-form overlaps via the drag END are left untouched (the calendar
+ * supports intentional side-by-side overlap).
+ */
+export function alignCreateStart(
+  start: number,
+  end: number,
+  blocked: ReadonlyArray<{ start: number; end: number }>,
+): { start: number; end: number } {
+  let s = start
+  let guard = 0
+  while (guard++ < 64) {
+    const keeper = blocked.find(b => s >= b.start && s < b.end && end > b.start)
+    if (keeper === undefined) break
+    if (keeper.end > end) {
+      // The whole drag landed inside one task; nudge its start to the boundary.
+      s = end === keeper.end ? end : Math.min(end, keeper.end)
+      break
+    }
+    s = keeper.end
+  }
+  return { start: s, end }
 }
 
 /** Whether a task's block falls on the given day cell. */

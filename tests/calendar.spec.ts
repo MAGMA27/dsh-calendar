@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addDays, addMonths, dayFraction, dayKey, dayWindowFraction, dayWindowLength, hhmm, inDayWindow,
+  addDays, addMonths, alignCreateStart, dayFraction, dayKey, dayWindowFraction, dayWindowLength, hhmm, inDayWindow,
   layoutDayTasks, minutesOfDay, monthLabel, normalizeDrag, sameDay, sameMonth,
-  snapCeil, snapFloor, startOfMonth, startOfWeek, weekDays, weekRangeLabel,
+  snapCeil, snapFloor, snapNearest, startOfMonth, startOfWeek, weekDays, weekRangeLabel,
 } from '../src/core/calendar.ts'
 
 // 2024-01-15 is a Monday in local time.
@@ -40,6 +40,11 @@ describe('snap', () => {
     expect(minutesOfDay(snapFloor(t, 30))).toBe(10 * 60 + 30)
     expect(minutesOfDay(snapCeil(t, 30))).toBe(11 * 60)
   })
+  it('snapNearest rounds to the nearest boundary', () => {
+    expect(minutesOfDay(snapNearest(new Date(2024, 0, 15, 9, 50).getTime(), 30))).toBe(10 * 60)
+    expect(minutesOfDay(snapNearest(new Date(2024, 0, 15, 9, 10).getTime(), 30))).toBe(9 * 60)
+    expect(minutesOfDay(snapNearest(new Date(2024, 0, 15, 10, 29).getTime(), 30))).toBe(10 * 60 + 30)
+  })
   it('clamps snap interval to [1,60]', () => {
     const t = new Date(2024, 0, 15, 10, 5).getTime()
     expect(minutesOfDay(snapFloor(t, 0))).toBe(10 * 60)
@@ -47,19 +52,45 @@ describe('snap', () => {
 })
 
 describe('drag selection', () => {
-  it('normalizes a reversed drag to start<end on the snap grid', () => {
+  it('normalizes a reversed drag to start<end on the snap grid (nearest)', () => {
     const anchor = MON_1200
     const from = new Date(2024, 0, 15, 11, 10).getTime()
     const to = new Date(2024, 0, 15, 9, 50).getTime()
     const { start, end } = normalizeDrag(anchor, from, to, 30)
     expect(start).toBeLessThan(end)
-    expect(minutesOfDay(start)).toBe(9 * 60 + 30)
+    expect(minutesOfDay(start)).toBe(10 * 60)
     expect(minutesOfDay(end)).toBe(11 * 60)
   })
   it('a zero-length selection gets one snap cell', () => {
     const t = new Date(2024, 0, 15, 9, 20).getTime()
     const { start, end } = normalizeDrag(t, t, t, 30)
     expect(end - start).toBe(30 * 60_000)
+  })
+})
+
+describe('alignCreateStart', () => {
+  const d = (h: number, m = 0) => new Date(2024, 0, 15, h, m).getTime()
+  it('leaves a start that does not fall inside a block unchanged', () => {
+    const blocked = [{ start: d(9, 0), end: d(9, 50) }] // ends off-grid
+    const r = alignCreateStart(d(10, 0), d(11, 0), blocked)
+    expect(r.start).toBe(d(10, 0))
+  })
+  it('pushes a start that snapping pulled back inside a block to its end', () => {
+    const blocked = [{ start: d(9, 0), end: d(9, 50) }]
+    const r = alignCreateStart(d(9, 30), d(10, 30), blocked) // snapped inside 9:00–9:50
+    expect(r.start).toBe(d(9, 50)) // sits exactly at the previous task's edge
+    expect(r.end).toBe(d(10, 30))
+  })
+  it('walks past consecutive blocks', () => {
+    const blocked = [{ start: d(9, 0), end: d(9, 40) }, { start: d(9, 40), end: d(10, 20) }]
+    const r = alignCreateStart(d(9, 30), d(11, 0), blocked)
+    expect(r.start).toBe(d(10, 20))
+  })
+  it('does not move the end (free-form overlap through the tail is allowed)', () => {
+    const blocked = [{ start: d(9, 0), end: d(10, 0) }]
+    const r = alignCreateStart(d(10, 0), d(10, 30), blocked)
+    expect(r.start).toBe(d(10, 0))
+    expect(r.end).toBe(d(10, 30))
   })
 })
 

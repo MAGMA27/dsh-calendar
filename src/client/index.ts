@@ -1,23 +1,27 @@
 /**
  * dsh-calendar client half (browser). Wires the same-origin transport to the
- * view controller and mounts the two DOM surfaces — the sidebar entry row and
- * the calendar view in the center column.
+ * view controller and registers the calendar as a session view tab through the
+ * official `conversation.view` slot — the shell renders it (stable lifecycle),
+ * instead of DOM-injecting into the React-owned center column.
  *
- * Failure policy: DOM mounting problems are logged, never thrown; an external
- * plugin must not take the GUI down.
+ * Failure policy: problems are logged, never thrown; an external plugin must
+ * not take the GUI down.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { calendarClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpcalendarHostTransport } from './host-api.ts'
+import { createCalendarSlotView } from './calendar-view-slot.tsx'
 import { claimApply, releaseApply } from './apply-guard.ts'
-import { mountSidebarEntry } from './sidebar-entry.ts'
-import { mountcalendar } from './calendar-mount.tsx'
 import { en, zh } from './locales.ts'
 
 /** Locale namespace this plugin owns. */
 const NS = 'calendar'
+
+/** The conversation-view tab id this plugin owns. */
+export const CALENDAR_VIEW_ID = 'calendar'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -25,10 +29,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services. `sessions` is injected only to perform the session
- * jump (open an execution's session in the GUI); all domain state still comes
- * from the Host over HTTP. */
-export const inject = ['locale', 'sessions']
+/** Required services: locale for copy, slots to register the calendar view tab,
+ * and sessions for the session jump. Calendar domain state always comes from
+ * the Host over HTTP. */
+export const inject = ['locale', 'slots', 'sessions']
 
 /** Client plugin body. */
 export function apply(ctx: ClientContext): void {
@@ -37,8 +41,8 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-calendar: dictionaries')
 
-  // The transport + controller are wired eagerly so the sidebar entry can open
-  // the panel as soon as the frame mounts.
+  // The transport + controller are wired eagerly so the view is ready when the
+  // tab is shown.
   const transport = new HttpcalendarHostTransport(HTTP_PREFIX_DEFAULT)
   const controller = new calendarClientController(transport, initialState(Date.now(), 0))
   void controller.start()
@@ -54,26 +58,27 @@ export function apply(ctx: ClientContext): void {
     try {
       sessions?.open(sessionId)
     } catch {
-      // The session may not be listed yet; ignore and keep the panel open.
+      // The session may not be listed yet; ignore and keep the view open.
     }
   }
 
-  let uiDisposer: (() => void) | undefined
-  const disposers: Array<() => void> = []
-  try {
-    disposers.push(mountSidebarEntry(controller))
-    disposers.push(mountcalendar(controller, openSession))
-  } catch (error) {
-    console.error('[dsh-calendar] mount failed:', error)
-  }
+  // The calendar view body. The conversation.view slot passes session-focused
+  // props; the calendar is its own view so it ignores those and renders its own
+  // controller-backed tree.
+  const CalendarSlotView = createCalendarSlotView(controller, openSession)
 
-  uiDisposer = () => {
-    for (const dispose of disposers.splice(0)) dispose()
-    controller.dispose()
-    uiDisposer = undefined
-  }
+  // Register the calendar as one tab in the conversation view ring, beside the
+  // shipped chat and trajectory tabs. register disposal rides the caller's
+  // fiber, so plugin unload removes the tab.
+  ctx.slots.inject('conversation.view', () => ctx.slots.register({
+    name: 'conversation.view',
+    id: CALENDAR_VIEW_ID,
+    order: 20,
+    locale: NS,
+    label: () => '日历',
+  }, CalendarSlotView as never))
 
-  ctx.effect(() => uiDisposer ?? (() => {}), 'dsh-calendar: ui dispose')
+  ctx.effect(() => () => controller.dispose(), 'dsh-calendar: dispose controller')
 }
 
 /**
@@ -89,4 +94,3 @@ async function refreshCatalog(controller: calendarClientController): Promise<voi
     // Degrade to free-text inputs; never take the GUI down.
   }
 }
-

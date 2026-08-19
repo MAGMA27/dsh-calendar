@@ -606,18 +606,17 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   text-align: left;
 }
 
-/* Date band: the day number floats on a color capsule that covers the date's
- * line. Current-month days get the brand band; adjacent months get grey. */
+/* Date band: a full-cell-width horizontal bar with the day number floating on
+ * it. Current-month days get the brand bar; adjacent months get grey. */
 .monthCellDateRow {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  align-self: flex-start;
-  min-width: 26px;
-  height: 22px;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 22px;
   padding: 0 8px;
   box-sizing: border-box;
-  border-radius: 999px;
+  border-radius: 6px;
   background: var(--dsw-alias-brand-primary);
   color: var(--dsw-alias-label-primary-foreground);
 }

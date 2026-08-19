@@ -90,6 +90,8 @@
 日历的浏览器呈现改用 DSH **官方 Slot**，不再向 React 托管的中间列做 DOM 注入（早期做法在 dsh-client rc.6 下「容器挂不上/内容空白」反复出现）：
 - **面板**→`shell.overlay` 槽位（root、`replaceRisk:none`）渲染 `<CalendarView>`；根级 → 无需打开会话即可进入日历；
 - **入口**→`sidebar.footer.action` 槽位（root、左下角 Settings 旁）——侧边栏唯一的 root 级 additive 槽位，左上角无 additive 位置；
-- 覆盖层动态测量侧边栏右缘收窄到侧栏右侧（保留侧栏可见）；入口样式对齐 Settings（展开图标+文字、折叠纯图标）。
+- 覆盖层动态测量侧边栏右缘收窄到侧栏右侧（保留侧栏可见）；
+- **入口样式 1:1 复刻 Settings 触发按钮**（ui-settings-general `SettingsRoot.module.css` `.trigger`）：宽栏为通栏 42px 行（`width:calc(100%+4px)`、`height:42px`、`margin:4px -2px`、`padding:0 10px 0 8px`、`border-radius:12px`、主文字色、14px/行高22）；收窄为 36×36 圆形（半径 50%）。rail 判定走 slot 传入的 **`wide` prop**（与 SettingsRoot 一致），不依赖 CSS 属性。
 渲染链：`CalendarEntry` → `root-open.ts` 开关 store → `CalendarOverlay` → `CalendarView`。
+**会话跳转**：日历页执行记录「打开会话」（`onOpenSession` → index.ts `openSession`）先 `setCalendarOpen(false)` 关闭覆盖层、再 `ctx.sessions.open`——点击会话即离开日历回到对话界面（commit `8d520ef`）。
 client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-conversation`）。

@@ -108,6 +108,11 @@
 **验证**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 文件）。git：分支 `feature/calendar-slot-view`，提交 `9e16259`(slot 注册)→`4656bc1`(覆盖层)→`ec405a2`(shell.overlay+footer entry)→`432b04f`(收窄到侧栏右缘)→`6064953`/`ec38796`(入口样式对齐 Settings)。
 **当前基线**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 个测试文件）。
 
+## 入口与跳转的后续打磨（分支 `feature/calendar-slot-view` 尾段）
+- **入口样式 1:1 对齐 Settings 触发按钮（commit `27b6db4`）**：从 ui-settings-general `SettingsRoot.module.css` 挖出 Settings 按钮的确切配方并复刻——宽栏为通栏 42px 行（`width:calc(100%+4px)`、`height:42px`、`margin:4px -2px`、`padding:0 10px 0 8px`、`border-radius:12px`、主文字色 `label-primary`、14px/行高22、hover `interactive-bg-hover`）；收窄为 36×36 圆形（半径 50%、`margin:8px 0 10px`、无文字）。图标由 hand-rolled SVG 跟随 16px(宽)/18px(rail)，描边风格同 Settings。**rail 判定改用 `wide` prop**（`sidebar.footer.action` slot 由 SidebarRoot 以 `{ wide }` 传入），不再依赖 `[data-sidebar-collapsed]` CSS 属性。改动：`calendar-entry.tsx`（改用 wide prop + rail 圆钮）、`calendar.module.css`（`.entry` 复刻 `.trigger` 配方、删除旧 rail 规则）。
+- **跳转会话自动关闭日历覆盖层（commit `8d520ef`）**：日历页内「打开会话」（TaskDetailPanel 执行记录按钮 → `onOpenSession` → index.ts `openSession`）原只 `ctx.sessions.open`，覆盖层仍盖在上面。现在 `openSession` 先 `setCalendarOpen(false)` 关闭 `shell.overlay` 日历，再跳转会话，点击会话即回到对话界面。改动：`src/client/index.ts`（引入 `setCalendarOpen`）。
+- **验证**：`pnpm typecheck` ✅ / `pnpm build` ✅ / **122 单测全绿**（20 文件）。
+
 ## 下一步
 全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
 

@@ -33,14 +33,14 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .entry {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 8px;
+  padding: 7px 12px;
   background: transparent;
   border: none;
   border-radius: 8px;
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -60,14 +60,14 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   flex: none;
 }
 
-/* Rail (collapsed) sidebar: icon only. */
-.entry:not([data-wide]) .entryLabel {
-  display: none;
-}
-
-.entry[data-wide] .entryLabel {
+.entryLabel {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Rail (collapsed) sidebar: icon only. */
+[data-dsh-frame][data-sidebar-collapsed] .entryLabel {
+  display: none;
 }
 
 /* --- calendar frame ---------------------------------------------------------- */

@@ -58,7 +58,10 @@ export function MonthGrid({ controller, query = '' }: MonthGridProps) {
               data-outside={!inMonth || undefined}
               onClick={() => { controller.setCursor(day.dateMs); controller.setView('week') }}
             >
-              <span className={css.monthCellDay}>{new Date(day.dateMs).getDate()}</span>
+              <span className={css.monthCellDateRow}>
+                <span className={css.monthCellDay}>{new Date(day.dateMs).getDate()}</span>
+                <span className={css.monthCellBar} aria-hidden="true" />
+              </span>
               <span className={css.monthChips}>
                 {dayTasks.slice(0, 4).map(task => (
                   <span key={task.id} className={`${css.taskChip} ${ACCENT[quadrantOf(task.urgency, task.importance)]}`}>

@@ -61,6 +61,72 @@ describe('WeekGrid interaction', () => {
   })
 })
 
+describe('WeekGrid create-drag snapping', () => {
+  function gridRect(top: number, height: number): DOMRect {
+    return { top, height, bottom: top + height, left: 0, right: 100, width: 100, x: 0, y: top, toJSON: () => ({}) } as DOMRect
+  }
+
+  it('floors a drag-create: click at 9:50, drag to 10:20 -> draft 9:30-10:00', async () => {
+    const now = new Date(2026, 0, 12, 8, 0, 0) // a Monday
+    const transport = new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }, undefined)
+    const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<WeekGrid controller={controller} />) })
+
+    const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
+    expect(grid).toBeTruthy()
+    grid.getBoundingClientRect = () => gridRect(0, 24 * 48) // full 24h at 48px/h
+
+    const overlay = host.querySelector('[class*=slotOverlay]') as HTMLElement
+    expect(overlay).toBeTruthy()
+
+    const PE = G.PointerEvent as unknown as typeof MouseEvent
+    const yAt = (h: number, m: number) => ((h * 60 + m) / 1440) * 24 * 48
+    const down = new PE('pointerdown', { bubbles: true, clientY: yAt(9, 50), clientX: 30, pointerId: 1 } as MouseEventInit)
+    const move = new PE('pointermove', { bubbles: true, clientY: yAt(10, 20), clientX: 30, pointerId: 1 } as MouseEventInit)
+    const up = new PE('pointerup', { bubbles: true, clientY: yAt(10, 20), clientX: 30, pointerId: 1 } as MouseEventInit)
+    await act(async () => { overlay.dispatchEvent(down) })
+    await act(async () => { overlay.dispatchEvent(move) })
+    await act(async () => { overlay.dispatchEvent(up) })
+
+    const draft = controller.getSnapshot().draft
+    expect(draft).toBeDefined()
+    expect(new Date(draft!.start).getMinutes()).toBe(30)   // floor(9:50) -> 9:30
+    expect(new Date(draft!.start).getHours()).toBe(9)
+    expect(new Date(draft!.end).getMinutes()).toBe(0)      // floor(10:20) -> 10:00
+    expect(new Date(draft!.end).getHours()).toBe(10)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('a plain click at 9:50 still floors to 9:30', async () => {
+    const now = new Date(2026, 0, 12, 8, 0, 0)
+    const transport = new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }, undefined)
+    const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<WeekGrid controller={controller} />) })
+
+    const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
+    grid.getBoundingClientRect = () => gridRect(0, 24 * 48)
+    const overlay = host.querySelector('[class*=slotOverlay]') as HTMLElement
+    const PE = G.PointerEvent as unknown as typeof MouseEvent
+    const y = ((9 * 60 + 50) / 1440) * 24 * 48
+    await act(async () => { overlay.dispatchEvent(new PE('pointerdown', { bubbles: true, clientY: y, clientX: 30, pointerId: 2 } as MouseEventInit)) })
+    await act(async () => { overlay.dispatchEvent(new PE('pointerup', { bubbles: true, clientY: y, clientX: 30, pointerId: 2 } as MouseEventInit)) })
+
+    const draft = controller.getSnapshot().draft
+    expect(draft).toBeDefined()
+    expect(new Date(draft!.start).getHours()).toBe(9)
+    expect(new Date(draft!.start).getMinutes()).toBe(30)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+})
+
 describe('WeekGrid day window', () => {
   it('maps positions within the visible window and hides off-window hours', async () => {
     const now = new Date(2026, 0, 12, 10, 0, 0) // a Monday 10:00

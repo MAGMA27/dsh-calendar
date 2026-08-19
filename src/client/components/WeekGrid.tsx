@@ -52,6 +52,7 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
   const snap = controller.getSnapshot()
   const days = weekDays(snap.cursor, snap.weekStart)
   const dragOrigin = useRef<{ y: number; dayCell: DayCell } | undefined>(undefined)
+  const dragLast = useRef<{ y: number; dayCell: DayCell } | undefined>(undefined)
   const [drag, setDrag] = useState<{ start: number; end: number } | undefined>(undefined)
   const editRef = useRef<EditCandidate | undefined>(undefined)
   const armedRef = useRef(false)
@@ -92,19 +93,29 @@ export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
 
   const startDrag = (dayCell: DayCell) => (e: React.PointerEvent<HTMLDivElement>) => {
     dragOrigin.current = { y: e.clientY, dayCell }
+    dragLast.current = { y: e.clientY, dayCell }
     setDrag({ start: yToMs(dayCell, e.clientY), end: yToMs(dayCell, e.clientY) })
     ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
   }
   const moveDrag = (dayCell: DayCell) => (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragOrigin.current === undefined) return
+    dragLast.current = { y: e.clientY, dayCell }
     const d = normalizeDrag(dragOrigin.current.dayCell.dateMs, yToMs(dragOrigin.current.dayCell, dragOrigin.current.y), yToMs(dayCell, e.clientY), snapMinutes)
     setDrag(d)
   }
   const endDrag = () => {
-    if (drag === undefined) return
-    controller.setDraft({ start: drag.start, end: drag.end })
+    const origin = dragOrigin.current
+    if (origin === undefined) return
+    // Recompute the final selection deterministically from the pointer refs and
+    // run it through normalizeDrag (floor) — never trust possibly-stale state.
+    // A plain click (no move) has last == origin, so it too lands on the grid
+    // (e.g. a click at 9:50 floors to 9:30).
+    const last = dragLast.current ?? origin
+    const d = normalizeDrag(origin.dayCell.dateMs, yToMs(origin.dayCell, origin.y), yToMs(last.dayCell, last.y), snapMinutes)
+    controller.setDraft({ start: d.start, end: d.end })
     setDrag(undefined)
     dragOrigin.current = undefined
+    dragLast.current = undefined
   }
 
   // --- task move / resize (threshold-armed, cross-day move) ------------------

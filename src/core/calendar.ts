@@ -19,7 +19,7 @@ export interface DayCell {
 }
 
 /** The default time-step for snapping, in minutes. */
-export const DEFAULT_SNAP_MINUTES = 30
+export const DEFAULT_SNAP_MINUTES = 15
 /** Snap interval options offered by settings (minutes). */
 export const SNAP_INTERVALS: readonly number[] = [15, 30, 60]
 
@@ -169,7 +169,7 @@ export function snapNearest(ms: number, snapMinutes: number): number {
   return d.getTime()
 }
 
-/** Clamp a snap interval into [5, 60], defaulting invalid values to 30. */
+/** Clamp a snap interval into [5, 60], defaulting invalid values to 15. */
 function effectiveSnap(snapMinutes: number): number {
   const minutes = Math.floor(snapMinutes)
   if (!Number.isFinite(minutes) || minutes <= 0) return DEFAULT_SNAP_MINUTES

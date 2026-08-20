@@ -28,7 +28,7 @@
 
 ## 3. 周视图（WeekGrid）**[M2 已实现]**
 
-- 顶部 sticky 表头行：周一~周日 + 日期数字，今日圆形高亮；然后 7 列（周一开头；周末列 `bg-layer-2` 淡色）+ 24h 时间轴；30 分钟吸附（可配 15/60）。
+- 顶部 sticky 表头行：周一~周日 + 日期数字，今日圆形高亮；然后 7 列（周一开头；周末列 `bg-layer-2` 淡色）+ 24h 时间轴；默认 15 分钟吸附（可传入 `snapMinutes` 调整）。
 - **重叠任务并排**：同列重合的任务按 `layoutDayTasks` 分配到并排子列，互不遮盖（保留 2px 间隙）。
 - 拖选（pointerdown→move→up）→ `controller.setDraft` 打开创建弹窗；选中态 `--dsw-static-deepseek-200` 底 + deepseek-500 2px 边框 + 圆角 6px。
 - 现在线 `--dsw-static-red-500`（今日列）；今日日期数字 `brand-primary` 圆形强调。
@@ -56,12 +56,13 @@
 选中任务滑出的右侧 320px 面板：
 1. 标题 + 完成勾选（`brand-primary` 勾选态）。
 2. 描述 / Prompt：只读展示 + 编辑入口。
-3. 艾森豪威尔 knobs：紧急/重要选择，改即 `setQuadrant`。
-4. 子任务 checklist：勾选 `setSubtaskDone`；新增/删除；父任务进度条（3px 圆角、`state-success-primary` 填充）。
-5. 执行设置 ExecutionSettings：工作区 / 执行会话（新建或复用）/ **provider + model + reasoningEffort** / agent 预设 / 权限；下拉 + 徽标预览；留空 = 运行时默认。**agent 预设是下拉**：Host 经 `agentPreset.list`（ApiProxy）读 preset roster 投影为 `catalog.modes`（`name ?? id` 作标签、剔除 `broken`），有 roster 渲染 `<select>`，无则回退自由文本。
-6. 定时：**受限重复规则**（不重复/每日/每周 + 周几多选 + 跳过周末与节假日开关）或**一次性到时**（datetime-local）。**不再有自由 cron 输入**（曾因权限过高/崩溃被移除）。规则模型：`ScheduleRule { enabled, repeat?: {kind:'daily'|'weekly', weekdays?, skipHolidays?}, dueAt?, nextRunAt?, materialized? }`——重复模板**不会自动执行**，Host 把它**物化为各匹配日期的普通副本**（见 §11）；一次性 dueAt 到点自动执行，完成后由 `advanceSchedule` 整体清除调度（徽标/清除按钮/到时全部消失）。
-7. 执行记录 + 会话跳转（M4）：sessionId/起止/结果/错误；「查看会话」跳 transcript。
-8. 删除 / 归档（danger 按钮）。
+3. 任务时间：开始日期使用日期输入，开始时刻使用固定的 15 分钟选项（`00/15/30/45`）；持续时间输入完成后吸附到最近的 15 分钟档位，范围为 15 分钟至 24 小时。结束时间由开始时间 + 持续时间计算，保存普通任务时可直接移动到其他日期或周并支持跨日。重复系列时间改动沿用已有的「仅此项 / 整个系列」确认。
+4. 艾森豪威尔 knobs：紧急/重要选择，改即 `setQuadrant`。
+5. 子任务 checklist：勾选 `setSubtaskDone`；新增/删除；父任务进度条（3px 圆角、`state-success-primary` 填充）。
+6. 执行设置 ExecutionSettings：工作区 / 执行会话（新建或复用）/ **provider + model + reasoningEffort** / agent 预设 / 权限；下拉 + 徽标预览；留空 = 运行时默认。**agent 预设是下拉**：Host 经 `agentPreset.list`（ApiProxy）读 preset roster 投影为 `catalog.modes`（`name ?? id` 作标签、剔除 `broken`），有 roster 渲染 `<select>`，无则回退自由文本。
+7. 定时：**受限重复规则**（不重复/每日/每周 + 周几多选 + 跳过周末与节假日开关）或**一次性到时**（datetime-local）。**不再有自由 cron 输入**（曾因权限过高/崩溃被移除）。规则模型：`ScheduleRule { enabled, repeat?: {kind:'daily'|'weekly', weekdays?, skipHolidays?}, dueAt?, nextRunAt?, materialized? }`——重复模板**不会自动执行**，Host 把它**物化为各匹配日期的普通副本**（见 §11）；一次性 dueAt 到点自动执行，完成后由 `advanceSchedule` 整体清除调度（徽标/清除按钮/到时全部消失）。
+8. 执行记录 + 会话跳转（M4）：sessionId/起止/结果/错误；「查看会话」跳 transcript。
+9. 删除 / 归档（danger 按钮）。
 
 ### 5.3 创建/编辑弹窗 CreateTaskModal **[M3 已实现]**
 拖选或"新建"触发的居中弹窗（`bg-layer-2` 底、`border-l2` 边、圆角 12px、阴影 `bg-mask-3`、Escape 关闭）：预填起止、标题、紧急/重要、创建/取消。已扩展为完整表单：标题、描述、Prompt、紧急/重要、子任务（回车添加）、定时（每日/每周重复 + 一次到时，共享 `ScheduleSettings` 组件）、执行设置、创建/取消。
@@ -117,7 +118,7 @@ client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-c
 - **副本的定时区 = 整个系列的定时（commit 本轮）**：副本详情面板的「定时」区读取并编辑**模板的重复规则**（副本自身无 schedule，显示与原版一致，不再出现「不重复」空态）；对副本的 `setSchedule` 在账本里**路由到模板**——在任一副本上**取消重复 = 取消整个系列**（模板规则清除 + 全部绑定副本级联删除，包括当前这个）。规则仍活跃时，`triggerAgent`/`triggerAt` 的改动会**重新推导已物化未来副本的一次性到时**（关掉触发 → 未来副本失去 🕐 变普通任务；改时间 → 未来副本的 dueAt 跟随）。已解绑副本的定时只作用于它自己。
 - **取消定时/删模板 → 级联删副本**：清掉重复规则（`setSchedule repeat:null`）或删除模板，连带删除其仍绑定的副本；删除单个副本只删它自己（日期仍在 `materialized` 里，不会被补回）。账本**加载时**还会清理孤儿副本（模板已无重复规则的副本，`pruneOrphanCopies`）——覆盖 Host 宕机期间清掉的场景。
 - **取消定时的确认（commit 本轮）**：对重复系列成员点「清除定时」（或把重复改成「不重复」保存）会先弹确认——「**取消这一天**」（仅当天副本：仍带触发到时则清除之、副本保留为普通任务；无到时的普通副本则移除当天 occurrence，该日期不再补回；系列不动，`clearInstanceSchedule`/`delete` 不路由）或「**取消整个系列**」（现行为：规则清除 + 全部副本级联删除）。模板不提供「取消这一天」；普通任务的清除照旧直接执行。
-- **副本时间改动的确认**：对重复系列的任意成员（副本**或模板**）做时间改动（周视图拖拽移动/缩放）都会弹确认。副本：「只改这一个并解绑」（`update` + `originTaskId:null`）或「改所有副本」；模板：「同步所有副本（含模板）」（`shiftRepeatTimes` 以模板 id 为系列根）或「只改模板」（现有副本不动、未来新副本用新时间）。普通任务拖拽照旧直接提交。
+- **副本时间改动的确认**：对重复系列的任意成员（副本**或模板**）做时间改动（周视图拖拽移动/缩放或详情面板编辑）都会弹确认。副本：「只改这一个并解绑」（`update` + `originTaskId:null`）或「改所有副本」；模板：「同步所有副本（含模板）」（`shiftRepeatTimes` 以模板 id 为系列根）或「只改模板」（现有副本不动、未来新副本用新时间）。普通任务直接提交。
 - **触发 Agent（可选，commit 本轮）**：重复规则可勾「到点触发 Agent」——物化的每个副本带一次性 `dueAt`（默认=任务时间段开始；规则可再设 `triggerAt` HH:MM 覆盖），到点经现有一次性调度自动执行、跑完自动清除该副本的调度（🕐 徽标消失）。不勾则副本只是日历条目，可手动「立即执行」。
 - **节假日**：`src/core/repeat.ts` 内置「周末 + 中国法定节假日（2025 官方 / 2026 预估）」集合，`skipHolidays` 开启时跳过（周六周日照跳，周几自选的场景也受此约束——选了周末又开跳过 = 永不物化）。
 - **执行设置目录**：Host `/api/calendar/options` 聚合 workspaces / sessions（项目分组、归档排除）/ providers+models / **modes**（`agentPresets.list` → `name ?? id`，剔除 `broken`）；客户端经 `watchCatalogRefresh` 在会话列表变更或日历打开时防抖重拉（见 §9）。

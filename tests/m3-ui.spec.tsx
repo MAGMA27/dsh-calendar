@@ -25,6 +25,14 @@ function makeTask(over: Partial<TaskRecord> = {}): TaskRecord {
   }
 }
 
+function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+  if (setter === undefined) throw new Error('input value setter unavailable')
+  setter.call(input, value)
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  input.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
 /** Transport records dispatched actions and returns a stable snapshot. */
 function recordTransport(initial: calendarSnapshot) {
   let snap = initial
@@ -52,6 +60,84 @@ describe('TaskDetailPanel', () => {
     // Archive button is present (task not archived).
     const archiveBtn = [...host.querySelectorAll('button')].find(b => b.textContent === '归档' || b.textContent === 'Archive')
     expect(archiveBtn).toBeTruthy()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('edits a task start and duration, including a cross-day range', async () => {
+    const start = new Date(2026, 7, 20, 9, 0).getTime()
+    const end = new Date(2026, 7, 20, 10, 0).getTime()
+    const { transport, dispatched } = recordTransport(snapshotWith(makeTask({ startAt: start, endAt: end })))
+    const controller = new calendarClientController(transport, initialState(start, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={makeTask({ startAt: start, endAt: end })} onClose={() => {}} />) })
+
+    const startDateInput = host.querySelector('#dsh-calendar-task-start-date') as HTMLInputElement
+    const startTimeSelect = host.querySelector('#dsh-calendar-task-start-time') as HTMLSelectElement
+    const durationInput = host.querySelector('#dsh-calendar-task-duration') as HTMLInputElement
+    expect(startDateInput).toBeTruthy()
+    expect(startTimeSelect).toBeTruthy()
+    expect(durationInput).toBeTruthy()
+    expect(startDateInput.type).toBe('date')
+    expect(startTimeSelect.options).toHaveLength(96)
+    expect([...startTimeSelect.options].some(option => option.value === '09:10')).toBe(false)
+    expect(durationInput.step).toBe('15')
+    const nextStartDate = '2026-08-27'
+    const nextStartTime = '23:30'
+    const duration = '120'
+    await act(async () => {
+      setInputValue(startDateInput, nextStartDate)
+      startTimeSelect.value = nextStartTime
+      startTimeSelect.dispatchEvent(new Event('change', { bubbles: true }))
+      setInputValue(durationInput, duration)
+    })
+
+    const save = [...host.querySelectorAll('button')].find(b => b.textContent === '保存' || b.textContent === 'Save')
+    expect(save).toBeTruthy()
+    await act(async () => { save!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+
+    const update = dispatched.find(a => a.kind === 'update')
+    expect(update?.kind).toBe('update')
+    if (update?.kind === 'update') {
+      const nextStart = new Date(`${nextStartDate}T${nextStartTime}`).getTime()
+      expect(update.patch.startAt).toBe(nextStart)
+      expect(update.patch.endAt).toBe(nextStart + Number(duration) * 60_000)
+    }
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('snaps arbitrary detail duration to 15-minute steps and caps it at 24 hours', async () => {
+    const start = new Date(2026, 7, 20, 9, 0).getTime()
+    const end = new Date(2026, 7, 20, 10, 0).getTime()
+    const { transport, dispatched } = recordTransport(snapshotWith(makeTask({ startAt: start, endAt: end })))
+    const controller = new calendarClientController(transport, initialState(start, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={makeTask({ startAt: start, endAt: end })} onClose={() => {}} />) })
+
+    const durationInput = host.querySelector('input#dsh-calendar-task-duration') as HTMLInputElement
+    await act(async () => {
+      durationInput.focus()
+      setInputValue(durationInput, '20')
+      durationInput.blur()
+    })
+    expect(durationInput.value).toBe('15')
+    await act(async () => {
+      durationInput.focus()
+      setInputValue(durationInput, '1500')
+      durationInput.blur()
+    })
+    expect(durationInput.value).toBe('1440')
+    const save = [...host.querySelectorAll('button')].find(b => b.textContent === '保存' || b.textContent === 'Save')
+    await act(async () => { save!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+
+    const update = dispatched.find(a => a.kind === 'update')
+    expect(update?.kind).toBe('update')
+    if (update?.kind === 'update') expect(update.patch.endAt).toBe(start + 24 * 60 * 60_000)
 
     await act(async () => { root.unmount(); host.remove() })
   })

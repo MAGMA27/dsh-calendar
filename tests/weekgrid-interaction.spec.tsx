@@ -79,7 +79,7 @@ describe('WeekGrid create-drag snapping', () => {
     return cells
   }
 
-  it('floors the start, ceils the end: click at 9:50, drag to 10:20 -> draft 9:30-10:30', async () => {
+  it('floors the start, ceils the end at 15-minute granularity: click at 9:50, drag to 10:20 -> draft 9:45-10:30', async () => {
     const now = new Date(2026, 0, 12, 8, 0, 0) // a Monday
     const transport = new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }, undefined)
     const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
@@ -102,7 +102,7 @@ describe('WeekGrid create-drag snapping', () => {
 
     const draft = controller.getSnapshot().draft
     expect(draft).toBeDefined()
-    expect(new Date(draft!.start).getMinutes()).toBe(30)   // floor(9:50) -> 9:30
+    expect(new Date(draft!.start).getMinutes()).toBe(45)   // floor(9:50) -> 9:45
     expect(new Date(draft!.start).getHours()).toBe(9)
     expect(new Date(draft!.end).getMinutes()).toBe(30)     // ceil(10:20) -> 10:30
     expect(new Date(draft!.end).getHours()).toBe(10)
@@ -110,7 +110,7 @@ describe('WeekGrid create-drag snapping', () => {
     await act(async () => { root.unmount(); host.remove() })
   })
 
-  it('a plain click at 9:50 still floors to 9:30 (header offset excluded)', async () => {
+  it('a plain click at 9:50 still floors to 9:45 (header offset excluded)', async () => {
     const now = new Date(2026, 0, 12, 8, 0, 0)
     const transport = new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }, undefined)
     const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
@@ -128,7 +128,7 @@ describe('WeekGrid create-drag snapping', () => {
     const draft = controller.getSnapshot().draft
     expect(draft).toBeDefined()
     expect(new Date(draft!.start).getHours()).toBe(9)
-    expect(new Date(draft!.start).getMinutes()).toBe(30)
+    expect(new Date(draft!.start).getMinutes()).toBe(45)
 
     await act(async () => { root.unmount(); host.remove() })
   })

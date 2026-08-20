@@ -8,7 +8,7 @@ import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
 import { nextRepeatDate } from '../../core/repeat.ts'
-import type { TaskRecord, Urgency, Importance, RepeatRule } from '../../core/tasks.ts'
+import type { TaskRecord, TaskUpdatePatch, Urgency, Importance, RepeatRule } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
 import { ScheduleSettings, type ScheduleSettingsValue } from './ScheduleSettings.tsx'
 import { t, type calendarKey } from '../locales.ts'
@@ -57,6 +57,49 @@ function initialSchedule(task: TaskRecord): ScheduleSettingsValue {
   }
 }
 
+const QUARTER_HOUR_OPTIONS = Array.from({ length: 96 }, (_, i) => {
+  const minutes = i * 15
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+})
+const MIN_DURATION_MINUTES = 15
+const MAX_DURATION_MINUTES = 24 * 60
+
+interface StartTimeParts {
+  date: string
+  time: string
+}
+
+/** Format an epoch as a local date plus a fixed 15-minute time slot. */
+function toStartTimeParts(ms: number): StartTimeParts {
+  const d = new Date(ms)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  d.setMinutes(Math.floor(d.getMinutes() / 15) * 15, 0, 0)
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  }
+}
+
+/** Parse a local date and one of the fixed quarter-hour slots. */
+function fromStartTimeParts(date: string, time: string): number | undefined {
+  if (date === '' || !QUARTER_HOUR_OPTIONS.includes(time)) return undefined
+  const ms = new Date(`${date}T${time}`).getTime()
+  return Number.isFinite(ms) ? ms : undefined
+}
+
+/** Snap free-form duration input to the nearest valid quarter-hour range. */
+function snapDurationMinutes(value: string): string {
+  if (value.trim() === '') return ''
+  const minutes = Number(value)
+  if (!Number.isFinite(minutes)) return ''
+  const snapped = Math.round(minutes / MIN_DURATION_MINUTES) * MIN_DURATION_MINUTES
+  return String(Math.min(MAX_DURATION_MINUTES, Math.max(MIN_DURATION_MINUTES, snapped)))
+}
+
+function durationMinutes(task: TaskRecord): number {
+  return Number(snapDurationMinutes(String(Math.round((task.endAt - task.startAt) / 900_000) * MIN_DURATION_MINUTES)))
+}
+
 export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: TaskDetailPanelProps) {
   // A copy's schedule IS the series' schedule: initialize and display from the
   // template so copies read consistently with the original. Ledger routes
@@ -67,6 +110,10 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [prompt, setPrompt] = useState(task.prompt)
+  const initialStart = toStartTimeParts(task.startAt)
+  const [startDate, setStartDate] = useState(initialStart.date)
+  const [startTime, setStartTime] = useState(initialStart.time)
+  const [duration, setDuration] = useState(() => String(durationMinutes(task)))
   const [subtaskInput, setSubtaskInput] = useState('')
   const [schedule, setSchedule] = useState<ScheduleSettingsValue>(initialSchedule(seriesTask))
   const [exec, setExec] = useState<ExecutionSettingsValue>(quadKnobs(task))
@@ -105,15 +152,41 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   const save = async (): Promise<void> => {
     if (title.trim() === '') { setError('title required'); return }
     if (schedule.mode === 'weekly' && schedule.weekdays.length === 0) { setError(t('schedule.weeklyRequired')); return }
+    const startMs = fromStartTimeParts(startDate, startTime)
+    const snappedDuration = snapDurationMinutes(duration)
+    if (startMs === undefined) {
+      setError(t('detail.timeInvalid'))
+      return
+    }
+    if (snappedDuration === '') {
+      setError(t('detail.durationInvalid'))
+      return
+    }
+    const durationMinutesValue = Number(snappedDuration)
+    if (duration !== snappedDuration) setDuration(snappedDuration)
+    const endMs = startMs + durationMinutesValue * 60_000
+    if (endMs <= startMs) {
+      setError(t('detail.timeInvalid'))
+      return
+    }
+    const timeChanged = startMs !== task.startAt || endMs !== task.endAt
+    const repeatTimeChanged = timeChanged && seriesTask.schedule?.repeat !== undefined
+    const updatePatch: TaskUpdatePatch = {
+      title, description, prompt,
+      workspaceId: exec.workspaceId ?? null, sessionId: exec.sessionId ?? null,
+      provider: exec.provider ?? null, model: exec.model ?? null,
+      mode: exec.mode ?? null, permission: exec.permission ?? null,
+    }
+    // Repeat-series time changes use the same confirmation as week-grid edits;
+    // a normal task can move directly to another date/week.
+    if (!repeatTimeChanged) {
+      updatePatch.startAt = startMs
+      updatePatch.endAt = endMs
+    }
     await controller.dispatch({
       kind: 'update',
       id: task.id,
-      patch: {
-        title, description, prompt,
-        workspaceId: exec.workspaceId ?? null, sessionId: exec.sessionId ?? null,
-        provider: exec.provider ?? null, model: exec.model ?? null,
-        mode: exec.mode ?? null, permission: exec.permission ?? null,
-      },
+      patch: updatePatch,
     })
     const dueMs = schedule.dueAt.trim() === '' ? undefined : new Date(schedule.dueAt).getTime()
     // A schedule exists only when a repeat rule or a one-off due time is set;
@@ -131,6 +204,16 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
       }
     const enabled = repeat !== null || dueMs !== undefined
     await applySchedulePatch({ kind: 'setSchedule', id: task.id, patch: { enabled, repeat, dueAt: dueMs ?? null } })
+    if (repeatTimeChanged) {
+      controller.requestRepeatTimeEdit({
+        taskId: task.id,
+        originTaskId: task.originTaskId,
+        origStart: task.startAt,
+        origEnd: task.endAt,
+        startAt: startMs,
+        endAt: endMs,
+      })
+    }
     setDirty(false)
     setMessage(t('detail.saved'))
     setError(null)
@@ -209,6 +292,28 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
         <label className={css.formLabel}>{t('detail.prompt')}</label>
         <textarea className={css.textarea} value={prompt} placeholder={t('detail.promptPlaceholder')}
           onChange={e => { setPrompt(e.target.value); markDirty() }} />
+      </div>
+
+      <div className={css.detailSection}>
+        <h4 className={css.execTitle}>{t('detail.timeRange')}</h4>
+        <div className={css.formRow}>
+          <label className={css.formLabel} htmlFor="dsh-calendar-task-start-date">{t('detail.startAt')}</label>
+          <input id="dsh-calendar-task-start-date" className={css.input} type="date" value={startDate}
+            onChange={e => { setStartDate(e.target.value); markDirty() }} />
+          <select id="dsh-calendar-task-start-time" className={css.select} value={startTime}
+            onChange={e => { setStartTime(e.target.value); markDirty() }}>
+            {QUARTER_HOUR_OPTIONS.map(time => <option key={time} value={time}>{time}</option>)}
+          </select>
+        </div>
+        <div className={css.formRow}>
+          <label className={css.formLabel} htmlFor="dsh-calendar-task-duration">{t('detail.duration')}</label>
+          <input id="dsh-calendar-task-duration" className={css.input} type="number" min={MIN_DURATION_MINUTES} max={MAX_DURATION_MINUTES} step={MIN_DURATION_MINUTES} value={duration}
+            onChange={e => { setDuration(e.target.value); markDirty() }}
+            onBlur={() => {
+              const snapped = snapDurationMinutes(duration)
+              if (snapped !== duration) { setDuration(snapped); markDirty() }
+            }} />
+        </div>
       </div>
 
       <div className={css.detailSection}>

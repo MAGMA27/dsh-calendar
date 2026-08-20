@@ -12,6 +12,7 @@ import type { calendarClientController } from '../controller.ts'
 import {
   blockOnDay, dayKey, dayWindowFraction, dayWindowLength, inDayWindow, layoutDayTasks,
   minutesOfDay, normalizeDrag, weekDays,
+  DEFAULT_SNAP_MINUTES,
   type DayCell,
 } from '../../core/calendar.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -48,7 +49,7 @@ interface EditCandidate {
   moveOffsetMin: number
 }
 
-export function WeekGrid({ controller, snapMinutes = 30 }: WeekGridProps) {
+export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: WeekGridProps) {
   const snap = controller.getSnapshot()
   const days = weekDays(snap.cursor, snap.weekStart)
   const dragOrigin = useRef<{ y: number; dayCell: DayCell } | undefined>(undefined)

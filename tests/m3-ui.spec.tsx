@@ -7,6 +7,8 @@ import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
 import { TaskDetailPanel } from '../src/client/components/TaskDetailPanel.tsx'
 import { MatrixPanel } from '../src/client/components/MatrixPanel.tsx'
 import { AgendaPanel } from '../src/client/components/AgendaPanel.tsx'
+import { MonthGrid } from '../src/client/components/MonthGrid.tsx'
+import { TaskBlock } from '../src/client/components/TaskBlock.tsx'
 import { ExecutionSettings, type ExecutionSettingsValue } from '../src/client/components/ExecutionSettings.tsx'
 import type { calendarAction, calendarSnapshot } from '../src/protocol.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
@@ -134,6 +136,65 @@ describe('TaskDetailPanel', () => {
     await act(async () => { controller.confirmScheduleClearDay() })
     // No own schedule → the day's occurrence is removed.
     expect(dispatched.some(a => a.kind === 'delete' && a.id === 'c1')).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+})
+
+describe('Calendar completion styling', () => {
+  it('marks a completed week task block at the card level', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => {
+      root.render(
+        <TaskBlock
+          task={makeTask({ done: true })}
+          topPct={10}
+          heightPct={10}
+          leftPct={10}
+          widthPct={80}
+          onSelect={() => {}}
+        />,
+      )
+    })
+
+    expect(host.querySelector('[data-dsh-calendar-block][data-done]')).toBeTruthy()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('marks a completed month task chip', async () => {
+    const done = makeTask({
+      id: 'done-month-task',
+      title: 'Completed month task',
+      startAt: new Date().setHours(9, 0, 0, 0),
+      endAt: new Date().setHours(10, 0, 0, 0),
+      done: true,
+    })
+    const pending = makeTask({
+      id: 'pending-month-task',
+      title: 'Pending month task',
+      startAt: done.startAt,
+      endAt: done.endAt,
+    })
+    const snap: calendarSnapshot = {
+      schemaVersion: 1,
+      revision: 1,
+      tasks: [done, pending],
+      scheduler: { timeZone: 'Asia/Shanghai' },
+    }
+    const controller = new calendarClientController(new MemorycalendarHostTransport(snap), initialState(done.startAt, 0))
+    await controller.start()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<MonthGrid controller={controller} />) })
+
+    const doneChip = [...host.querySelectorAll('[data-dsh-calendar-month] [data-done]')]
+      .find(node => node.textContent === done.title)
+    expect(doneChip).toBeTruthy()
+    expect(host.querySelector('[data-dsh-calendar-month] [data-done]')?.textContent).toBe(done.title)
 
     await act(async () => { root.unmount(); host.remove() })
   })

@@ -461,6 +461,18 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 
 .taskBlockTitle[data-done] { text-decoration: line-through; color: var(--dsw-alias-label-tertiary); }
 
+.taskBlock[data-done] {
+  background: var(--dsw-alias-bg-layer-2);
+  border-style: dashed;
+  box-shadow: none;
+  opacity: 0.62;
+}
+
+.taskBlock[data-done] .taskBlockTime {
+  color: var(--dsw-alias-label-tertiary);
+  text-decoration: line-through;
+}
+
 .taskBlockMeta {
   display: flex;
   gap: 4px;
@@ -676,6 +688,14 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .taskChip.quadrantSchedule { border-left-color: var(--dsw-static-blue-500); }
 .taskChip.quadrantDelegate { border-left-color: var(--dsw-static-amber-500); }
 .taskChip.quadrantEliminate { border-left-color: var(--dsw-alias-label-tertiary); }
+
+.taskChip[data-done] {
+  color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-bg-layer-1);
+  border-style: dashed;
+  opacity: 0.62;
+  text-decoration: line-through;
+}
 
 .monthMore { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 

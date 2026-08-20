@@ -61,6 +61,7 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
       type="button"
       className={`${css.taskBlock} ${ACCENT[q]} ${editing ? css.taskBlockEditing : ''}`}
       data-dsh-calendar-block=""
+      data-done={task.done || undefined}
       style={{ top: `${topPct}%`, height: `${heightPct}%`, left: `${leftPct}%`, width: `${widthPct}%` }}
       onClick={() => onSelect(task.id)}
       onPointerDown={editable ? startMove : undefined}

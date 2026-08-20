@@ -68,7 +68,7 @@ export function MonthGrid({ controller }: MonthGridProps) {
               </span>
               <span className={css.monthChips}>
                 {dayTasks.slice(0, 4).map(task => (
-                  <span key={task.id} className={`${css.taskChip} ${ACCENT[quadrantOf(task.urgency, task.importance)]}`}>
+                  <span key={task.id} className={`${css.taskChip} ${ACCENT[quadrantOf(task.urgency, task.importance)]}`} data-done={task.done || undefined}>
                     {task.title}
                   </span>
                 ))}

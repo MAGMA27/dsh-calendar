@@ -11,7 +11,7 @@ import { useRef, useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import {
   blockOnDay, dayKey, dayWindowFraction, dayWindowLength, inDayWindow, layoutDayTasks,
-  minutesOfDay, normalizeDrag, weekDays,
+  normalizeDrag, weekDays,
   DEFAULT_SNAP_MINUTES,
   type DayCell,
 } from '../../core/calendar.ts'
@@ -21,6 +21,7 @@ import { t } from '../locales.ts'
 import css from '../calendar.module.css'
 
 const MIN_BLOCK_MS = 15 * 60_000
+const DAY_MS = 24 * 60 * 60_000
 const GUTTER_PX = 56
 const DRAG_THRESHOLD_PX = 4
 /** Vertical pixels allotted to one hour of the visible day window. */
@@ -83,18 +84,38 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
   const winFrac = (ms: number): number => dayWindowFraction(winStart, winEnd, ms)
   const winHas = (ms: number): boolean => inDayWindow(winStart, winEnd, ms)
 
+  const daySegment = (start: number, end: number, dayStart: number): { top: number; bottom: number } | undefined => {
+    const dayEnd = dayStart + DAY_MS
+    const segmentStart = Math.max(start, dayStart)
+    const segmentEnd = Math.min(end, dayEnd)
+    if (segmentEnd <= segmentStart) return undefined
+    const segmentFraction = (ms: number): number => {
+      // In a full-day grid, midnight is both 00:00 and the bottom edge. Keep
+      // the clipped end at 100% so a cross-day task continues at next day's top.
+      if (winStart === 0 && winEnd === 1440) {
+        if (ms <= dayStart) return 0
+        if (ms >= dayEnd) return 1
+      }
+      return winFrac(ms)
+    }
+    return { top: segmentFraction(segmentStart), bottom: segmentFraction(segmentEnd) }
+  }
+
   // Hour boundaries that fall inside the (possibly wrapped) window.
   const gutterHours: number[] = []
   for (let h = 0; h <= 23; h++) {
     if (winHas(todayStart.getTime() + h * 3_600_000)) gutterHours.push(h)
   }
 
-  const yToMs = (dayCell: DayCell, y: number): number => {
+  const yToDayMinutes = (y: number): number => {
     const rect = cellsRef.current?.getBoundingClientRect()
-    if (rect === undefined) return dayCell.dateMs + winStart * 60_000
+    if (rect === undefined) return winStart
     const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
-    const mins = (winStart + Math.round(frac * winLength)) % 1440
-    return dayCell.dateMs + mins * 60_000
+    return winStart + Math.round(frac * winLength)
+  }
+
+  const yToMs = (dayCell: DayCell, y: number): number => {
+    return dayCell.dateMs + yToDayMinutes(y) * 60_000
   }
 
   const startDrag = (dayCell: DayCell) => (e: React.PointerEvent<HTMLDivElement>) => {
@@ -125,13 +146,13 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
   }
 
   // --- task move / resize (threshold-armed, cross-day move) ------------------
-  const onEditStart = (task: TaskRecord) => (e: React.PointerEvent<HTMLElement>, kind: TaskEditKind): void => {
-    const dayCell = days.find(d => dayKeyEquals(d, task.startAt)) ?? days[0]
+  const onEditStart = (task: TaskRecord, blockDay: DayCell) => (e: React.PointerEvent<HTMLElement>, kind: TaskEditKind): void => {
+    const dayCell = blockDay
     // Keep the grab offset (pointer position inside the block) so the dragged
     // block follows the cursor instead of jumping its top to the cursor.
-    const pointerMin = yToMinutes(e.clientY)
-    const taskStartMin = minutesOfDay(task.startAt)
-    const moveOffsetMin = kind === 'move' ? Math.max(0, pointerMin - taskStartMin) : 0
+    const pointerMin = yToDayMinutes(e.clientY)
+    const pointerAt = dayCell.dateMs + pointerMin * 60_000
+    const moveOffsetMin = kind === 'move' ? Math.max(0, (pointerAt - task.startAt) / 60_000) : 0
     editRef.current = {
       taskId: task.id, kind, origStart: task.startAt, origEnd: task.endAt,
       startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, dayCell, moveOffsetMin,
@@ -154,13 +175,6 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
     return Math.max(0, Math.min(6, idx))
   }
 
-  const yToMinutes = (y: number): number => {
-    const rect = cellsRef.current?.getBoundingClientRect()
-    if (rect === undefined) return winStart
-    const frac = Math.min(1, Math.max(0, (y - rect.top) / rect.height))
-    return (winStart + Math.round(frac * winLength)) % 1440
-  }
-
   /** Compute the edit result from a pointer position (x,y). */
   const computeEdit = (x: number, y: number): { start: number; end: number; dayIdx: number } => {
     const edit = editRef.current!
@@ -168,17 +182,17 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
     if (edit.kind === 'move') {
       const dayIdx = xToDayIndex(x)
       const day = days[dayIdx]
-      const yMin = yToMinutes(y)
+      const yMin = yToDayMinutes(y)
       const rawStart = yMin - edit.moveOffsetMin
       const snappedMin = snapMinutes * Math.round(rawStart / snapMinutes)
       const start = day.dateMs + snappedMin * 60_000
       return { start, end: start + span, dayIdx }
     }
-    // resize: stay within the block's own day
+    // Resize against the absolute end of the visible grid window.
     const dayStart = edit.dayCell.dateMs
-    const dayEnd = dayStart + 24 * 60 * 60_000
-    const snappedMin = snapMinutes * Math.round(yToMinutes(y) / snapMinutes)
-    const target = Math.min(dayEnd, Math.max(dayStart, dayStart + snappedMin * 60_000))
+    const visibleEnd = dayStart + (winStart + winLength) * 60_000
+    const snappedMin = snapMinutes * Math.round(yToDayMinutes(y) / snapMinutes)
+    const target = Math.min(visibleEnd, Math.max(dayStart, dayStart + snappedMin * 60_000))
     const dayIdx = Math.max(0, Math.min(6, days.findIndex(d => d.key === edit.dayCell.key) ))
     if (edit.kind === 'resize-start') return { start: Math.min(edit.origEnd - MIN_BLOCK_MS, target), end: edit.origEnd, dayIdx }
     return { start: edit.origStart, end: Math.max(edit.origStart + MIN_BLOCK_MS, target), dayIdx }
@@ -262,7 +276,7 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
           })}
         </div>
         {days.map(day => {
-          const dayEnd = day.dateMs + 24 * 60 * 60_000
+          const dayEnd = day.dateMs + DAY_MS
           const columnTasks = snap.snapshot.tasks.filter(t => !t.archivedAt && blockOnDay(t.startAt, t.endAt, day.dateMs, dayEnd))
           // side-by-side columns so overlapping tasks don't cover each other
           const layout = layoutDayTasks(columnTasks)
@@ -289,8 +303,10 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
                 const inColumn = preview !== undefined && preview.dayIdx === days.indexOf(day)
                 const topMs = editing && inColumn ? preview!.start : task.startAt
                 const endMs = editing && inColumn ? preview!.end : task.endAt
-                const topFrac = winFrac(topMs)
-                const durationFrac = Math.max(0, winFrac(endMs) - winFrac(topMs))
+                const segment = daySegment(topMs, endMs, day.dateMs)
+                if (segment === undefined) return null
+                const topFrac = segment.top
+                const durationFrac = Math.max(0, segment.bottom - segment.top)
                 const pos = colByTask.get(task.id)
                 const columns = pos?.columnCount ?? 1
                 const column = pos?.column ?? 0
@@ -306,7 +322,7 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
                     leftPct={Math.max(column * (widthPct) + (gapPct / 2), 0)}
                     widthPct={Math.max(widthPct - gapPct, 4)}
                     onSelect={selectTask}
-                    onEditStart={onEditStart(task)}
+                    onEditStart={onEditStart(task, day)}
                     editing={editing && inColumn}
                   />
                 )
@@ -321,17 +337,23 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
           )
         })}
         {/* cross-day move preview: a floating block positioned by day column + time */}
-        {preview !== undefined && (
-          <div
-            className={css.movePreview}
-            style={{
-              left: `calc(${GUTTER_PX}px + ${preview.dayIdx} * (100% - ${GUTTER_PX}px) / 7)`,
-              top: winFrac(preview.start) * 100 + '%',
-              height: Math.max((winFrac(preview.end) - winFrac(preview.start)) * 100, 1.6) + '%',
-            }}
-            data-dsh-calendar-move-preview=""
-          />
-        )}
+        {preview !== undefined && days.map((day, dayIdx) => {
+          const segment = daySegment(preview.start, preview.end, day.dateMs)
+          if (segment === undefined) return null
+          return (
+            <div
+              key={day.key}
+              className={css.movePreview}
+              style={{
+                left: `calc(${GUTTER_PX}px + ${dayIdx} * (100% - ${GUTTER_PX}px) / 7)`,
+                width: `calc((100% - ${GUTTER_PX}px) / 7)`,
+                top: segment.top * 100 + '%',
+                height: Math.max((segment.bottom - segment.top) * 100, 1.6) + '%',
+              }}
+              data-dsh-calendar-move-preview=""
+            />
+          )
+        })}
       </div>
     </div>
   )

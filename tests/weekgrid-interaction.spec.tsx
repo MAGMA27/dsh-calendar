@@ -21,6 +21,10 @@ if (typeof G.PointerEvent === 'undefined') {
   G.PointerEvent = MiniPointerEvent as unknown as typeof Event
 }
 
+const HEADER = 40
+const CELL_H = 24 * 48
+const yAt = (h: number, m: number) => HEADER + ((h * 60 + m) / 1440) * CELL_H
+
 function snapWith(task: TaskRecord): calendarSnapshot {
   return { schemaVersion: 1, revision: 1, tasks: [task], scheduler: { timeZone: 'Asia/Shanghai' } }
 }
@@ -59,6 +63,64 @@ describe('WeekGrid interaction', () => {
 
     await act(async () => { root.unmount(); host.remove() })
   })
+
+  it('moves a task past midnight when dragged to the bottom edge', async () => {
+    const start = new Date(2026, 0, 12, 22, 30).getTime()
+    const task: TaskRecord = {
+      id: 't1', title: 'Late task', description: '', prompt: '',
+      startAt: start, endAt: start + 60 * 60_000,
+      urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [],
+      createdAt: 0, updatedAt: 0,
+    }
+    const dispatched: calendarAction[] = []
+    const transport = new MemorycalendarHostTransport(snapWith(task), (a) => { dispatched.push(a); return snapWith(task) })
+    const controller = new calendarClientController(transport, initialState(start, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<WeekGrid controller={controller} />) })
+
+    const cells = host.querySelector('[class*=weekGridCells]') as HTMLElement
+    cells.getBoundingClientRect = () => ({ top: HEADER, height: CELL_H, bottom: HEADER + CELL_H, left: 0, right: 100, width: 100, x: 0, y: HEADER, toJSON: () => ({}) } as DOMRect)
+    const block = host.querySelector('[data-dsh-calendar-block]') as HTMLElement
+    const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
+    const PE = G.PointerEvent as unknown as typeof MouseEvent
+    await act(async () => { block.dispatchEvent(new PE('pointerdown', { bubbles: true, clientY: yAt(23, 0), clientX: 60, pointerId: 3 } as MouseEventInit)) })
+    await act(async () => { grid.dispatchEvent(new PE('pointermove', { bubbles: true, clientY: yAt(24, 0), clientX: 60, pointerId: 3 } as MouseEventInit)) })
+    await act(async () => { grid.dispatchEvent(new PE('pointerup', { bubbles: true, clientY: yAt(24, 0), clientX: 60, pointerId: 3 } as MouseEventInit)) })
+
+    const update = dispatched.find(a => a.kind === 'update')
+    expect(update?.kind).toBe('update')
+    if (update?.kind === 'update') {
+      expect(update.patch.startAt).toBe(new Date(2026, 0, 12, 23, 30).getTime())
+      expect(update.patch.endAt).toBe(new Date(2026, 0, 13, 0, 30).getTime())
+    }
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('renders the remaining cross-day segment at the top of the next day', async () => {
+    const start = new Date(2026, 0, 12, 23, 30).getTime()
+    const task: TaskRecord = {
+      id: 't1', title: 'Night task', description: '', prompt: '',
+      startAt: start, endAt: new Date(2026, 0, 13, 0, 30).getTime(),
+      urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [],
+      createdAt: 0, updatedAt: 0,
+    }
+    const controller = new calendarClientController(new MemorycalendarHostTransport(snapWith(task), undefined), initialState(start, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<WeekGrid controller={controller} />) })
+
+    const blocks = [...host.querySelectorAll('[data-dsh-calendar-block]')] as HTMLElement[]
+    expect(blocks).toHaveLength(2)
+    const tops = blocks.map(block => Number.parseFloat(block.style.top))
+    expect(tops.some(top => top === 0)).toBe(true)
+    expect(tops.some(top => top > 90)).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
 })
 
 describe('WeekGrid create-drag snapping', () => {
@@ -68,10 +130,6 @@ describe('WeekGrid create-drag snapping', () => {
   // Simulate the real layout: a sticky weekday/date header (40px) above the time
   // grid cells. Pointer→time mapping must use the CELLS rect, not the whole
   // weekGrid — using the latter used to shift every click ~30 min later.
-  const HEADER = 40
-  const CELL_H = 24 * 48
-  const yAt = (h: number, m: number) => HEADER + ((h * 60 + m) / 1440) * CELL_H
-
   function stubGridRect(host: HTMLElement): HTMLElement {
     const cells = host.querySelector('[class*=weekGridCells]') as HTMLElement
     expect(cells).toBeTruthy()

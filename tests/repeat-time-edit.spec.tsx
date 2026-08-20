@@ -43,9 +43,10 @@ describe('WeekGrid repeat-copy time edit', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
 
-    // A fixed 700x480 grid rect so the drag math is deterministic.
+    // A fixed 700x480 time-cell rect so the drag math is deterministic.
     const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
-    vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({
+    const cells = host.querySelector('[class*=weekGridCells]') as HTMLElement
+    vi.spyOn(cells, 'getBoundingClientRect').mockReturnValue({
       top: 0, left: 0, right: 700, bottom: 480, width: 700, height: 480, x: 0, y: 0,
       toJSON: () => ({}),
     })
@@ -103,7 +104,8 @@ describe('WeekGrid repeat-copy time edit', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
     const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
-    vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({
+    const cells = host.querySelector('[class*=weekGridCells]') as HTMLElement
+    vi.spyOn(cells, 'getBoundingClientRect').mockReturnValue({
       top: 0, left: 0, right: 700, bottom: 480, width: 700, height: 480, x: 0, y: 0,
       toJSON: () => ({}),
     })
@@ -149,7 +151,8 @@ describe('WeekGrid repeat-copy time edit', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
     const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
-    vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({
+    const cells = host.querySelector('[class*=weekGridCells]') as HTMLElement
+    vi.spyOn(cells, 'getBoundingClientRect').mockReturnValue({
       top: 0, left: 0, right: 700, bottom: 480, width: 700, height: 480, x: 0, y: 0,
       toJSON: () => ({}),
     })
@@ -191,7 +194,8 @@ describe('WeekGrid repeat-copy time edit', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<WeekGrid controller={controller} />) })
     const grid = host.querySelector('[data-dsh-calendar-week]') as HTMLElement
-    vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({
+    const cells = host.querySelector('[class*=weekGridCells]') as HTMLElement
+    vi.spyOn(cells, 'getBoundingClientRect').mockReturnValue({
       top: 0, left: 0, right: 700, bottom: 480, width: 700, height: 480, x: 0, y: 0,
       toJSON: () => ({}),
     })

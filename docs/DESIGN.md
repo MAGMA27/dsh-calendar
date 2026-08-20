@@ -32,7 +32,7 @@
 - **重叠任务并排**：同列重合的任务按 `layoutDayTasks` 分配到并排子列，互不遮盖（保留 2px 间隙）。
 - 拖选（pointerdown→move→up）→ `controller.setDraft` 打开创建弹窗；选中态 `--dsw-static-deepseek-200` 底 + deepseek-500 2px 边框 + 圆角 6px。
 - 现在线 `--dsw-static-red-500`（今日列）；今日日期数字 `brand-primary` 圆形强调。
-- 任务块：圆角 8px、`bg-layer-1` 底、1px `border-l1`；左缘 3px 象限色条；标题 + 徽标行。已完成任务使用 `bg-layer-2`、降低透明度、虚线边框和删除线，未完成任务保持实线与主文字色；左缘象限色保留。M2 单列块（leftPct=0,widthPct=100）；同列并排、块移动/拉伸为增强项。
+- 任务块：圆角 8px、`bg-layer-1` 底、1px `border-l1`；左缘 3px 象限色条；标题 + 徽标行。已完成任务使用 `bg-layer-2`、降低透明度、虚线边框和删除线，未完成任务保持实线与主文字色；左缘象限色保留。M2 单列块（leftPct=0,widthPct=100）；同列并排、块移动/拉伸为增强项。跨日任务按日期切片，次日从 00:00 顶部继续显示；移动和拉伸按绝对时间允许跨午夜。
 
 ## 4. 艾森豪威尔象限配色语言
 

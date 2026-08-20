@@ -419,6 +419,105 @@ describe('HostLedger repeat materialization', () => {
     }
   })
 
+  it('reschedule arms a fresh one-shot after failure and never backfills a past move', () => {
+    const persist = new MemoryPersist()
+    let now = at(2025, 1, 6, 8)
+    let n = 0
+    const ledger = new HostLedger(persist, () => now, () => `reschedule-${++n}`)
+    const created = ledger.apply({ requestId: 'one-shot', action: {
+      kind: 'create',
+      input: { title: 'One shot', description: '', prompt: '', startAt: at(2025, 1, 6, 9), endAt: at(2025, 1, 6, 10), urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, dueAt: at(2025, 1, 6, 9) },
+    } })
+    if (!created.ok) throw new Error('create failed')
+    const id = created.snapshot.tasks[0].id
+
+    now = at(2025, 1, 6, 9)
+    expect(ledger.openExecution(id, 'failed-once', now, 'schedule')).toBe(true)
+    now = at(2025, 1, 6, 9, 1)
+    expect(ledger.settleExecution(id, 'failed-once', 'failed', now, 'setup failed')).toBe(true)
+    expect(ledger.advanceSchedule(id, undefined, at(2025, 1, 6, 9))).toBe(true)
+    expect(ledger.taskById(id)!.schedule).toBeUndefined()
+
+    // Moving to a new future slot is an explicit new occurrence, even though
+    // the old failed execution happened on the same calendar day.
+    now = at(2025, 1, 6, 10)
+    const moved = ledger.apply({ requestId: 'move-future', action: {
+      kind: 'reschedule', id, startAt: at(2025, 1, 6, 12), endAt: at(2025, 1, 6, 13),
+    } })
+    expect(moved.ok).toBe(true)
+    expect(ledger.taskById(id)!.schedule).toMatchObject({
+      enabled: true, dueAt: at(2025, 1, 6, 12), nextRunAt: at(2025, 1, 6, 12),
+    })
+    expect(ledger.taskById(id)!.executions).toHaveLength(1)
+
+    // Moving that new occurrence into the past cancels its pending slot; it
+    // does not synthesize another failed execution.
+    now = at(2025, 1, 6, 14)
+    const past = ledger.apply({ requestId: 'move-past', action: {
+      kind: 'reschedule', id, startAt: at(2025, 1, 6, 13), endAt: at(2025, 1, 6, 13, 30),
+    } })
+    expect(past.ok).toBe(true)
+    expect(ledger.taskById(id)!.schedule).toBeUndefined()
+    expect(ledger.taskById(id)!.executions).toHaveLength(1)
+  })
+
+  it('keeps a repeat triggerAt independent from the moved block time', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true, triggerAt: '18:00' })
+    const moved = ledger.apply({ requestId: 'fixed-trigger', action: {
+      kind: 'reschedule', id, startAt: at(2025, 1, 6, 10), endAt: at(2025, 1, 6, 11),
+    } })
+    expect(moved.ok).toBe(true)
+    expect(ledger.taskById(id)!.schedule?.nextRunAt).toBe(at(2025, 1, 6, 18))
+  })
+
+  it('reschedules one repeat copy only and keeps the fixed trigger time-of-day', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true, triggerAt: '18:00' })
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    const moved = ledger.apply({ requestId: 'copy-only', action: {
+      kind: 'reschedule', id: copy.id, startAt: at(2025, 1, 7, 12), endAt: at(2025, 1, 7, 13), unbind: true,
+    } })
+    expect(moved.ok).toBe(true)
+    expect(ledger.taskById(copy.id)!.originTaskId).toBeUndefined()
+    expect(ledger.taskById(copy.id)!.schedule).toMatchObject({
+      dueAt: at(2025, 1, 7, 18), nextRunAt: at(2025, 1, 7, 18),
+    })
+    expect(ledger.taskById(id)!.startAt).toBe(at(2025, 1, 6, 9))
+  })
+
+  it('shifts only future repeat copies and does not create a missed record', () => {
+    const persist = new MemoryPersist()
+    let now = at(2025, 1, 6, 8)
+    let n = 0
+    const ledger = new HostLedger(persist, () => now, () => `future-only-${++n}`, undefined, { repeatHorizonDays: 3 })
+    const created = ledger.apply({ requestId: 'future-series', action: {
+      kind: 'create',
+      input: { title: 'Series', description: '', prompt: '', startAt: at(2025, 1, 6, 9), endAt: at(2025, 1, 6, 10), urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } },
+    } })
+    if (!created.ok) throw new Error('create failed')
+    const id = created.snapshot.tasks[0].id
+    const original = new Map(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).map(t => [t.id, t]))
+
+    now = at(2025, 1, 8, 10)
+    const shifted = ledger.apply({ requestId: 'future-shift', action: {
+      kind: 'shiftRepeatTimes', id, startDelta: 60 * 60_000, endDelta: 60 * 60_000,
+    } })
+    expect(shifted.ok).toBe(true)
+    const tasks = ledger.getSnapshot().tasks
+    const pastCopies = tasks.filter(t => t.originTaskId === id && (original.get(t.id)?.startAt ?? 0) <= at(2025, 1, 8, 9))
+    expect(pastCopies).toHaveLength(2)
+    for (const copy of pastCopies) {
+      expect(copy.startAt).toBe(original.get(copy.id)!.startAt)
+    }
+    const futureCopy = tasks.find(t => t.originTaskId === id && original.get(t.id)?.startAt === at(2025, 1, 9, 9))!
+    expect(futureCopy.startAt).toBe(at(2025, 1, 9, 10))
+    expect(futureCopy.schedule?.nextRunAt).toBe(at(2025, 1, 9, 10))
+    expect(ledger.taskById(id)!.executions).toHaveLength(0)
+  })
+
   it('rejects shiftRepeatTimes for a non-copy task', () => {
     const { ledger } = makeMaterializingLedger()
     const r = ledger.apply(createEnvelope('r0'))

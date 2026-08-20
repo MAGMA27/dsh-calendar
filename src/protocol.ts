@@ -65,6 +65,21 @@ export interface UpdateTaskAction {
   patch: TaskUpdatePatch
 }
 
+/**
+ * Move one calendar occurrence and explicitly re-arm its next scheduled run.
+ * This is separate from a generic field update so a stale failed execution
+ * cannot accidentally become a new trigger just because another editor wrote
+ * the task's block time. `unbind` is used for the "this copy only" choice.
+ */
+export interface RescheduleTaskAction {
+  kind: 'reschedule'
+  id: string
+  startAt: number
+  endAt: number
+  /** Clear originTaskId when moving only a repeat copy. */
+  unbind?: boolean
+}
+
 /** Set the Eisenhower quadrant by writing both knobs. */
 export interface SetQuadrantAction {
   kind: 'setQuadrant'
@@ -137,6 +152,7 @@ export interface ImportAction {
 export type calendarAction =
   | CreateTaskAction
   | UpdateTaskAction
+  | RescheduleTaskAction
   | SetQuadrantAction
   | SetDoneAction
   | AddSubtaskAction

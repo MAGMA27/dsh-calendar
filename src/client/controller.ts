@@ -188,9 +188,10 @@ export class calendarClientController {
   cancelRepeatTimeEdit(): void { this.set({ pendingRepeatTimeEdit: undefined }) }
   /**
    * Resolve the staged repeat time change:
-   *  - 'this' on a bound copy: update only that copy and unbind it (originTaskId
-   *    cleared); 'this' on the template: update only the template's block
-   *    (future copies follow the new time, existing copies keep theirs);
+   *  - 'this' on a bound copy: reschedule only that copy and unbind it
+   *    (originTaskId cleared); 'this' on the template: reschedule only the
+   *    template's block (future copies follow the new time, existing copies
+   *    keep theirs);
    *  - 'all': shift the template + every bound copy by the same deltas.
    */
   async resolveRepeatTimeEdit(choice: 'this' | 'all'): Promise<void> {
@@ -200,9 +201,13 @@ export class calendarClientController {
     const task = this.state.snapshot.tasks.find(t => t.id === edit.taskId)
     const isTemplate = task !== undefined && task.originTaskId === undefined && task.schedule?.repeat !== undefined
     if (choice === 'this') {
-      const patch: { startAt: number; endAt: number; originTaskId?: string | null } = { startAt: edit.startAt, endAt: edit.endAt }
-      if (!isTemplate) patch.originTaskId = null
-      await this.dispatch({ kind: 'update', id: edit.taskId, patch })
+      await this.dispatch({
+        kind: 'reschedule',
+        id: edit.taskId,
+        startAt: edit.startAt,
+        endAt: edit.endAt,
+        unbind: !isTemplate,
+      })
     } else {
       await this.dispatch({
         kind: 'shiftRepeatTimes',

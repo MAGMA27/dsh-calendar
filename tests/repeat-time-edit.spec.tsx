@@ -66,22 +66,22 @@ describe('WeekGrid repeat-copy time edit', () => {
     })
 
     // The change must NOT be committed directly; it is staged for confirmation.
-    expect(dispatched.filter(a => a.kind === 'update' || a.kind === 'shiftRepeatTimes')).toHaveLength(0)
+    expect(dispatched.filter(a => a.kind === 'reschedule' || a.kind === 'shiftRepeatTimes')).toHaveLength(0)
     const pending = controller.getSnapshot().pendingRepeatTimeEdit
     expect(pending).toBeDefined()
     expect(pending!.taskId).toBe('c1')
     expect(pending!.originTaskId).toBe('tpl')
 
-    // "This copy only": unbind via originTaskId null.
+    // "This copy only": Host reschedules and unbinds the copy atomically.
     await act(async () => { await controller.resolveRepeatTimeEdit('this') })
     expect(controller.getSnapshot().pendingRepeatTimeEdit).toBeUndefined()
     const unbind = dispatched[dispatched.length - 1]
-    expect(unbind.kind).toBe('update')
-    if (unbind.kind === 'update') {
+    expect(unbind.kind).toBe('reschedule')
+    if (unbind.kind === 'reschedule') {
       expect(unbind.id).toBe('c1')
-      expect(unbind.patch.originTaskId).toBeNull()
-      expect(typeof unbind.patch.startAt).toBe('number')
-      expect(typeof unbind.patch.endAt).toBe('number')
+      expect(unbind.unbind).toBe(true)
+      expect(typeof unbind.startAt).toBe('number')
+      expect(typeof unbind.endAt).toBe('number')
     }
 
     await act(async () => { root.unmount(); host.remove() })
@@ -134,7 +134,7 @@ describe('WeekGrid repeat-copy time edit', () => {
     await act(async () => { root.unmount(); host.remove() })
   })
 
-  it('a plain drag on a normal task (no origin) still commits directly', async () => {
+  it('a plain drag on a normal task (no origin) submits an explicit reschedule', async () => {
     const now = new Date(2026, 0, 12, 10, 0, 0)
     const task: TaskRecord = {
       id: 't1', title: 'Standup', description: '', prompt: '',
@@ -170,8 +170,12 @@ describe('WeekGrid repeat-copy time edit', () => {
 
     expect(controller.getSnapshot().pendingRepeatTimeEdit).toBeUndefined()
     const last = dispatched[dispatched.length - 1]
-    expect(last.kind).toBe('update')
-    if (last.kind === 'update') expect(last.patch.originTaskId).toBeUndefined()
+    expect(last.kind).toBe('reschedule')
+    if (last.kind === 'reschedule') {
+      expect(last.unbind).toBeUndefined()
+      expect(typeof last.startAt).toBe('number')
+      expect(typeof last.endAt).toBe('number')
+    }
 
     await act(async () => { root.unmount(); host.remove() })
   })
@@ -216,14 +220,14 @@ describe('WeekGrid repeat-copy time edit', () => {
     expect(pending).toBeDefined()
     expect(pending!.taskId).toBe('tpl')
 
-    // "this" on a template = plain time update, no unbind field.
+    // "this" on a template = a Host reschedule, without unbinding.
     await act(async () => { await controller.resolveRepeatTimeEdit('this') })
     const last = dispatched[dispatched.length - 1]
-    expect(last.kind).toBe('update')
-    if (last.kind === 'update') {
+    expect(last.kind).toBe('reschedule')
+    if (last.kind === 'reschedule') {
       expect(last.id).toBe('tpl')
-      expect(last.patch.originTaskId).toBeUndefined()
-      expect(typeof last.patch.startAt).toBe('number')
+      expect(last.unbind).toBe(false)
+      expect(typeof last.startAt).toBe('number')
     }
 
     await act(async () => { root.unmount(); host.remove() })

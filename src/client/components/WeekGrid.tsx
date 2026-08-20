@@ -237,7 +237,7 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
           endAt: p.end,
         })
       } else {
-        void controller.dispatch({ kind: 'update', id: edit.taskId, patch: { startAt: p.start, endAt: p.end } })
+        void controller.dispatch({ kind: 'reschedule', id: edit.taskId, startAt: p.start, endAt: p.end })
       }
     }
   }

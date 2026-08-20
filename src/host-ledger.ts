@@ -531,6 +531,29 @@ export class HostLedger {
         this.state.tasks = tasks
         return true
       }
+      case 'reschedule': {
+        if (!Number.isFinite(action.startAt) || !Number.isFinite(action.endAt) || action.endAt <= action.startAt) return false
+        const before = this.state.tasks.find(t => t.id === action.id)
+        if (before === undefined) return false
+        const template = before.originTaskId === undefined
+          ? undefined
+          : this.state.tasks.find(t => t.id === before.originTaskId)
+        const shouldUnbind = action.unbind === true && before.originTaskId !== undefined
+        const patch: TaskUpdatePatch = {
+          startAt: action.startAt,
+          endAt: action.endAt,
+          ...(shouldUnbind ? { originTaskId: null } : {}),
+        }
+        let tasks = updateTask(this.state.tasks, action.id, patch, now)
+        const moved = tasks.find(t => t.id === action.id)
+        if (moved === undefined) return false
+        const schedule = scheduleAfterReschedule(before, moved, template, now)
+        tasks = tasks.map(t => t.id === action.id ? { ...t, schedule, updatedAt: now } : t)
+        this.state.tasks = tasks
+        if (schedule === undefined) delete this.state.scheduler.nextRuns[action.id]
+        else this.state.scheduler.nextRuns[action.id] = mirrorOf(schedule)
+        return true
+      }
       case 'setQuadrant': {
         const before = this.state.tasks.find(t => t.id === action.id)
         let tasks = setQuadrant(this.state.tasks, action.id, action.urgency, action.importance, now)
@@ -664,18 +687,34 @@ export class HostLedger {
         return true
       }
       case 'shiftRepeatTimes': {
-        // "Change all copies": shift the whole series — the template + every
-        // bound copy — by the same start/end deltas. The edited task may be a
-        // bound copy (originTaskId set) or the template itself.
+        // "Change all copies": shift the template and only future bound copies
+        // by the same start/end deltas. Past occurrences are historical records;
+        // they must not be rewritten or accidentally re-armed.
         const target = this.state.tasks.find(t => t.id === action.id)
         if (target === undefined) return false
         const root = target.originTaskId ?? (target.schedule?.repeat !== undefined ? target.id : undefined)
         if (root === undefined) return false
+        const template = this.state.tasks.find(t => t.id === root)
+        const repeat = template?.schedule?.repeat
+        if (template === undefined || repeat === undefined) return false
         let hit = false
         this.state.tasks = this.state.tasks.map(t => {
-          if (t.id !== root && t.originTaskId !== root) return t
+          if (t.id === root) {
+            hit = true
+            const startAt = t.startAt + action.startDelta
+            const endAt = t.endAt + action.endDelta
+            const schedule = repeatTemplateSchedule(t.schedule!, repeat, startAt, now)
+            this.state.scheduler.nextRuns[t.id] = mirrorOf(schedule)
+            return { ...t, startAt, endAt, schedule, updatedAt: now }
+          }
+          if (t.originTaskId !== root || currentRepeatOccurrenceAt(t, repeat) <= now) return t
           hit = true
-          return { ...t, startAt: t.startAt + action.startDelta, endAt: t.endAt + action.endDelta, updatedAt: now }
+          const startAt = t.startAt + action.startDelta
+          const endAt = t.endAt + action.endDelta
+          const schedule = repeatCopySchedule(repeat, startAt, now, template.schedule?.enabled === true)
+          if (schedule === undefined) delete this.state.scheduler.nextRuns[t.id]
+          else this.state.scheduler.nextRuns[t.id] = mirrorOf(schedule)
+          return { ...t, startAt, endAt, schedule, updatedAt: now }
         })
         return hit
       }
@@ -739,10 +778,86 @@ function repeatTriggerDueAt(task: TaskRecord | undefined): number | undefined {
   const schedule = task?.schedule
   const repeat = schedule?.repeat
   if (task === undefined || schedule?.enabled !== true || repeat?.triggerAgent !== true) return undefined
-  const dateMs = startOfDayMs(task.startAt)
+  return repeatDueAtForStart(repeat, task.startAt)
+}
+
+/** Derive a repeat trigger from a block start without consulting old executions. */
+function repeatDueAtForStart(repeat: NonNullable<TaskRecord['schedule']>['repeat'], startAt: number): number | undefined {
+  if (repeat === undefined || repeat.triggerAgent !== true) return undefined
+  const dateMs = startOfDayMs(startAt)
   if (!matchesRepeat(repeat, dateMs)) return undefined
-  const triggerMinutes = parseTriggerTime(repeat.triggerAt) ?? minutesOfDay(task.startAt)
+  const triggerMinutes = parseTriggerTime(repeat.triggerAt) ?? minutesOfDay(startAt)
   return dateMs + triggerMinutes * 60_000
+}
+
+type Schedule = NonNullable<TaskRecord['schedule']>
+
+/** A fresh one-shot for an explicit user reschedule. */
+function oneShotSchedule(dueAt: number): Schedule {
+  return { enabled: true, dueAt, nextRunAt: dueAt }
+}
+
+/** Recompute a repeat template's first occurrence and reset retry state. */
+function repeatTemplateSchedule(current: Schedule, repeat: NonNullable<Schedule['repeat']>, startAt: number, now: number): Schedule {
+  const dueAt = current.enabled === true ? repeatDueAtForStart(repeat, startAt) : undefined
+  return {
+    ...current,
+    nextRunAt: dueAt !== undefined && dueAt > now ? dueAt : undefined,
+    lastTriggeredAt: undefined,
+    retryCount: undefined,
+  }
+}
+
+/** Recompute a materialized copy's one-shot without recording a missed run. */
+function repeatCopySchedule(repeat: NonNullable<Schedule['repeat']>, startAt: number, now: number, enabled = true): Schedule | undefined {
+  if (!enabled) return undefined
+  const dueAt = repeatDueAtForStart(repeat, startAt)
+  return dueAt !== undefined && dueAt > now ? oneShotSchedule(dueAt) : undefined
+}
+
+/** The current trigger instant used to decide whether a bound copy is future. */
+function currentRepeatOccurrenceAt(task: TaskRecord, repeat: NonNullable<Schedule['repeat']>): number {
+  return task.schedule?.dueAt ?? repeatDueAtForStart(repeat, task.startAt) ?? task.startAt
+}
+
+/** Whether the most recent execution was a failed scheduled attempt. */
+function endsWithFailedScheduledExecution(task: TaskRecord): boolean {
+  const last = task.executions.at(-1)
+  return last?.triggeredBy === 'schedule' && last.result === 'failed'
+}
+
+/**
+ * Decide the schedule after a user explicitly moves one occurrence.
+ *
+ * Repeat templates keep their repeat rule and use the rule's fixed trigger
+ * time-of-day. Bound copies inherit that rule for the "this copy" operation,
+ * then become independent one-shots. Standalone one-shots are intentionally
+ * re-armed at the new block start: the action itself is the user's explicit
+ * request to create a new scheduled occurrence, including after a capped
+ * failed attempt. A move into the past simply has no schedule.
+ */
+function scheduleAfterReschedule(
+  before: TaskRecord,
+  moved: TaskRecord,
+  template: TaskRecord | undefined,
+  now: number,
+): TaskRecord['schedule'] {
+  const directRepeat = moved.schedule?.repeat
+  if (directRepeat !== undefined) {
+    return repeatTemplateSchedule(moved.schedule!, directRepeat, moved.startAt, now)
+  }
+
+  const inheritedRepeat = template?.schedule?.repeat
+  if (template?.schedule?.enabled === true && inheritedRepeat?.triggerAgent === true) {
+    return repeatCopySchedule(inheritedRepeat, moved.startAt, now)
+  }
+
+  const oneShotWasArmed = before.schedule?.enabled === true
+    && before.schedule.repeat === undefined
+    && before.schedule.dueAt !== undefined
+  if (!oneShotWasArmed && !endsWithFailedScheduledExecution(before)) return moved.schedule
+
+  return moved.startAt > now ? oneShotSchedule(moved.startAt) : undefined
 }
 
 function hasScheduledOccurrence(task: TaskRecord, dueAt: number): boolean {

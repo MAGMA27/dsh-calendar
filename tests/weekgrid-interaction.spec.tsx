@@ -89,11 +89,11 @@ describe('WeekGrid interaction', () => {
     await act(async () => { grid.dispatchEvent(new PE('pointermove', { bubbles: true, clientY: yAt(24, 0), clientX: 60, pointerId: 3 } as MouseEventInit)) })
     await act(async () => { grid.dispatchEvent(new PE('pointerup', { bubbles: true, clientY: yAt(24, 0), clientX: 60, pointerId: 3 } as MouseEventInit)) })
 
-    const update = dispatched.find(a => a.kind === 'update')
-    expect(update?.kind).toBe('update')
-    if (update?.kind === 'update') {
-      expect(update.patch.startAt).toBe(new Date(2026, 0, 12, 23, 30).getTime())
-      expect(update.patch.endAt).toBe(new Date(2026, 0, 13, 0, 30).getTime())
+    const reschedule = dispatched.find(a => a.kind === 'reschedule')
+    expect(reschedule?.kind).toBe('reschedule')
+    if (reschedule?.kind === 'reschedule') {
+      expect(reschedule.startAt).toBe(new Date(2026, 0, 12, 23, 30).getTime())
+      expect(reschedule.endAt).toBe(new Date(2026, 0, 13, 0, 30).getTime())
     }
 
     await act(async () => { root.unmount(); host.remove() })

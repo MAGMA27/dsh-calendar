@@ -30,4 +30,7 @@ Desktop.ini
 # ── local scratch ────────────────────────────────────────────────
 scratch/
 
-.codegraphmemory-bank/
+.codegraph
+
+memory-bank/
+

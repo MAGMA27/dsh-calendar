@@ -80,7 +80,7 @@
     "lib/**/*.d.ts.map",
     "src",
     "cordis.patch.yml",
-    "docs"
+    "memory-bank"
   ],
   "pnpm": {
     "onlyBuiltDependencies": [

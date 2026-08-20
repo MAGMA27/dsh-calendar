@@ -2,7 +2,7 @@
 
 一个可热插拔的 DeepSeek Harness (DSH) Web GUI 日历待办插件：侧边栏「日历」入口 → 中间列日历视图；**拖选时间段**建任务；**艾森豪威尔紧急/重要矩阵**；**子任务**；任务可**钉住执行会话与 LLM provider**；**定时让 LLM 响应**（Host 权威调度，浏览器关闭仍生效）。
 
-> 开发中。文档见 `docs/development-plan.md`（计划）与 `docs/DESIGN.md`（设计规范）。
+> 开发中。文档见 [`memory-bank/development-plan.md`](memory-bank/development-plan.md)（计划）与 [`memory-bank/DESIGN.md`](memory-bank/DESIGN.md)（设计规范）。
 
 ## 功能
 

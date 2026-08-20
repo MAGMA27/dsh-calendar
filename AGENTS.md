@@ -46,8 +46,8 @@
 - `src/protocol.ts`: Host↔浏览器共享的 action/snapshot 判别联合协议
 - `build/`: 官方 client-bundle tsdown 预设（`tsdown.client.ts` + `web-platform.ts`，复制自 deepseek-harness / dsh-web-ui）
 - `tests/`: vitest（core / host / client）
-- `docs/DESIGN.md`: 设计规范；`docs/development-plan.md`: 开发计划
-- `memory-bank/`: 项目记忆（设计 / 架构 / 计划 / 进度）
+- `memory-bank/DESIGN.md`: 设计规范；`memory-bank/development-plan.md`: 开发计划
+- `memory-bank/`: 项目记忆（设计 / 架构 / 计划 / 进度 / 验收）
 - `scripts/dsh-calendar.js`: mount/unmount/status 辅助 CLI
 
 ## 测试指南 (Testing Instructions)

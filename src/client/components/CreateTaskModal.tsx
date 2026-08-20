@@ -6,7 +6,7 @@ import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
-import type { SubtaskRecord, Urgency, Importance } from '../../core/tasks.ts'
+import { hasIncompleteModelPin, type SubtaskRecord, type Urgency, type Importance } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
 import { ScheduleSettings, type ScheduleSettingsValue } from './ScheduleSettings.tsx'
 import { t, type calendarKey } from '../locales.ts'
@@ -41,6 +41,7 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
   const submit = async (): Promise<void> => {
     if (title.trim() === '' || draft === undefined) { setError('title required'); return }
     if (schedule.mode === 'weekly' && schedule.weekdays.length === 0) { setError(t('schedule.weeklyRequired')); return }
+    if (hasIncompleteModelPin(exec.provider, exec.model)) { setError(t('exec.modelPairRequired')); return }
     const dueMs = schedule.dueAt.trim() === '' ? undefined : new Date(schedule.dueAt).getTime()
     const triggerAt = schedule.triggerAt.trim()
     const repeat = schedule.mode === 'none'

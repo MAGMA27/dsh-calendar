@@ -48,6 +48,29 @@ describe('HostLedger', () => {
     const r = ledger.apply({ requestId: 'r1', action: { kind: 'update', id: 'nope', patch: { title: 'x' } } })
     expect(r.ok).toBe(false)
   })
+  it('rejects an incomplete provider/model pin before create or update', () => {
+    const { ledger } = makeLedger()
+    const baseCreate = createEnvelope('ignored').action
+    if (baseCreate.kind !== 'create') throw new Error('expected create action')
+    const invalidCreate = ledger.apply({
+      requestId: 'incomplete-create',
+      action: { ...baseCreate, input: { ...baseCreate.input, provider: 'ark' } },
+    })
+    expect(invalidCreate.ok).toBe(false)
+    if (!invalidCreate.ok) expect(invalidCreate.error).toContain('provider and model must be set together')
+    expect(ledger.getSnapshot().tasks).toHaveLength(0)
+
+    const validCreate = ledger.apply({
+      requestId: 'complete-create',
+      action: { ...baseCreate, input: { ...baseCreate.input, provider: 'ark', model: 'deepseek-v4-flash' } },
+    })
+    if (!validCreate.ok) throw new Error('valid create failed')
+    const id = validCreate.snapshot.tasks[0].id
+    const invalidUpdate = ledger.apply({ requestId: 'incomplete-update', action: { kind: 'update', id, patch: { model: null } } })
+    expect(invalidUpdate.ok).toBe(false)
+    expect(ledger.taskById(id)?.provider).toBe('ark')
+    expect(ledger.taskById(id)?.model).toBe('deepseek-v4-flash')
+  })
   it('applies subspace and quadrant mutations', () => {
     const { ledger } = makeLedger()
     const c = ledger.apply(createEnvelope('r1'))
@@ -475,10 +498,11 @@ describe('HostLedger repeat materialization', () => {
     const id = createWithRepeat(ledger, { kind: 'daily' })
     ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
     const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
-    const r = ledger.apply({ requestId: 'u', action: { kind: 'update', id, patch: { title: 'New title', model: 'm2', startAt: 12345, endAt: 23456 } } })
+    const r = ledger.apply({ requestId: 'u', action: { kind: 'update', id, patch: { title: 'New title', provider: 'p2', model: 'm2', startAt: 12345, endAt: 23456 } } })
     expect(r.ok).toBe(true)
     const snap = ledger.getSnapshot().tasks
     expect(ledger.taskById(id)!.title).toBe('New title')
+    expect(ledger.taskById(id)!.provider).toBe('p2')
     expect(ledger.taskById(id)!.model).toBe('m2')
     for (const c of snap.filter(t => t.originTaskId === id)) {
       expect(c.title).toBe('New title') // content synced

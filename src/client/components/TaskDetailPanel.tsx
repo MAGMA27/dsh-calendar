@@ -8,7 +8,7 @@ import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
 import { nextRepeatDate } from '../../core/repeat.ts'
-import type { TaskRecord, TaskUpdatePatch, Urgency, Importance, RepeatRule } from '../../core/tasks.ts'
+import { hasIncompleteModelPin, type TaskRecord, type TaskUpdatePatch, type Urgency, type Importance, type RepeatRule } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
 import { ScheduleSettings, type ScheduleSettingsValue } from './ScheduleSettings.tsx'
 import { t, type calendarKey } from '../locales.ts'
@@ -152,6 +152,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   const save = async (): Promise<void> => {
     if (title.trim() === '') { setError('title required'); return }
     if (schedule.mode === 'weekly' && schedule.weekdays.length === 0) { setError(t('schedule.weeklyRequired')); return }
+    if (hasIncompleteModelPin(exec.provider, exec.model)) { setError(t('exec.modelPairRequired')); return }
     const startMs = fromStartTimeParts(startDate, startTime)
     const snappedDuration = snapDurationMinutes(duration)
     if (startMs === undefined) {

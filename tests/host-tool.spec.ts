@@ -47,6 +47,14 @@ describe('calendar_task tool', () => {
     expect(r.error).toContain('title')
   })
 
+  it('rejects an incomplete provider/model pin before creating a task', async () => {
+    const { tool, ledger } = mk()
+    const r = await exec(tool, { action: 'create', title: 'invalid pin', provider: 'ark' })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('provider and model')
+    expect(ledger.getSnapshot().tasks).toHaveLength(0)
+  })
+
   it('creates a one-off agent task atomically and resolves current session plus catalog labels', async () => {
     const catalog = {
       workspaces: [],

@@ -48,8 +48,8 @@ const parameters = {
   subtaskId: { type: 'string', description: 'Subtask id (add/setDone/removeSubtask).' },
   workspaceId: { type: 'string', description: 'Project/workspace id (list filter or execution target create/update).' },
   sessionId: { type: 'string', description: 'Pinned or actual execution session. Use "current" to refer to the calling agent session (list filter or execution target create/update).' },
-  provider: { type: 'string', description: 'LLM provider id or catalog label (list or create/update).' },
-  model: { type: 'string', description: 'Provider-owned model id or catalog label (list or create/update).' },
+  provider: { type: 'string', description: 'LLM provider id or catalog label (list or create/update); set together with model, or leave both blank.' },
+  model: { type: 'string', description: 'Provider-owned model id or catalog label (list or create/update); set together with provider, or leave both blank.' },
   llm: { type: 'string', enum: [...LLM_FILTERS], description: 'LLM involvement filter (list): any, only tasks with LLM configuration/execution, or none for tasks assigned to yourself.' },
   mode: { type: 'string', description: 'Agent preset pin (create/update).' },
   permission: { type: 'string', enum: ['read-only','workspace-write','danger-full-access'], description: 'Permission preset (create/update).' },
@@ -406,7 +406,7 @@ function parseSetSchedule(a: Record<string, unknown>): { patch?: { enabled: bool
 export function defineCalendarTool(deps: CalendarToolDeps) {
   return defineTool({
     name: 'calendar_task',
-    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; repeat.triggerAgent triggers the matching template date as the first occurrence and later materialized copies. Blank triggerAt uses the task block start. If a one-off dueAt or repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Failed setup attempts retry at most three total times, then the current occurrence stops. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos but cannot create or arm another auto-run schedule. Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
+    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Provider and model must both be set or both be blank; the Host rejects an incomplete pin during create/update. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; repeat.triggerAgent triggers the matching template date as the first occurrence and later materialized copies. Blank triggerAt uses the task block start. If a one-off dueAt or repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Failed setup attempts retry at most three total times, then the current occurrence stops. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos but cannot create or arm another auto-run schedule. Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
     parameters,
     output: {
       schema: { type: 'json' },

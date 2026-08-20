@@ -17,6 +17,7 @@ import { dirname, join } from 'node:path'
 import { randomId, SCHEMA_VERSION, type calendarAction, type calendarActionResult, type calendarActionEnvelope, type calendarSnapshot } from './protocol.ts'
 import {
   addSubtask, archiveTask, attachExecutionSession, createTask,
+  hasIncompleteModelPin,
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
   setTaskDone, settleExecution, startExecution, updateTask, SCHEDULE_MAX_ATTEMPTS, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
@@ -27,6 +28,7 @@ import { calendarDir, ledgerPath } from './dsh-home.ts'
 
 export const MAX_REQUEST_CACHE = 256
 const MISSED_SCHEDULE_ERROR = 'scheduled dueAt was missed; the Agent was not started'
+const INCOMPLETE_MODEL_PIN_ERROR = 'provider and model must be set together'
 
 /** The persisted schedule mirror (browser M5 consumes it; Host owns it). */
 export interface PersistedScheduler {
@@ -256,6 +258,8 @@ export class HostLedger {
     if (dup !== undefined && dup.fingerprint === fingerprint) {
       return { ok: true, snapshot: this.snapshot() }
     }
+    const validationError = this.validationError(action)
+    if (validationError !== undefined) return { ok: false, error: validationError }
     const ok = this.dispatch(action)
     if (!ok) return { ok: false, error: actionError(action) }
     this.state.revision += 1
@@ -278,6 +282,19 @@ export class HostLedger {
   /** Return one task by id (undefined when missing). */
   taskById(id: string): TaskRecord | undefined {
     return this.state.tasks.find(t => t.id === id)
+  }
+
+  /** Reject invalid execution pins before any action can mutate the ledger. */
+  private validationError(action: calendarAction): string | undefined {
+    if (action.kind === 'create' && hasIncompleteModelPin(action.input.provider, action.input.model)) {
+      return INCOMPLETE_MODEL_PIN_ERROR
+    }
+    if (action.kind !== 'update') return undefined
+    const task = this.taskById(action.id)
+    if (task === undefined) return undefined
+    const provider = action.patch.provider !== undefined ? action.patch.provider : task.provider
+    const model = action.patch.model !== undefined ? action.patch.model : task.model
+    return hasIncompleteModelPin(provider, model) ? INCOMPLETE_MODEL_PIN_ERROR : undefined
   }
 
   /**

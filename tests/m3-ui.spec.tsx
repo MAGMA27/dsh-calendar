@@ -142,6 +142,29 @@ describe('TaskDetailPanel', () => {
     await act(async () => { root.unmount(); host.remove() })
   })
 
+  it('rejects a provider without a model during save and keeps the panel open', async () => {
+    const task = makeTask()
+    const { transport, dispatched } = recordTransport(snapshotWith(task))
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={task} onClose={() => {}} />) })
+
+    const defaultInputs = host.querySelectorAll('input[placeholder="（默认）"]')
+    expect(defaultInputs.length).toBeGreaterThanOrEqual(2)
+    await act(async () => { setInputValue(defaultInputs[0] as HTMLInputElement, 'ark') })
+    const save = [...host.querySelectorAll('button')].find(b => b.textContent === '保存' || b.textContent === 'Save')
+    expect(save).toBeTruthy()
+    await act(async () => { save!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+
+    expect(dispatched).toHaveLength(0)
+    expect(host.textContent).toContain('Provider 和模型必须同时填写')
+    expect(host.querySelector('[data-dsh-calendar-detail]')).toBeTruthy()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
   it('renders execution-target knobs when set (provider/model badges via exec settings)', async () => {
     const task = makeTask({ provider: 'deepseek', model: 'chat', workspaceId: 'w1', permission: 'workspace-write' })
     const { transport } = recordTransport(snapshotWith(task))

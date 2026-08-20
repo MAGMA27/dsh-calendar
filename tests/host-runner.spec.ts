@@ -175,14 +175,21 @@ describe('HostExecutionRunner', () => {
     expect(ex.error).toContain('busy')
   })
 
-  it('fails the run when the model pin is incomplete', async () => {
-    const { ledger, id } = mkLedger({ provider: 'dp', model: undefined })
-    const { env, calls, gates } = makeHarness()
-    await mkRunner(ledger, env, gates).run(id)
-    const ex = ledger.taskById(id)!.executions[0]
-    expect(ex.result).toBe('failed')
-    expect(ex.error).toContain('incomplete model pin')
-    expect(calls.prompt).toBe(0)
+  it('rejects an incomplete model pin before the runner can start', () => {
+    const ledger = new HostLedger(new NoopLedgerPersist(), () => 1000, () => 'task-1')
+    const result = ledger.apply({
+      requestId: 'incomplete-pin',
+      action: {
+        kind: 'create',
+        input: {
+          title: 'T', description: '', prompt: 'Do the thing', startAt: 0, endAt: 1000,
+          urgency: 'high', importance: 'high', workspaceId: 'w1', provider: 'dp',
+        },
+      },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('provider and model must be set together')
+    expect(ledger.getSnapshot().tasks).toHaveLength(0)
   })
 
   it('applies the permission preset via the /permission command, never as a queued prompt', async () => {
@@ -241,7 +248,7 @@ describe('HostExecutionRunner', () => {
   })
 
   it('records a scheduler-triggered execution separately from a manual run', async () => {
-    const { ledger, id } = mkLedger({ model: undefined })
+    const { ledger, id } = mkLedger()
     const { env, gates } = makeHarness()
     const result = await mkRunner(ledger, env, gates).run(id, 'schedule')
     expect(result.accepted).toBe(true)

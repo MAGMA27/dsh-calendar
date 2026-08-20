@@ -38,10 +38,14 @@ describe('createTask', () => {
     expect(t.endAt).toBe(t.startAt + 60_000)
   })
   it('normalizes execution targets and defaults knobs', () => {
-    const t = one({ provider: '  ', model: 'm', workspaceId: '  w  ' })
-    expect(t.provider).toBeUndefined()
+    const t = one({ provider: '  p  ', model: 'm', workspaceId: '  w  ' })
+    expect(t.provider).toBe('p')
     expect(t.model).toBe('m')
     expect(t.workspaceId).toBe('w')
+  })
+  it('rejects an incomplete provider/model pin', () => {
+    expect(createTask(baseInput({ provider: 'ark' }), 0, 'x')).toBeUndefined()
+    expect(createTask(baseInput({ model: 'deepseek-v4-flash' }), 0, 'y')).toBeUndefined()
   })
 })
 

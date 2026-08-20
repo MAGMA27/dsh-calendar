@@ -307,6 +307,16 @@ function normalizeTargetId(value: string | undefined): string | undefined {
   return trimmed === undefined || trimmed === '' ? undefined : trimmed
 }
 
+/** Whether exactly one side of the provider/model execution pin is present. */
+export function hasIncompleteModelPin(
+  provider: string | null | undefined,
+  model: string | null | undefined,
+): boolean {
+  const hasProvider = typeof provider === 'string' && provider.trim() !== ''
+  const hasModel = typeof model === 'string' && model.trim() !== ''
+  return hasProvider !== hasModel
+}
+
 /**
  * Create a task from input. A blank title is rejected (returns undefined),
  * the block interval is clamped to a minimum of one minute, and execution
@@ -315,7 +325,7 @@ function normalizeTargetId(value: string | undefined): string | undefined {
  */
 export function createTask(input: NewTaskInput, now: number, id: string): TaskRecord | undefined {
   const title = input.title.trim()
-  if (title === '') return undefined
+  if (title === '' || hasIncompleteModelPin(input.provider, input.model)) return undefined
   const startAt = input.startAt
   const endAt = input.endAt > startAt ? input.endAt : startAt + 60_000
   const schedule: ScheduleRule | undefined = input.schedule?.enabled === true

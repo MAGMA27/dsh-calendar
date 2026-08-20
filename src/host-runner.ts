@@ -18,7 +18,7 @@
  * fails the run without sending the prompt — running under different settings
  * than the task declared is worse than not running.
  */
-import type { ExecutionTrigger, TaskRecord } from './core/tasks.ts'
+import { hasIncompleteModelPin, type ExecutionTrigger, type TaskRecord } from './core/tasks.ts'
 import { randomId } from './protocol.ts'
 
 /** A session row as the runner reads it from `sessions.list`. */
@@ -258,6 +258,11 @@ export class HostExecutionRunner {
       }
     }
     // Provider + model route.
+    if (hasIncompleteModelPin(task.provider, task.model)) {
+      // The Host ledger rejects new invalid pins at save time; keep this guard
+      // for legacy/imported records so an incomplete pin never reaches prompt.
+      throw new Error('incomplete model pin: provider and model must be set together')
+    }
     if (task.provider !== undefined && task.provider !== '' && task.model !== undefined && task.model !== '') {
       const res = await this.env.sessions.selectModel(req({
         sessionId,
@@ -271,9 +276,6 @@ export class HostExecutionRunner {
           ? `model selection rejected: ${task.provider}/${task.model} (${reason})`
           : `model selection rejected: ${task.provider}/${task.model}`)
       }
-    } else if (task.provider !== undefined || task.model !== undefined) {
-      // A provider without a model (or vice versa) is an incomplete pin: refuse.
-      throw new Error('incomplete model pin: provider and model must be set together')
     }
     // Permission preset via the `/permission` slash command executed on the
     // session's live agent. A queued prompt would send the line to the MODEL

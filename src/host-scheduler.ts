@@ -24,7 +24,7 @@
  * functions are injectable so start/dispose are testable without real
  * intervals.
  */
-import { SCHEDULE_MAX_ATTEMPTS, type ExecutionTrigger, type TaskRecord } from './core/tasks.ts'
+import { decideScheduledAttempt, type ExecutionTrigger, type TaskRecord } from './core/tasks.ts'
 import { REPEAT_HORIZON_DAYS } from './core/repeat.ts'
 
 /** The narrow ledger face the scheduler needs. */
@@ -123,21 +123,14 @@ export class HostScheduleService {
       const due = schedule.nextRunAt
       if (due === undefined || due > now) continue
       const result = await this.runner.run(task.id, 'schedule')
-      if (result.accepted && result.outcome !== 'failed') {
-        this.ledger.advanceSchedule(task.id, undefined, now)
-      } else if (result.outcome === 'failed') {
-        const attempts = (schedule.retryCount ?? 0) + 1
-        if (attempts >= SCHEDULE_MAX_ATTEMPTS) {
-          // The failed execution is already recorded by the runner. Consume
-          // this occurrence after the cap; repeat templates keep their rule
-          // and future materialized occurrences remain independently armed.
-          this.ledger.advanceSchedule(task.id, undefined, schedule.lastTriggeredAt)
-        } else {
-          // Keep the occurrence armed, but move its retry slot forward so a
-          // transient Host/session failure gets another chance without an
-          // unbounded retry loop.
-          this.ledger.advanceSchedule(task.id, now + Math.max(1, this.tickMs), schedule.lastTriggeredAt, attempts)
-        }
+      const outcome = !result.accepted
+        ? 'rejected'
+        : result.outcome === 'failed' ? 'failed' : 'started'
+      const decision = decideScheduledAttempt(schedule, outcome, now, this.tickMs)
+      if (decision.kind === 'consume') {
+        this.ledger.advanceSchedule(task.id, undefined, decision.lastTriggeredAt)
+      } else if (decision.kind === 'retry') {
+        this.ledger.advanceSchedule(task.id, decision.nextRunAt, decision.lastTriggeredAt, decision.retryCount)
       }
     }
     this.ledger.materializeRepeats(now, REPEAT_HORIZON_DAYS)

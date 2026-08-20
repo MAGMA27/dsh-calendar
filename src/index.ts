@@ -71,14 +71,7 @@ export function apply(ctx: Context, config?: Config): void {
   const runner = new HostExecutionRunner(service.ledger, env)
   // Host scheduler: fires due one-shot tasks through the runner, materializes
   // repeat copies, and reconciles executions left running across a restart.
-  const scheduler = new HostScheduleService(
-    {
-      tasks: () => service.ledger.getSnapshot().tasks,
-      advanceSchedule: (id, next, last) => service.ledger.advanceSchedule(id, next, last),
-      materializeRepeats: (now, horizon) => service.ledger.materializeRepeats(now, horizon),
-    },
-    runner,
-  )
+  const scheduler = new HostScheduleService(service.ledger, runner)
   scheduler.start()
 
   // Settings card + SystemPrompt announcement, gated on the `calendar`

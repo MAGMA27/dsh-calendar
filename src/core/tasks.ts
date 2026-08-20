@@ -122,6 +122,50 @@ export interface ScheduleRule {
   materialized?: string[]
 }
 
+/** Result of one Host attempt to start a scheduled Agent occurrence. */
+export type ScheduledAttemptOutcome = 'rejected' | 'started' | 'failed'
+
+/** Host-owned decision after a scheduled start attempt. */
+export type ScheduledAttemptDecision =
+  | { kind: 'hold' }
+  | { kind: 'consume'; lastTriggeredAt?: number }
+  | { kind: 'retry'; nextRunAt: number; lastTriggeredAt?: number; retryCount: number }
+
+/** Whether the current scheduled occurrence has exhausted its bounded attempts. */
+export function scheduleRetryExhausted(schedule: Pick<ScheduleRule, 'retryCount'>): boolean {
+  return schedule.retryCount !== undefined && schedule.retryCount >= SCHEDULE_MAX_ATTEMPTS
+}
+
+/**
+ * Resolve one scheduled start attempt in one place.
+ *
+ * `rejected` means the task was already running (or could not be opened), so
+ * it is not a failed attempt and the due slot stays untouched. `failed` is a
+ * setup failure after an execution record was opened; it gets at most the
+ * remaining bounded retries. Once the prompt is accepted (`started`), the
+ * occurrence is consumed because retrying could duplicate Agent side effects.
+ */
+export function decideScheduledAttempt(
+  schedule: Pick<ScheduleRule, 'retryCount' | 'lastTriggeredAt'>,
+  outcome: ScheduledAttemptOutcome,
+  now: number,
+  retryDelayMs: number,
+): ScheduledAttemptDecision {
+  if (outcome === 'rejected') return { kind: 'hold' }
+  if (outcome === 'started') return { kind: 'consume', lastTriggeredAt: now }
+
+  const attempts = (schedule.retryCount ?? 0) + 1
+  if (attempts >= SCHEDULE_MAX_ATTEMPTS) {
+    return { kind: 'consume', lastTriggeredAt: schedule.lastTriggeredAt }
+  }
+  return {
+    kind: 'retry',
+    nextRunAt: now + Math.max(1, retryDelayMs),
+    lastTriggeredAt: schedule.lastTriggeredAt,
+    retryCount: attempts,
+  }
+}
+
 /** One calendar todo task. */
 export interface TaskRecord {
   id: string

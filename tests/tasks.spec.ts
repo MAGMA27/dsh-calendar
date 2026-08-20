@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   addSubtask, archiveTask, attachExecutionSession, collapseRepeatSeries,
   completedSubtaskCount, createTask,
-  deleteTask, quadrantOf, removeSubtask, restoreTask, setQuadrant, setSchedule,
+  decideScheduledAttempt, deleteTask, quadrantOf, removeSubtask, restoreTask, scheduleRetryExhausted, setQuadrant, setSchedule,
   setSubtaskDone, setTaskDone, settleExecution, startExecution, subtaskProgress,
-  isTaskOverdue, isTaskVisibleInOverview, taskTriggersAgent, updateTask, type NewTaskInput, type TaskRecord,
+  isTaskOverdue, isTaskVisibleInOverview, taskTriggersAgent, updateTask, SCHEDULE_MAX_ATTEMPTS, type NewTaskInput, type TaskRecord,
 } from '../src/core/tasks.ts'
 
 function baseInput(over: Partial<NewTaskInput> = {}): NewTaskInput {
@@ -161,6 +161,28 @@ describe('setSchedule / setNextRun', () => {
     expect(cleared.schedule?.enabled).toBe(false)
     expect(cleared.schedule?.repeat).toBeUndefined()
     expect(cleared.schedule?.dueAt).toBeUndefined()
+  })
+})
+
+describe('scheduled attempt policy', () => {
+  it('holds a rejected start without consuming an attempt', () => {
+    expect(decideScheduledAttempt({ retryCount: 2 }, 'rejected', 1000, 30_000)).toEqual({ kind: 'hold' })
+  })
+
+  it('retries setup failure and consumes the occurrence at the cap', () => {
+    expect(decideScheduledAttempt({ retryCount: 1, lastTriggeredAt: 900 }, 'failed', 1000, 30_000)).toEqual({
+      kind: 'retry', nextRunAt: 31_000, lastTriggeredAt: 900, retryCount: 2,
+    })
+    expect(decideScheduledAttempt({ retryCount: SCHEDULE_MAX_ATTEMPTS - 1, lastTriggeredAt: 900 }, 'failed', 1000, 30_000)).toEqual({
+      kind: 'consume', lastTriggeredAt: 900,
+    })
+    expect(scheduleRetryExhausted({ retryCount: SCHEDULE_MAX_ATTEMPTS })).toBe(true)
+  })
+
+  it('consumes a prompt-accepted run instead of retrying Agent side effects', () => {
+    expect(decideScheduledAttempt({ retryCount: 2 }, 'started', 1000, 30_000)).toEqual({
+      kind: 'consume', lastTriggeredAt: 1000,
+    })
   })
 })
 

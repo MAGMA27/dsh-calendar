@@ -19,7 +19,7 @@ import {
   addSubtask, archiveTask, attachExecutionSession, createTask,
   hasIncompleteModelPin,
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
-  setTaskDone, settleExecution, startExecution, updateTask, SCHEDULE_MAX_ATTEMPTS, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
+  setTaskDone, settleExecution, startExecution, updateTask, scheduleRetryExhausted, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
 import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isValidRepeat, matchesRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
 import { addDays, dayKey, minutesOfDay } from './core/calendar.ts'
@@ -210,7 +210,7 @@ export class HostLedger {
     let changed = false
     this.state.tasks = this.state.tasks.map(task => {
       const schedule = task.schedule
-      if (schedule?.enabled === true && schedule.retryCount !== undefined && schedule.retryCount >= SCHEDULE_MAX_ATTEMPTS) {
+      if (schedule?.enabled === true && scheduleRetryExhausted(schedule)) {
         changed = true
         delete this.state.scheduler.nextRuns[task.id]
         if (schedule.repeat === undefined) return { ...task, schedule: undefined, updatedAt: now }
@@ -282,6 +282,11 @@ export class HostLedger {
   /** Return one task by id (undefined when missing). */
   taskById(id: string): TaskRecord | undefined {
     return this.state.tasks.find(t => t.id === id)
+  }
+
+  /** Read-only task view consumed directly by HostScheduleService. */
+  tasks(): readonly TaskRecord[] {
+    return this.state.tasks
   }
 
   /** Reject invalid execution pins before any action can mutate the ledger. */

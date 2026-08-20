@@ -14,6 +14,9 @@ export type Urgency = 'high' | 'medium' | 'low'
 /** Importance knob (Eisenhower): how impactful the task is. */
 export type Importance = 'high' | 'medium' | 'low'
 
+/** Maximum Host attempts for one scheduled occurrence, including the first attempt. */
+export const SCHEDULE_MAX_ATTEMPTS = 3
+
 /**
  * The derived Eisenhower quadrant. The four-terminal mapping keeps the color
  * language and any surface filtering one place.
@@ -99,6 +102,7 @@ export interface ExecutionRecord {
  *    execution at that instant and then clears the schedule.
  * `nextRunAt`/`lastTriggeredAt` are the scheduler mirror for one-shots and a
  * repeat template's first occurrence;
+ * `retryCount` is Host-owned failed setup attempts for the current occurrence;
  * `materialized` is Host-owned bookkeeping of already-copied dates.
  */
 export interface ScheduleRule {
@@ -112,6 +116,8 @@ export interface ScheduleRule {
   nextRunAt?: number
   /** Instant of the most recent scheduled trigger. */
   lastTriggeredAt?: number
+  /** Host-owned failed setup attempts for the current nextRunAt occurrence. */
+  retryCount?: number
   /** Host-owned: YYYY-MM-DD keys already copied as repeat occurrences. */
   materialized?: string[]
 }
@@ -479,6 +485,7 @@ export function setSchedule(tasks: readonly TaskRecord[], id: string, patch: Sch
       dueAt: patch.dueAt === null ? undefined : (patch.dueAt !== undefined ? patch.dueAt : current.dueAt),
       nextRunAt: current.nextRunAt,
       lastTriggeredAt: current.lastTriggeredAt,
+      retryCount: current.retryCount,
     }
     // Repeating templates keep their materialization bookkeeping; a one-shot
     // roll-forward leaves it untouched.
@@ -491,13 +498,14 @@ export function setSchedule(tasks: readonly TaskRecord[], id: string, patch: Sch
 export function setNextRun(
   tasks: readonly TaskRecord[], id: string,
   nextRunAt: number | undefined, lastTriggeredAt: number | undefined, now: number,
+  retryCount: number | undefined = undefined,
 ): TaskRecord[] {
   return tasks.map(task => {
     if (task.id !== id || task.schedule === undefined) return task
     return {
       ...task,
       updatedAt: now,
-      schedule: { ...task.schedule, nextRunAt, lastTriggeredAt },
+      schedule: { ...task.schedule, nextRunAt, lastTriggeredAt, retryCount },
     }
   })
 }

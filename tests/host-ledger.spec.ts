@@ -170,6 +170,25 @@ describe('HostLedger advanceSchedule', () => {
     expect(ledger.getSnapshot().revision).toBe(revBefore + 1)
   })
 
+  it('persists the retry count for the current occurrence and resets it on advance', () => {
+    const persist = new MemoryPersist()
+    const ledger = new HostLedger(persist, () => 0, () => 'task-1')
+    const c = ledger.apply({ requestId: 'retry-task', action: {
+      kind: 'create', input: { title: 'Retry', description: '', prompt: '', startAt: 0, endAt: 1000, urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, dueAt: 5000 },
+    } })
+    if (!c.ok) throw new Error('create failed')
+    const id = c.snapshot.tasks[0].id
+
+    expect(ledger.advanceSchedule(id, 35_000, undefined, 2)).toBe(true)
+    expect(ledger.taskById(id)!.schedule?.retryCount).toBe(2)
+    const reloaded = new HostLedger(persist, () => 0, () => 'task-1')
+    expect(reloaded.taskById(id)!.schedule?.retryCount).toBe(2)
+
+    expect(reloaded.advanceSchedule(id, 65_000, undefined)).toBe(true)
+    expect(reloaded.taskById(id)!.schedule?.retryCount).toBeUndefined()
+  })
+
   it('is a no-op for an unknown or scheduling-less task', () => {
     const { ledger } = makeLedger()
     const r0 = ledger.apply(createEnvelope('r0'))

@@ -16,8 +16,8 @@ export interface ScheduleSettingsValue {
   /** Weekly only: JS weekdays 0=Sun..6=Sat, non-empty when mode is weekly. */
   weekdays: number[]
   skipHolidays: boolean
-  /** Repeat + agent trigger: each materialized copy auto-runs at the trigger
-   * time (empty triggerAt → the task's block start). */
+  /** Repeat + agent trigger: the matching template date and each materialized
+   * copy auto-run at the trigger time (empty triggerAt → block start). */
   triggerAgent: boolean
   /** Trigger time-of-day override (HH:MM, '' = block start). */
   triggerAt: string

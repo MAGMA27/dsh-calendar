@@ -18,7 +18,7 @@ import { randomId, SCHEMA_VERSION, type calendarAction, type calendarActionResul
 import {
   addSubtask, archiveTask, attachExecutionSession, createTask,
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
-  setTaskDone, settleExecution, startExecution, updateTask, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
+  setTaskDone, settleExecution, startExecution, updateTask, SCHEDULE_MAX_ATTEMPTS, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
 import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isValidRepeat, matchesRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
 import { addDays, dayKey, minutesOfDay } from './core/calendar.ts'
@@ -207,6 +207,14 @@ export class HostLedger {
   private normalizeMissedSchedules(now: number): boolean {
     let changed = false
     this.state.tasks = this.state.tasks.map(task => {
+      const schedule = task.schedule
+      if (schedule?.enabled === true && schedule.retryCount !== undefined && schedule.retryCount >= SCHEDULE_MAX_ATTEMPTS) {
+        changed = true
+        delete this.state.scheduler.nextRuns[task.id]
+        if (schedule.repeat === undefined) return { ...task, schedule: undefined, updatedAt: now }
+        if (schedule.nextRunAt === undefined) return { ...task, schedule: { ...schedule, retryCount: undefined }, updatedAt: now }
+        return { ...task, schedule: { ...schedule, nextRunAt: undefined, retryCount: undefined }, updatedAt: now }
+      }
       if (isMissedOneShot(task, now)) {
         changed = true
         delete this.state.scheduler.nextRuns[task.id]
@@ -347,7 +355,7 @@ export class HostLedger {
    * while its consumed nextRunAt is cleared; later dates are materialized as
    * copies. No-op when the task or its schedule is missing. Always persists +
    * notifies. */
-  advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined): boolean {
+  advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined, retryCount?: number): boolean {
     const task = this.taskById(taskId)
     if (task === undefined || task.schedule === undefined) return false
     const hasRepeat = task.schedule.repeat !== undefined
@@ -356,7 +364,7 @@ export class HostLedger {
       this.state.tasks = this.state.tasks.map(t => (t.id === taskId ? { ...t, schedule: undefined, updatedAt: this.now() } : t))
       delete this.state.scheduler.nextRuns[taskId]
     } else {
-      this.state.tasks = setNextRun(this.state.tasks, taskId, nextRunAt, lastTriggeredAt, this.now())
+      this.state.tasks = setNextRun(this.state.tasks, taskId, nextRunAt, lastTriggeredAt, this.now(), retryCount)
       this.state.scheduler.nextRuns[taskId] = { nextRunAt, lastTriggeredAt }
     }
     this.commit()

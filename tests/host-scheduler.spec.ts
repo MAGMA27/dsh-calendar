@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { HostScheduleService, type HostSchedulerTimers, type SchedulerLedgerFace, type SchedulerRunnerFace } from '../src/host-scheduler.ts'
-import type { ExecutionTrigger, TaskRecord } from '../src/core/tasks.ts'
+import { SCHEDULE_MAX_ATTEMPTS, type ExecutionTrigger, type TaskRecord } from '../src/core/tasks.ts'
 
 function mkTask(p: Partial<TaskRecord> & { id: string }): TaskRecord {
   return { title: 'T', description: '', prompt: '', startAt: 0, endAt: 1000, urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [], createdAt: 0, updatedAt: 0, ...p } as TaskRecord
 }
 function fakeLedger(tasks: TaskRecord[]) {
   const state = { tasks: [...tasks] }
-  const advanced: Array<{ id: string; next: number | undefined; last: number | undefined }> = []
+  const advanced: Array<{ id: string; next: number | undefined; last: number | undefined; retry: number | undefined }> = []
   const sweeps: number[] = []
   const face: SchedulerLedgerFace = {
     tasks: () => state.tasks,
-    advanceSchedule: (id: string, next: number | undefined, last: number | undefined) => {
-      advanced.push({ id, next, last })
-      state.tasks = state.tasks.map(t => t.id === id && t.schedule !== undefined ? { ...t, schedule: { ...t.schedule, nextRunAt: next, lastTriggeredAt: last } } : t)
+    advanceSchedule: (id: string, next: number | undefined, last: number | undefined, retry?: number) => {
+      advanced.push({ id, next, last, retry })
+      state.tasks = state.tasks.map(t => t.id === id && t.schedule !== undefined ? { ...t, schedule: { ...t.schedule, nextRunAt: next, lastTriggeredAt: last, retryCount: retry } } : t)
       return true
     },
     materializeRepeats: (now: number) => { sweeps.push(now); return false },
@@ -64,7 +64,46 @@ describe('HostScheduleService', () => {
     await s.tick()
     expect(runs).toEqual(['a'])
     expect(advanced).toHaveLength(1)
-    expect(advanced[0]).toEqual({ id: 'a', next: 31_000, last: undefined })
+    expect(advanced[0]).toEqual({ id: 'a', next: 31_000, last: undefined, retry: 1 })
+  })
+
+  it('stops retrying a failed setup after the bounded attempt count', async () => {
+    let now = 1_000
+    const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 1_000, nextRunAt: 1_000 } })
+    const { face, advanced } = fakeLedger([t])
+    const { face: runner, runs } = fakeRunner(true, 'failed')
+    const s = new HostScheduleService(face, runner, { now: () => now, tickMs: 30_000 })
+
+    for (const at of [1_000, 31_000, 61_000]) {
+      now = at
+      await s.tick()
+    }
+
+    expect(SCHEDULE_MAX_ATTEMPTS).toBe(3)
+    expect(runs).toHaveLength(SCHEDULE_MAX_ATTEMPTS)
+    expect(advanced).toEqual([
+      { id: 'a', next: 31_000, last: undefined, retry: 1 },
+      { id: 'a', next: 61_000, last: undefined, retry: 2 },
+      { id: 'a', next: undefined, last: undefined, retry: undefined },
+    ])
+  })
+
+  it('keeps a repeat template rule after its first occurrence exhausts retries', async () => {
+    let now = 1_000
+    const t = mkTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true }, nextRunAt: 1_000 } })
+    const { face, advanced } = fakeLedger([t])
+    const { face: runner } = fakeRunner(true, 'failed')
+    const s = new HostScheduleService(face, runner, { now: () => now, tickMs: 30_000 })
+
+    for (const at of [1_000, 31_000, 61_000]) {
+      now = at
+      await s.tick()
+    }
+
+    const remaining = face.tasks().find(task => task.id === 'tpl')!
+    expect(remaining.schedule?.repeat?.triggerAgent).toBe(true)
+    expect(remaining.schedule?.nextRunAt).toBeUndefined()
+    expect(advanced.at(-1)).toEqual({ id: 'tpl', next: undefined, last: undefined, retry: undefined })
   })
 
   it('does not run a repeat template before its first occurrence is armed', async () => {
@@ -86,7 +125,7 @@ describe('HostScheduleService', () => {
     await s.tick()
     expect(runs).toEqual(['tpl'])
     expect(triggers).toEqual(['schedule'])
-    expect(advanced).toEqual([{ id: 'tpl', next: undefined, last: 2000 }])
+    expect(advanced).toEqual([{ id: 'tpl', next: undefined, last: 2000, retry: undefined }])
   })
 
   it('skips disabled and not-yet-due schedules, and still sweeps', async () => {

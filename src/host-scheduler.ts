@@ -4,10 +4,11 @@
  *     scans the ledger for enabled schedules whose next-run instant is due,
  *     triggers the real-execution runner for each, and
  *     — only after the prompt is accepted — clears the schedule (advanceSchedule
- *     removes a completed one-shot entirely). A rejected or failed setup keeps
- *     its due slot and is retried after one heartbeat, so a scheduled task is
- *     never silently lost because a pinned session was busy or a Host RPC
- *     failed.
+ *     removes a completed one-shot entirely). A rejected setup keeps its due
+ *     slot while the execution is still in flight; a failed setup is retried
+ *     after one heartbeat up to SCHEDULE_MAX_ATTEMPTS total attempts, then the
+ *     current occurrence is consumed so a permanent configuration error does
+ *     not loop forever.
  *     Missed one-shot dueAt and repeat-template first occurrences are
  *     normalized as failed by the ledger on Host startup; later repeat dates
  *     are materialized by date rather than replayed as a backlog.
@@ -23,13 +24,13 @@
  * functions are injectable so start/dispose are testable without real
  * intervals.
  */
-import type { ExecutionTrigger, TaskRecord } from './core/tasks.ts'
+import { SCHEDULE_MAX_ATTEMPTS, type ExecutionTrigger, type TaskRecord } from './core/tasks.ts'
 import { REPEAT_HORIZON_DAYS } from './core/repeat.ts'
 
 /** The narrow ledger face the scheduler needs. */
 export interface SchedulerLedgerFace {
   tasks(): readonly TaskRecord[]
-  advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined): boolean
+  advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined, retryCount?: number): boolean
   /** Materialize repeat copies for the rolling horizon; true when anything changed. */
   materializeRepeats(now: number, horizonDays?: number): boolean
 }
@@ -109,8 +110,8 @@ export class HostScheduleService {
     if (this.intervalTimer !== undefined) { this.timers.clear(this.intervalTimer); this.intervalTimer = undefined }
   }
 
-  /** Fire due one-shots (advancing only after prompt acceptance), then
-   * materialize repeat copies. */
+  /** Fire due one-shots/first repeat occurrences with bounded setup retries,
+   * then materialize repeat copies. */
   async tick(): Promise<void> {
     const now = this.now()
     for (const task of this.ledger.tasks()) {
@@ -125,9 +126,18 @@ export class HostScheduleService {
       if (result.accepted && result.outcome !== 'failed') {
         this.ledger.advanceSchedule(task.id, undefined, now)
       } else if (result.outcome === 'failed') {
-        // Keep the one-shot armed, but move its retry slot forward so a bad
-        // pin or a transient Host/session failure cannot create a tight loop.
-        this.ledger.advanceSchedule(task.id, now + Math.max(1, this.tickMs), schedule.lastTriggeredAt)
+        const attempts = (schedule.retryCount ?? 0) + 1
+        if (attempts >= SCHEDULE_MAX_ATTEMPTS) {
+          // The failed execution is already recorded by the runner. Consume
+          // this occurrence after the cap; repeat templates keep their rule
+          // and future materialized occurrences remain independently armed.
+          this.ledger.advanceSchedule(task.id, undefined, schedule.lastTriggeredAt)
+        } else {
+          // Keep the occurrence armed, but move its retry slot forward so a
+          // transient Host/session failure gets another chance without an
+          // unbounded retry loop.
+          this.ledger.advanceSchedule(task.id, now + Math.max(1, this.tickMs), schedule.lastTriggeredAt, attempts)
+        }
       }
     }
     this.ledger.materializeRepeats(now, REPEAT_HORIZON_DAYS)

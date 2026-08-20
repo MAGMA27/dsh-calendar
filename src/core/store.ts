@@ -72,6 +72,7 @@ function normalizeSchedule(value: unknown): ScheduleRule | undefined {
     dueAt,
     nextRunAt: typeof r.nextRunAt === 'number' ? r.nextRunAt : undefined,
     lastTriggeredAt: typeof r.lastTriggeredAt === 'number' ? r.lastTriggeredAt : undefined,
+    retryCount: typeof r.retryCount === 'number' && Number.isSafeInteger(r.retryCount) && r.retryCount > 0 ? r.retryCount : undefined,
     materialized: materialized !== undefined && materialized.length > 0 ? materialized : undefined,
   }
 }

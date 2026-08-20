@@ -13,7 +13,7 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { randomId } from './protocol.ts'
 import type { calendarAction, calendarActionEnvelope, CreateScheduleInput } from './protocol.ts'
-import { taskTriggersAgent, type ExecutionRecord, type NewTaskInput, type RepeatRule, type TaskRecord } from './core/tasks.ts'
+import { SCHEDULE_MAX_ATTEMPTS, taskTriggersAgent, type ExecutionRecord, type NewTaskInput, type RepeatRule, type TaskRecord } from './core/tasks.ts'
 import type { ExecutionCatalog } from './core/exec-catalog.ts'
 import type { HostLedger } from './host-ledger.ts'
 
@@ -126,6 +126,8 @@ function scheduleSummary(schedule: TaskRecord['schedule']): Record<string, unkno
     ...(schedule.dueAt !== undefined ? { dueAt: schedule.dueAt } : {}),
     ...(schedule.nextRunAt !== undefined ? { nextRunAt: schedule.nextRunAt } : {}),
     ...(schedule.lastTriggeredAt !== undefined ? { lastTriggeredAt: schedule.lastTriggeredAt } : {}),
+    maxAttempts: SCHEDULE_MAX_ATTEMPTS,
+    ...(schedule.retryCount !== undefined ? { retryCount: schedule.retryCount } : {}),
     ...(schedule.materialized !== undefined ? { materialized: [...schedule.materialized] } : {}),
   }
 }
@@ -404,7 +406,7 @@ function parseSetSchedule(a: Record<string, unknown>): { patch?: { enabled: bool
 export function defineCalendarTool(deps: CalendarToolDeps) {
   return defineTool({
     name: 'calendar_task',
-    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; repeat.triggerAgent triggers the matching template date as the first occurrence and later materialized copies. Blank triggerAt uses the task block start. If a one-off dueAt or repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos but cannot create or arm another auto-run schedule. Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
+    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; repeat.triggerAgent triggers the matching template date as the first occurrence and later materialized copies. Blank triggerAt uses the task block start. If a one-off dueAt or repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Failed setup attempts retry at most three total times, then the current occurrence stops. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos but cannot create or arm another auto-run schedule. Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
     parameters,
     output: {
       schema: { type: 'json' },

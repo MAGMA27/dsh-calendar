@@ -154,7 +154,7 @@ export class HostExecutionRunner {
 
   /** Open an execution and run the task to prompt-accepted (does not block on
    * settlement). A setup failure is reported separately so the scheduler can
-   * retain and retry the due slot instead of clearing it. */
+   * retain and retry the due slot within its per-occurrence retry cap. */
   async run(taskId: string, triggeredBy: ExecutionTrigger = 'manual'): Promise<RunResult> {
     const task = this.ledger.taskById(taskId)
     if (task === undefined) return { accepted: false }

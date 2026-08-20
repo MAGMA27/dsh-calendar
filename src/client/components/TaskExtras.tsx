@@ -30,6 +30,8 @@ export function TaskBadges({ task }: { task: TaskRecord }): ReactNode {
   const subDone = completedSubtaskCount(task)
   const running = task.executions.some(e => e.endedAt === undefined)
   const scheduled = taskTriggersAgent(task)
+  const latest = task.executions[task.executions.length - 1]
+  const failed = latest?.result === 'failed'
   const isCopy = task.originTaskId !== undefined
   const hasProvider = task.provider !== undefined && task.model !== undefined
   const chips: ReactNode[] = []
@@ -40,6 +42,7 @@ export function TaskBadges({ task }: { task: TaskRecord }): ReactNode {
       </span>,
     )
   }
+  if (failed) chips.push(<span key="failed" className={css.taskBadge} title={t('task.failed')}>{t('task.failed')}</span>)
   if (scheduled) chips.push(<span key="sched" className={css.taskBadge} title={t('task.scheduled')}>🕐</span>)
   if (isCopy) chips.push(<span key="copy" className={css.taskBadge} title={t('task.repeatCopy')}>↻</span>)
   if (subCount > 0) chips.push(<span key="sub" className={css.taskBadge}>{t('task.progress', { done: subDone, total: subCount })}</span>)

@@ -2,11 +2,14 @@
  * Host-side scheduler. On a tick it does two jobs:
  *  1. Fire due one-shot schedules: scans the ledger for enabled schedules whose
  *     next-run instant is due, triggers the real-execution runner for each, and
- *     — only after the run is accepted — clears the schedule (advanceSchedule
- *     removes a completed one-shot entirely). A rejected run (the task is
- *     already running, e.g. a long turn still settling) keeps its due slot and
- *     is retried on the next tick, so a scheduled task is never skipped.
- *     Missed runs (the Host was down, or the tab was closed) are not backfilled.
+ *     — only after the prompt is accepted — clears the schedule (advanceSchedule
+ *     removes a completed one-shot entirely). A rejected or failed setup keeps
+ *     its due slot and is retried after one heartbeat, so a scheduled task is
+ *     never silently lost because a pinned session was busy or a Host RPC
+ *     failed.
+ *     Missed one-shot dueAt records are normalized as failed by the ledger on
+ *     Host startup; repeat schedules are materialized by date rather than
+ *     replayed as a backlog.
  *  2. Materialize repeat copies: repeat templates never run themselves; the
  *     ledger's materializeRepeats() sweep ensures one plain copy exists on each
  *     matching date (idempotent, tracked per date).
@@ -32,7 +35,7 @@ export interface SchedulerLedgerFace {
 
 /** The narrow runner face the scheduler calls. */
 export interface SchedulerRunnerFace {
-  run(taskId: string, triggeredBy?: ExecutionTrigger): Promise<{ accepted: boolean; settleFinished?: Promise<void> }>
+  run(taskId: string, triggeredBy?: ExecutionTrigger): Promise<{ accepted: boolean; outcome?: 'started' | 'failed'; settleFinished?: Promise<void> }>
   reconcile(taskId: string): Promise<boolean>
 }
 
@@ -58,7 +61,7 @@ export interface HostSchedulerOptions {
 
 /**
  * Host schedule heartbeat. tick is public so tests drive it directly; the
- * interval and the one-shot catch-up/reconcile are armed by start.
+ * interval and the startup sweep/reconcile are armed by start.
  */
 export class HostScheduleService {
   private readonly now: () => number
@@ -79,13 +82,13 @@ export class HostScheduleService {
     this.timers = options.timers ?? defaultTimers
   }
 
-  /** Arm the one-shot catch-up/reconcile and the recurring tick. Idempotent. */
+  /** Arm the startup sweep/reconcile and the recurring tick. Idempotent. */
   start(): void {
     if (this.disposed || this.started) return
     this.started = true
-    // Immediate catch-up after a restart: fire anything that became due while
-    // the Host was down, materialize missed repeat copies, and reconcile
-    // executions left 'running'.
+    // Immediate startup sweep: stale one-shots were failed by HostLedger's
+    // load normalization; materialize only current/future repeat copies and
+    // reconcile executions left 'running'.
     this.immediateTimer = this.timers.immediate(() => {
       void this.tick()
       void this.reconcileAll()
@@ -105,7 +108,7 @@ export class HostScheduleService {
     if (this.intervalTimer !== undefined) { this.timers.clear(this.intervalTimer); this.intervalTimer = undefined }
   }
 
-  /** Fire due one-shots (advancing each only once its run is accepted), then
+  /** Fire due one-shots (advancing only after prompt acceptance), then
    * materialize repeat copies. */
   async tick(): Promise<void> {
     const now = this.now()
@@ -117,7 +120,13 @@ export class HostScheduleService {
       const due = schedule.nextRunAt
       if (due === undefined || due > now) continue
       const result = await this.runner.run(task.id, 'schedule')
-      if (result.accepted) this.ledger.advanceSchedule(task.id, undefined, now)
+      if (result.accepted && result.outcome !== 'failed') {
+        this.ledger.advanceSchedule(task.id, undefined, now)
+      } else if (result.outcome === 'failed') {
+        // Keep the one-shot armed, but move its retry slot forward so a bad
+        // pin or a transient Host/session failure cannot create a tight loop.
+        this.ledger.advanceSchedule(task.id, now + Math.max(1, this.tickMs), schedule.lastTriggeredAt)
+      }
     }
     this.ledger.materializeRepeats(now, REPEAT_HORIZON_DAYS)
   }

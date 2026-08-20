@@ -122,12 +122,18 @@ export class calendarClientController {
     for (const fn of [...this.listeners]) fn()
   }
 
+  /** Accept only monotonic Host snapshots; network responses may arrive out of order. */
+  private setSnapshot(snapshot: calendarSnapshot): void {
+    if (snapshot.revision < this.state.snapshot.revision) return
+    this.set({ snapshot, status: 'ready', error: null })
+  }
+
   /** Initial load / refresh from the Host. */
   async start(): Promise<void> {
     this.loaded = true
     try {
       const snap = await this.transport.state()
-      this.set({ snapshot: snap, status: 'ready', error: null })
+      this.setSnapshot(snap)
     } catch (e) {
       this.set({ status: 'error', error: String(e) })
     }
@@ -138,7 +144,7 @@ export class calendarClientController {
     if (!this.loaded) return
     try {
       const snap = await this.transport.state()
-      this.set({ snapshot: snap, status: 'ready', error: null })
+      this.setSnapshot(snap)
     } catch {
       // Keep the last good snapshot on a failed pull.
     }
@@ -148,7 +154,7 @@ export class calendarClientController {
   async dispatch(action: calendarAction): Promise<void> {
     try {
       const snap = await this.transport.action(action)
-      this.set({ snapshot: snap, status: 'ready', error: null })
+      this.setSnapshot(snap)
     } catch (e) {
       this.set({ status: 'error', error: String(e) })
     }

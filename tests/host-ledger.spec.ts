@@ -117,6 +117,21 @@ describe('HostLedger execution records', () => {
     expect(ledger.settleExecution('nope', 'ex-1', 'succeeded', 1000, undefined)).toBe(false)
   })
 
+  it('exposes an active scheduled execution after the runner attaches its session', () => {
+    const { ledger } = makeLedger()
+    const c = ledger.apply(createEnvelope('r1'))
+    if (!c.ok) throw new Error('create failed')
+    const id = c.snapshot.tasks[0].id
+    expect(ledger.openExecution(id, 'ex-schedule', 1000, 'schedule')).toBe(true)
+    expect(ledger.attachExecutionSession(id, 'ex-schedule', 'session-scheduled', 1100)).toBe(true)
+    expect(ledger.activeScheduledExecution('session-scheduled')).toEqual({
+      taskId: id, executionId: 'ex-schedule', sessionId: 'session-scheduled',
+    })
+    expect(ledger.activeScheduledExecution('other-session')).toBeUndefined()
+    expect(ledger.settleExecution(id, 'ex-schedule', 'succeeded', 1200, undefined, 'session-scheduled')).toBe(true)
+    expect(ledger.activeScheduledExecution('session-scheduled')).toBeUndefined()
+  })
+
   it('overwrites an unknown idempotent execution on a persisted reload', () => {
     // a run that is in-flight survives a reload as 'running'
     const persist = new MemoryPersist()
@@ -161,6 +176,43 @@ describe('HostLedger advanceSchedule', () => {
     if (!r0.ok) throw new Error('create failed')
     expect(ledger.advanceSchedule('nope', 1, 1)).toBe(false)
     expect(ledger.advanceSchedule(r0.snapshot.tasks[0].id, 1, 1)).toBe(false) // no schedule set
+  })
+
+  it('marks a past one-shot dueAt failed instead of replaying it', () => {
+    const { ledger, setNow } = makeLedger()
+    setNow(1000)
+    const c = ledger.apply({ requestId: 'c1', action: {
+      kind: 'create',
+      input: { title: 'late', description: '', prompt: '', startAt: 1000, endAt: 2000, urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, dueAt: 500 },
+    } })
+    if (!c.ok) throw new Error('create failed')
+    const task = c.snapshot.tasks[0]
+    expect(task.schedule).toBeUndefined()
+    expect(task.executions).toHaveLength(1)
+    expect(task.executions[0]).toMatchObject({
+      triggeredBy: 'schedule', startedAt: 500, endedAt: 1000, result: 'failed',
+    })
+    expect(task.executions[0].error).toContain('dueAt was missed')
+  })
+
+  it('marks a stale persisted one-shot failed during Host reload', () => {
+    const persist = new MemoryPersist()
+    const stale = new HostLedger(persist, () => 0, () => 'task-1')
+    const created = stale.apply({ requestId: 'c1', action: {
+      kind: 'create',
+      input: { title: 'late', description: '', prompt: '', startAt: 1000, endAt: 2000, urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, dueAt: 5000 },
+    } })
+    if (!created.ok) throw new Error('create failed')
+    persist.doc!.tasks = persist.doc!.tasks.map(task => task.id === created.snapshot.tasks[0].id
+      ? { ...task, schedule: { ...task.schedule!, dueAt: 500, nextRunAt: 500 } }
+      : task)
+
+    const reloaded = new HostLedger(persist, () => 1000, () => 'missed-execution')
+    const task = reloaded.taskById(created.snapshot.tasks[0].id)!
+    expect(task.schedule).toBeUndefined()
+    expect(task.executions.at(-1)).toMatchObject({ result: 'failed', startedAt: 500, endedAt: 1000 })
   })
 
   it('removes a completed one-shot dueAt schedule entirely', () => {
@@ -238,6 +290,30 @@ describe('HostLedger repeat materialization', () => {
     // Idempotent: a second sweep changes nothing.
     expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(false)
     expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(3)
+  })
+
+  it('does not materialize repeat dates that were missed before the sweep', () => {
+    const persist = new MemoryPersist()
+    let now = at(2025, 1, 1, 8)
+    let n = 0
+    const ledger = new HostLedger(persist, () => now, () => `repeat-${++n}`, undefined, { repeatHorizonDays: 0 })
+    const created = ledger.apply({ requestId: 'repeat-late', action: {
+      kind: 'create',
+      input: {
+        title: 'Daily', description: '', prompt: '', startAt: at(2025, 1, 1, 9), endAt: at(2025, 1, 1, 10),
+        urgency: 'high', importance: 'high',
+      },
+      schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } },
+    } })
+    if (!created.ok) throw new Error('create failed')
+    const id = created.snapshot.tasks[0].id
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(0)
+
+    now = at(2025, 1, 5, 12)
+    expect(ledger.materializeRepeats(now, 3)).toBe(true)
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies.every(copy => copy.startAt >= at(2025, 1, 6))).toBe(true)
+    expect(copies.some(copy => copy.startAt < at(2025, 1, 5))).toBe(false)
   })
 
   it('arming a repeat via setSchedule materializes immediately', () => {
@@ -499,9 +575,10 @@ describe('HostLedger repeat materialization', () => {
     const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
     // Unbind the copy first.
     expect(ledger.apply({ requestId: 'unbind', action: { kind: 'update', id: copy.id, patch: { originTaskId: null } } }).ok).toBe(true)
-    const r = ledger.apply({ requestId: 'self', action: { kind: 'setSchedule', id: copy.id, patch: { enabled: true, dueAt: 9999 } } })
+    const futureDueAt = at(2025, 1, 10, 9)
+    const r = ledger.apply({ requestId: 'self', action: { kind: 'setSchedule', id: copy.id, patch: { enabled: true, dueAt: futureDueAt } } })
     expect(r.ok).toBe(true)
-    expect(ledger.taskById(copy.id)!.schedule?.dueAt).toBe(9999)
+    expect(ledger.taskById(copy.id)!.schedule?.dueAt).toBe(futureDueAt)
     expect(ledger.taskById(id)!.schedule?.repeat?.kind).toBe('daily') // template untouched
   })
 

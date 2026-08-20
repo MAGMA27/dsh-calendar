@@ -2,19 +2,31 @@ import { describe, expect, it } from 'vitest'
 import { validateJsonSchemaValue, valueSchemaSpecToJsonSchema } from '@deepseek-ai/dsh-tools'
 import { defineCalendarTool } from '../src/host-tool.ts'
 import { HostLedger, NoopLedgerPersist } from '../src/host-ledger.ts'
+import type { ExecutionCatalog } from '../src/core/exec-catalog.ts'
 
 type AnyExec = (args: unknown, exec: unknown) => Promise<Record<string, unknown>>
 
-function mk() {
+function mk(options: {
+  catalog?: ExecutionCatalog
+  now?: number
+  activeScheduledSessions?: readonly string[]
+  runResult?: unknown
+} = {}) {
   let taskSeq = 0
-  const ledger = new HostLedger(new NoopLedgerPersist(), () => 1000, () => `t${++taskSeq}`)
+  const ledger = new HostLedger(new NoopLedgerPersist(), () => options.now ?? 1000, () => `t${++taskSeq}`)
   const runs: string[] = []
-  const tool = defineCalendarTool({ ledger, run: async id => { runs.push(id) } }) as unknown as { execute: AnyExec }
+  const tool = defineCalendarTool({
+    ledger,
+    run: async id => { runs.push(id); return options.runResult },
+    catalog: options.catalog === undefined ? undefined : async () => options.catalog!,
+    now: options.now === undefined ? undefined : () => options.now!,
+    hasActiveScheduledExecution: sessionId => options.activeScheduledSessions?.includes(sessionId) === true,
+  }) as unknown as { execute: AnyExec }
   return { ledger, tool, runs }
 }
 
-async function exec(tool: { execute: AnyExec }, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  return tool.execute(args, {})
+async function exec(tool: { execute: AnyExec }, args: Record<string, unknown>, context: unknown = {}): Promise<Record<string, unknown>> {
+  return tool.execute(args, context)
 }
 
 describe('calendar_task tool', () => {
@@ -33,6 +45,94 @@ describe('calendar_task tool', () => {
     const r = await exec(tool, { action: 'create' })
     expect(r.ok).toBe(false)
     expect(r.error).toContain('title')
+  })
+
+  it('creates a one-off agent task atomically and resolves current session plus catalog labels', async () => {
+    const catalog = {
+      workspaces: [],
+      sessions: [{ id: 'session-current', label: 'Current' }],
+      projects: [],
+      providers: [{ id: 'volcengine', label: '火山方舟' }],
+      modelsByProvider: { volcengine: [{ id: 'deepseek-v4-flash', label: 'deepseek v4 Flash' }] },
+      modes: [],
+    }
+    const { tool, ledger } = mk({ catalog })
+    const r = await exec(tool, {
+      action: 'create',
+      title: 'test3',
+      startAt: '2026-08-20T18:00:00+08:00',
+      endAt: '2026-08-20T18:30:00+08:00',
+      dueAt: '2026-08-20T18:00:00+08:00',
+      prompt: '回复ok即可',
+      sessionId: 'current',
+      provider: '火山方舟',
+      model: 'deepseek v4 Flash',
+    }, { agent: { id: 'session-current' } })
+    expect(r.ok).toBe(true)
+    const task = r.task as Record<string, unknown>
+    expect(task.title).toBe('test3')
+    expect(task.startAt).toBe(new Date('2026-08-20T18:00:00+08:00').getTime())
+    expect(task.endAt).toBe(new Date('2026-08-20T18:30:00+08:00').getTime())
+    expect(task.sessionId).toBe('session-current')
+    expect(task.provider).toBe('volcengine')
+    expect(task.model).toBe('deepseek-v4-flash')
+    expect(task.autoRun).toBe(true)
+    expect((task.schedule as Record<string, unknown>).dueAt).toBe(task.startAt)
+    expect((await exec(tool, { action: 'options' })).catalog).toEqual(catalog)
+    expect(ledger.taskById(task.id as string)?.schedule?.nextRunAt).toBe(task.startAt)
+  })
+
+  it('rejects ambiguous repeat plus one-off schedule input without creating a task', async () => {
+    const { tool, ledger } = mk()
+    const r = await exec(tool, {
+      action: 'create', title: 'ambiguous', repeat: 'daily', dueAt: 2000,
+    })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('not both')
+    expect(ledger.getSnapshot().tasks).toHaveLength(0)
+  })
+
+  it('blocks a scheduled Agent from creating an auto-run child task', async () => {
+    const { tool, ledger } = mk({ now: 1000, activeScheduledSessions: ['session-current'] })
+    const r = await exec(tool, {
+      action: 'create', title: 'recursive', startAt: 2000, endAt: 3000, dueAt: 4000, sessionId: 'current',
+    }, { agent: { id: 'session-current' } })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('cannot create another auto-run')
+    expect(ledger.getSnapshot().tasks).toHaveLength(0)
+  })
+
+  it('blocks a scheduled Agent from arming an auto-run schedule after plain creation', async () => {
+    const { tool, ledger } = mk({ activeScheduledSessions: ['session-current'] })
+    const created = await exec(tool, { action: 'create', title: 'plain child' })
+    const id = (created.task as Record<string, unknown>).id as string
+    const r = await exec(tool, {
+      action: 'setSchedule', id, repeat: 'daily', triggerAgent: true,
+    }, { agent: { id: 'session-current' } })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('cannot arm another auto-run')
+    expect(ledger.taskById(id)?.schedule).toBeUndefined()
+  })
+
+  it('marks a past one-off dueAt failed instead of catching it up', async () => {
+    const { tool, ledger } = mk({ now: 1000 })
+    const r = await exec(tool, { action: 'create', title: 'late', dueAt: 500 })
+    expect(r.ok).toBe(true)
+    const id = (r.task as Record<string, unknown>).id as string
+    const task = ledger.taskById(id)!
+    expect(task.schedule).toBeUndefined()
+    expect(task.executions.at(-1)).toMatchObject({ result: 'failed', startedAt: 500, endedAt: 1000 })
+  })
+
+  it('marks a past dueAt failed when arming an existing task', async () => {
+    const { tool, ledger } = mk({ now: 1000 })
+    const created = await exec(tool, { action: 'create', title: 'late arm' })
+    const id = (created.task as Record<string, unknown>).id as string
+    const r = await exec(tool, { action: 'setSchedule', id, dueAt: 500 })
+    expect(r.ok).toBe(true)
+    const task = ledger.taskById(id)!
+    expect(task.schedule).toBeUndefined()
+    expect(task.executions.at(-1)).toMatchObject({ result: 'failed', triggeredBy: 'schedule' })
   })
 
   it('lists and gets tasks', async () => {
@@ -180,6 +280,15 @@ describe('calendar_task tool', () => {
     const r = await exec(tool, { action: 'run', id })
     expect(r.ok).toBe(true)
     expect(runs).toEqual([id])
+  })
+
+  it('returns the runner outcome when the Host runner supplies one', async () => {
+    const { tool } = mk({ runResult: { accepted: true, outcome: 'started' } })
+    const created = await exec(tool, { action: 'create', title: 'r' })
+    const id = (created.task as Record<string, unknown>).id as string
+    const r = await exec(tool, { action: 'run', id })
+    expect(r.ok).toBe(true)
+    expect(r.status).toBe('started')
   })
 
   it('rejects unknown actions via schema validation and missing ids in execute', async () => {

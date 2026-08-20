@@ -140,7 +140,7 @@ export function buildRepeatCopy(template: TaskRecord, dateMs: number, now: numbe
   if (triggerAgent) {
     const triggerMinutes = parseTriggerTime(rule?.triggerAt) ?? minutesOfDay(template.startAt)
     const dueAt = dateMs + triggerMinutes * 60_000
-    schedule = { enabled: true, dueAt, nextRunAt: dueAt > now ? dueAt : undefined }
+    schedule = { enabled: true, dueAt, nextRunAt: dueAt >= now ? dueAt : undefined }
   }
   return {
     id,

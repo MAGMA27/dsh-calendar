@@ -20,12 +20,12 @@ function fakeLedger(tasks: TaskRecord[]) {
   }
   return { face, advanced, sweeps }
 }
-function fakeRunner(accept: boolean) {
+function fakeRunner(accept: boolean, outcome?: 'started' | 'failed') {
   const runs: string[] = []
   const triggers: Array<ExecutionTrigger | undefined> = []
   const reconciles: string[] = []
   const face: SchedulerRunnerFace = {
-    run: async (id: string, triggeredBy?: ExecutionTrigger) => { runs.push(id); triggers.push(triggeredBy); return { accepted: accept } },
+    run: async (id: string, triggeredBy?: ExecutionTrigger) => { runs.push(id); triggers.push(triggeredBy); return { accepted: accept, outcome } },
     reconcile: async (id: string) => { reconciles.push(id); return true },
   }
   return { face, runs, triggers, reconciles }
@@ -33,27 +33,38 @@ function fakeRunner(accept: boolean) {
 
 describe('HostScheduleService', () => {
   it('fires a due one-shot and advances it to undefined (schedule cleared after acceptance)', async () => {
-    const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 900, nextRunAt: 1000 } })
+    const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 1000, nextRunAt: 1000 } })
     const { face, advanced } = fakeLedger([t])
     const { face: runner, runs, triggers } = fakeRunner(true)
-    const s = new HostScheduleService(face, runner, { now: () => 2000 })
+    const s = new HostScheduleService(face, runner, { now: () => 1000 })
     await s.tick()
     expect(runs).toEqual(['a'])
     expect(triggers).toEqual(['schedule'])
     expect(advanced).toHaveLength(1)
     expect(advanced[0].id).toBe('a')
     expect(advanced[0].next).toBeUndefined()
-    expect(advanced[0].last).toBe(2000)
+    expect(advanced[0].last).toBe(1000)
   })
 
   it('does not roll forward when the run is rejected (already running)', async () => {
-    const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 900, nextRunAt: 1000 } })
+    const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 1000, nextRunAt: 1000 } })
     const { face, advanced } = fakeLedger([t])
     const { face: runner, runs } = fakeRunner(false)
-    const s = new HostScheduleService(face, runner, { now: () => 2000 })
+    const s = new HostScheduleService(face, runner, { now: () => 1000 })
     await s.tick()
     expect(runs).toEqual(['a'])
     expect(advanced).toHaveLength(0)
+  })
+
+  it('keeps a failed setup armed and moves its retry slot forward', async () => {
+    const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 1000, nextRunAt: 1000 } })
+    const { face, advanced } = fakeLedger([t])
+    const { face: runner, runs } = fakeRunner(true, 'failed')
+    const s = new HostScheduleService(face, runner, { now: () => 1000, tickMs: 30_000 })
+    await s.tick()
+    expect(runs).toEqual(['a'])
+    expect(advanced).toHaveLength(1)
+    expect(advanced[0]).toEqual({ id: 'a', next: 31_000, last: undefined })
   })
 
   it('never runs a repeat template; it only materializes copies', async () => {
@@ -79,7 +90,7 @@ describe('HostScheduleService', () => {
   })
 
   it('ends a one-shot dueAt schedule (next becomes undefined)', async () => {
-    const t = mkTask({ id: 'one', schedule: { enabled: true, dueAt: 900, nextRunAt: 900 } })
+    const t = mkTask({ id: 'one', schedule: { enabled: true, dueAt: 2000, nextRunAt: 2000 } })
     const { face, advanced } = fakeLedger([t])
     const { face: runner } = fakeRunner(true)
     const s = new HostScheduleService(face, runner, { now: () => 2000 })
@@ -99,7 +110,7 @@ describe('HostScheduleService', () => {
     expect(reconciles).toEqual(['r'])
   })
 
-  it('start arms the catch-up and interval; dispose clears both', () => {
+  it('start arms the startup sweep and interval; dispose clears both', () => {
     const { face } = fakeLedger([])
     const { face: runner } = fakeRunner(true)
     let cleared = 0

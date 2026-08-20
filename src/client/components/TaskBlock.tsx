@@ -42,6 +42,8 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
   const scheduled = taskTriggersAgent(task)
   const isCopy = task.originTaskId !== undefined
   const running = task.executions.some(e => e.endedAt === undefined)
+  const latest = task.executions[task.executions.length - 1]
+  const failed = latest?.result === 'failed'
 
   const editable = onEditStart !== undefined
 
@@ -71,9 +73,10 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
         <span className={css.taskBlockTitle} data-done={task.done || undefined}>{task.title}</span>
         <span className={css.taskBlockTime}>{fmtTime(task.startAt)}–{fmtTime(task.endAt)}</span>
       </span>
-      {(scheduled || running || subCount > 0 || hasProvider || isCopy) && (
+      {(scheduled || running || failed || subCount > 0 || hasProvider || isCopy) && (
         <span className={css.taskBlockMeta}>
           {running && <span className={css.taskBadge} title={t('task.running')}>{t('task.running')}</span>}
+          {failed && <span className={css.taskBadge} title={t('task.failed')}>{t('task.failed')}</span>}
           {scheduled && <span className={css.taskBadge} title={t('task.scheduled')}>🕐</span>}
           {isCopy && <span className={css.taskBadge} title={t('task.repeatCopy')}>↻</span>}
           {subCount > 0 && <span className={css.taskBadge}>{t('task.progress', { done: subDone, total: subCount })}</span>}

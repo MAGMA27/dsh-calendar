@@ -26,6 +26,7 @@ import { parseTasks } from './core/store.ts'
 import { calendarDir, ledgerPath } from './dsh-home.ts'
 
 export const MAX_REQUEST_CACHE = 256
+const MISSED_SCHEDULE_ERROR = 'scheduled dueAt was missed; the Agent was not started'
 
 /** The persisted schedule mirror (browser M5 consumes it; Host owns it). */
 export interface PersistedScheduler {
@@ -56,6 +57,13 @@ interface LedgerState {
   tasks: TaskRecord[]
   scheduler: PersistedScheduler
   recentRequests: PersistedRequest[]
+}
+
+/** A currently running scheduled execution, used by Host-side tool policy. */
+export interface ActiveScheduledExecution {
+  taskId: string
+  executionId: string
+  sessionId: string
 }
 
 /** The narrow node:fs face the ledger needs (injected for tests). */
@@ -174,8 +182,10 @@ export class HostLedger {
     // repeat rule (e.g. the rule was cleared while the Host was down). Persist
     // immediately so the cleanup survives the next restart.
     const pruned = pruneOrphanCopies(this.state.tasks)
-    if (pruned.length !== this.state.tasks.length) {
-      this.state.tasks = pruned
+    const prunedAny = pruned.length !== this.state.tasks.length
+    if (prunedAny) this.state.tasks = pruned
+    const missedAny = this.normalizeMissedSchedules(this.now())
+    if (prunedAny || missedAny) {
       this.commit()
     }
   }
@@ -191,6 +201,18 @@ export class HostLedger {
 
   private notify(): void {
     for (const fn of [...this.listeners]) fn()
+  }
+
+  /** Fail stale one-shot schedules after a Host restart without replaying them. */
+  private normalizeMissedSchedules(now: number): boolean {
+    let changed = false
+    this.state.tasks = this.state.tasks.map(task => {
+      if (!isMissedOneShot(task, now)) return task
+      changed = true
+      delete this.state.scheduler.nextRuns[task.id]
+      return failMissedScheduleTask(task, now, this.uuid())
+    })
+    return changed
   }
 
   /**
@@ -244,6 +266,29 @@ export class HostLedger {
     })
     this.commit()
     return true
+  }
+
+  /** Attach the execution session as soon as the runner connects to it. */
+  attachExecutionSession(taskId: string, executionId: string, sessionId: string, now: number): boolean {
+    const task = this.taskById(taskId)
+    if (task === undefined || sessionId === '') return false
+    const execution = task.executions.find(e => e.id === executionId)
+    if (execution === undefined || execution.endedAt !== undefined || execution.sessionId !== undefined) return false
+    this.state.tasks = this.state.tasks.map(t => t.id === taskId
+      ? attachExecutionSession(t, executionId, sessionId, now)
+      : t)
+    this.commit()
+    return true
+  }
+
+  /** Find the scheduled execution currently driving a Host Agent session. */
+  activeScheduledExecution(sessionId: string): ActiveScheduledExecution | undefined {
+    if (sessionId === '') return undefined
+    for (const task of this.state.tasks) {
+      const execution = task.executions.find(e => e.sessionId === sessionId && e.endedAt === undefined && e.triggeredBy === 'schedule')
+      if (execution !== undefined) return { taskId: task.id, executionId: execution.id, sessionId }
+    }
+    return undefined
   }
 
   /**
@@ -400,12 +445,16 @@ export class HostLedger {
     const now = this.now()
     switch (action.kind) {
       case 'create': {
-        const task = createTask({ ...action.input, schedule: action.schedule }, now, this.uuid())
+        let task = createTask({ ...action.input, schedule: action.schedule }, now, this.uuid())
         if (task === undefined) return false
         if (task.schedule !== undefined) {
           const armed = armSchedule(task, now)
           if (armed === undefined) return false
+          // Keep the computed nextRunAt on the task itself. The scheduler scans
+          // task records, while scheduler.nextRuns is only its persisted mirror.
+          task = { ...task, schedule: armed }
         }
+        if (isMissedOneShot(task, now)) task = failMissedScheduleTask(task, now, this.uuid())
         this.state.tasks = [...this.state.tasks, task]
         if (task.schedule !== undefined) {
           this.state.scheduler.nextRuns[task.id] = mirrorOf(task.schedule)
@@ -517,13 +566,19 @@ export class HostLedger {
         if (before !== undefined && before.schedule?.repeat !== undefined && action.patch.repeat === null) {
           tasks = tasks.filter(t => t.originTaskId !== scheduleId)
         }
-        if (task.schedule !== undefined && (task.schedule.enabled || task.schedule.repeat !== undefined || task.schedule.dueAt !== undefined)) {
-          const nextRunAt = computeNextRun(task.schedule, now)
+        if (task.schedule !== undefined) {
+          const active = task.schedule.enabled || task.schedule.repeat !== undefined || task.schedule.dueAt !== undefined
+          const nextRunAt = active ? computeNextRun(task.schedule, now) : undefined
           tasks = setNextRun(tasks, scheduleId, nextRunAt, task.schedule.lastTriggeredAt, now)
         }
         // re-read after possible setNextRun
-        const updated = tasks.find(t => t.id === scheduleId)
+        let updated = tasks.find(t => t.id === scheduleId)
+        if (updated?.schedule !== undefined && isMissedOneShot(updated, now)) {
+          tasks = tasks.map(t => t.id === scheduleId ? failMissedScheduleTask(t, now, this.uuid()) : t)
+          updated = tasks.find(t => t.id === scheduleId)
+        }
         if (updated?.schedule !== undefined) this.state.scheduler.nextRuns[scheduleId] = mirrorOf(updated.schedule)
+        else delete this.state.scheduler.nextRuns[scheduleId]
         // When the (still active) repeat rule changes, re-derive the trigger
         // one-shots of already-materialized bound copies so the series stays
         // coherent: future occurrences gain/keep their dueAt, occurrences whose
@@ -536,8 +591,8 @@ export class HostLedger {
             if (t.originTaskId !== scheduleId || t.archivedAt !== undefined) return t
             if (triggerAgent) {
               const dueAt = startOfDayMs(t.startAt) + triggerMinutes * 60_000
-              if (dueAt > now) return { ...t, schedule: { enabled: true, dueAt, nextRunAt: dueAt }, updatedAt: now }
-              return t.schedule === undefined ? t : { ...t, schedule: undefined, updatedAt: now }
+              if (dueAt >= now) return { ...t, schedule: { enabled: true, dueAt, nextRunAt: dueAt }, updatedAt: now }
+              return { ...t, schedule: { enabled: true, dueAt, nextRunAt: undefined }, updatedAt: now }
             }
             return t.schedule === undefined ? t : { ...t, schedule: undefined, updatedAt: now }
           })
@@ -546,6 +601,7 @@ export class HostLedger {
         // Materialize immediately (idempotent) so the returned snapshot already
         // shows any newly-armed repeat's copies — no waiting for the 30s tick.
         if (updated?.schedule?.repeat !== undefined) this.sweepRepeats(now, this.repeatHorizonDays)
+        this.normalizeMissedSchedules(now)
         return true
       }
       case 'clearInstanceSchedule': {
@@ -620,8 +676,27 @@ function armSchedule(task: TaskRecord, now: number): TaskRecord['schedule'] | un
 
 /** Compute the one-shot next run instant for a schedule (repeat rules → none). */
 function computeNextRun(s: NonNullable<TaskRecord['schedule']>, now: number): number | undefined {
-  if (s.dueAt !== undefined && s.dueAt > now) return s.dueAt
+  // A due time already in the past is handled as a failed, non-replayed run.
+  if (s.dueAt !== undefined && s.dueAt >= now) return s.dueAt
   return undefined
+}
+
+function isMissedOneShot(task: TaskRecord | undefined, now: number): boolean {
+  if (task === undefined) return false
+  const schedule = task.schedule
+  return schedule?.enabled === true
+    && schedule.repeat === undefined
+    && schedule.dueAt !== undefined
+    && schedule.dueAt < now
+}
+
+/** Record a missed scheduled attempt and remove its one-shot trigger. */
+function failMissedScheduleTask(task: TaskRecord, now: number, executionId: string): TaskRecord {
+  const dueAt = task.schedule?.dueAt
+  if (dueAt === undefined) return task
+  const started = startExecution(task, dueAt, executionId, 'schedule').task
+  const failed = settleExecution(started, executionId, 'failed', now, MISSED_SCHEDULE_ERROR)
+  return { ...failed, schedule: undefined }
 }
 
 /** Human copy for an action that was rejected. */

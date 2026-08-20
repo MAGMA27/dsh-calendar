@@ -18,7 +18,7 @@ import { acquireLedgerLock } from './host-ledger.ts'
 import { HostExecutionRunner, type HostExecutionEnv, type RunnerAgentsFace, type RunnerCommandsFace } from './host-runner.ts'
 import { HostScheduleService } from './host-scheduler.ts'
 import { dshHome } from './dsh-home.ts'
-import type { CatalogApiFace } from './host-options.ts'
+import { buildCatalogFromApi, type CatalogApiFace } from './host-options.ts'
 
 /** Required services: the web server to register the calendar routes on, and
  * the ApiProxy to read the live execution-settings catalog (workspaces,
@@ -35,7 +35,7 @@ export const calendar_SETTINGS_NAMESPACE = settingsNamespace('calendar')
 
 /** Model-facing announcement: the calendar plugin's presence and capabilities. */
 export const calendar_GUIDANCE =
-  'The user has a calendar todo plugin (dsh-calendar): tasks carry a start/end block, an Eisenhower urgency/importance quadrant, subtasks, pinned execution settings (workspace / session / provider+model / preset / permission), and an optional schedule — either a constrained daily/weekly repeat (the task is copied onto each matching date, optionally skipping weekends/holidays) or a one-off due instant that runs automatically in the Host and settles its execution records. When the user asks about tasks, appointments or scheduling, the calendar is the source of truth.'
+  'The user has a calendar todo plugin (dsh-calendar) exposed as the calendar_task tool. When the user asks to create or schedule work, use calendar_task rather than shell, source inspection, or the calendar HTTP routes. Call action=options first when you need exact provider/model/session ids or labels; sessionId="current" pins the task to the session of the calling Agent. action=create is atomic: include the task fields and either dueAt for a one-off Agent trigger or repeat for a daily/weekly series. A one-off dueAt automatically runs the Agent; repeat.triggerAgent is only for materialized repeat copies. If a one-off dueAt has already passed when the Host resumes, it is recorded as failed and not replayed. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todo tasks, but the Host rejects creating or arming another auto-run schedule from that scheduled turn to prevent recursion. Times accept ISO-8601 datetimes with timezone offsets or millisecond epochs. Tasks carry a start/end block, an Eisenhower urgency/importance quadrant, subtasks, pinned execution settings (workspace / session / provider+model / preset / permission), and an optional schedule. The Host is the source of truth and settles execution records; the calendar UI is an eventually consistent observer.'
 
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
@@ -106,6 +106,8 @@ export function apply(ctx: Context, config?: Config): void {
   const disposeTool = ctx.tools.register(defineCalendarTool({
     ledger: service.ledger,
     run: id => runner.run(id),
+    catalog: () => buildCatalogFromApi(api),
+    hasActiveScheduledExecution: sessionId => service.ledger.activeScheduledExecution(sessionId) !== undefined,
   }))
 
   const disposers = mountcalendarRoutes(ctx.webServer, service.ledger, api, runner)

@@ -108,10 +108,12 @@ describe('HostExecutionRunner', () => {
     expect(calls.rename).toBe(1)
     expect(calls.prompt).toBe(1)
     expect(ledger.taskById(id)!.executions[0].endedAt).toBeUndefined()
+    expect(ledger.taskById(id)!.executions[0].sessionId).toBe('new-session')
     rows[0].running = false
     rows[0].updatedAt = 3000
     gates.shift()?.()
     const res = await p
+    expect(res.outcome).toBe('started')
     await res.settleFinished
     const ex = ledger.taskById(id)!.executions[0]
     expect(ex.result).toBe('succeeded')
@@ -136,6 +138,20 @@ describe('HostExecutionRunner', () => {
     expect(ex.result).toBe('succeeded')
   })
 
+  it('marks a scheduled execution with its session before the prompt turn can call tools', async () => {
+    const { ledger, id } = mkLedger()
+    const { env, rows, gates } = makeHarness()
+    const p = mkRunner(ledger, env, gates).run(id, 'schedule')
+    await toSettleLoop()
+    expect(ledger.activeScheduledExecution('new-session')).toMatchObject({ taskId: id, executionId: 'exec-1', sessionId: 'new-session' })
+    rows[0].running = false
+    rows[0].updatedAt = 3000
+    gates.shift()?.()
+    const res = await p
+    await res.settleFinished
+    expect(ledger.activeScheduledExecution('new-session')).toBeUndefined()
+  })
+
   it('recomposes a reused session when the task pins an agent preset', async () => {
     const { ledger, id } = mkLedger({ sessionId: 's-pinned', mode: 'custom' })
     const { env, calls, rows, gates } = makeHarness()
@@ -152,7 +168,8 @@ describe('HostExecutionRunner', () => {
   it('fails the run when the pinned session is busy', async () => {
     const { ledger, id } = mkLedger({ sessionId: 's-busy' })
     const { env, gates } = makeHarness({ rows: [{ sessionId: 's-busy', running: true, updatedAt: 1000 }] })
-    await mkRunner(ledger, env, gates).run(id)
+    const result = await mkRunner(ledger, env, gates).run(id)
+    expect(result.outcome).toBe('failed')
     const ex = ledger.taskById(id)!.executions[0]
     expect(ex.result).toBe('failed')
     expect(ex.error).toContain('busy')

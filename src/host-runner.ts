@@ -81,13 +81,17 @@ export interface HostExecutionEnv {
 export interface RunnerLedgerFace {
   taskById(id: string): TaskRecord | undefined
   openExecution(taskId: string, executionId: string, now: number, triggeredBy?: ExecutionTrigger): boolean
+  /** Optional for narrow test doubles; real ledgers attach before prompt send. */
+  attachExecutionSession?(taskId: string, executionId: string, sessionId: string, now: number): boolean
   settleExecution(taskId: string, executionId: string, outcome: 'succeeded' | 'failed' | 'cancelled', now: number, error: string | undefined, sessionId?: string): boolean
 }
 
-/** The result of a runner attempt: whether the execution was opened and,
- * when it was, the promise that settles the record (unknown duration). */
+/** The result of a runner attempt: whether an execution was opened and whether
+ * its prompt setup started successfully. A failed setup keeps scheduled work
+ * distinguishable from a prompt accepted by the target session. */
 export interface RunResult {
   accepted: boolean
+  outcome?: 'started' | 'failed'
   settleFinished?: Promise<void>
 }
 
@@ -149,9 +153,8 @@ export class HostExecutionRunner {
   }
 
   /** Open an execution and run the task to prompt-accepted (does not block on
-   * settlement). Returns whether the run was accepted and, when it was, the
-   * detached promise that settles the execution record once the turn completes.
-   */
+   * settlement). A setup failure is reported separately so the scheduler can
+   * retain and retry the due slot instead of clearing it. */
   async run(taskId: string, triggeredBy: ExecutionTrigger = 'manual'): Promise<RunResult> {
     const task = this.ledger.taskById(taskId)
     if (task === undefined) return { accepted: false }
@@ -162,16 +165,17 @@ export class HostExecutionRunner {
     try {
       const { sessionId: sid, fresh } = await this.connectSession(task)
       sessionId = sid
+      this.ledger.attachExecutionSession?.(taskId, executionId, sessionId, this.now())
       await this.applyPins(task, sessionId, fresh)
       await this.sendPrompt(task, sessionId)
     } catch (error) {
       this.ledger.settleExecution(taskId, executionId, 'failed', this.now(), messageOf(error), sessionId)
-      return { accepted: true }
+      return { accepted: true, outcome: 'failed' }
     }
     // Settlement runs detached so the caller (HTTP route or scheduler) never
     // blocks on a long LLM turn. An await on settleFinished observes it.
     const settleFinished = this.settle(taskId, executionId, sessionId, startedAt)
-    return { accepted: true, settleFinished }
+    return { accepted: true, outcome: 'started', settleFinished }
   }
 
   /** Settle any execution left 'running' across a Host restart. A task whose

@@ -12,46 +12,54 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { randomId } from './protocol.ts'
-import type { calendarAction, calendarActionEnvelope } from './protocol.ts'
-import { taskTriggersAgent, type ExecutionRecord, type NewTaskInput, type TaskRecord } from './core/tasks.ts'
+import type { calendarAction, calendarActionEnvelope, CreateScheduleInput } from './protocol.ts'
+import { taskTriggersAgent, type ExecutionRecord, type NewTaskInput, type RepeatRule, type TaskRecord } from './core/tasks.ts'
+import type { ExecutionCatalog } from './core/exec-catalog.ts'
 import type { HostLedger } from './host-ledger.ts'
 
-const ACTIONS = ['create','get','list','update','setQuadrant','setDone','addSubtask','setSubtaskDone','removeSubtask','setSchedule','delete','archive','restore','run'] as const
+const ACTIONS = ['options','create','get','list','update','setQuadrant','setDone','addSubtask','setSubtaskDone','removeSubtask','setSchedule','delete','archive','restore','run'] as const
 const LIST_DATE_FIELDS = ['scheduled', 'completed', 'created', 'updated', 'executed'] as const
 const LLM_FILTERS = ['any', 'only', 'none'] as const
 
 type ListDateField = (typeof LIST_DATE_FIELDS)[number]
 type LlmFilter = (typeof LLM_FILTERS)[number]
 
+const timeParameter = {
+  oneOf: [
+    { type: 'integer', description: 'Milliseconds since Unix epoch.' },
+    { type: 'string', description: 'ISO-8601 datetime, preferably with an explicit timezone offset.' },
+  ],
+} as const
+
 const parameters = {
-  action: { type: 'string', enum: [...ACTIONS], required: true, description: 'Which calendar operation to run.' },
+  action: { type: 'string', enum: [...ACTIONS], required: true, description: 'Which calendar operation to run. Use options first when resolving provider/model/session labels.' },
   id: { type: 'string', description: 'Task id (mutations/get).' },
   title: { type: 'string', description: 'Task title (create/update/addSubtask).' },
   description: { type: 'string', description: 'Free-form note (create/update).' },
   prompt: { type: 'string', description: 'Instruction sent to the agent when run (create/update).' },
-  startAt: { type: 'integer', description: 'Start ms epoch (create/update).' },
-  endAt: { type: 'integer', description: 'End ms epoch (create/update).' },
-  fromAt: { type: 'integer', description: 'Lower bound ms epoch, inclusive (list query).' },
-  toAt: { type: 'integer', description: 'Upper bound ms epoch, exclusive (list query).' },
+  startAt: { ...timeParameter, description: 'Start time (ms epoch or ISO-8601 datetime; create/update).' },
+  endAt: { ...timeParameter, description: 'End time (ms epoch or ISO-8601 datetime; create/update).' },
+  fromAt: { ...timeParameter, description: 'Lower bound time, inclusive (ms epoch or ISO-8601 datetime; list query).' },
+  toAt: { ...timeParameter, description: 'Upper bound time, exclusive (ms epoch or ISO-8601 datetime; list query).' },
   dateBy: { type: 'string', enum: [...LIST_DATE_FIELDS], description: 'Which task activity the list time range matches: scheduled block, completedAt, createdAt, updatedAt, or execution interval (list query; default scheduled).' },
   urgency: { type: 'string', enum: ['high','medium','low'], description: 'Eisenhower urgency (create/setQuadrant).' },
   importance: { type: 'string', enum: ['high','medium','low'], description: 'Eisenhower importance (create/setQuadrant).' },
   done: { type: 'boolean', description: 'Done flag (setDone/setSubtaskDone/update) or completion filter (list).' },
   subtaskId: { type: 'string', description: 'Subtask id (add/setDone/removeSubtask).' },
   workspaceId: { type: 'string', description: 'Project/workspace id (list filter or execution target create/update).' },
-  sessionId: { type: 'string', description: 'Pinned or actual execution session (list filter or execution target create/update).' },
-  provider: { type: 'string', description: 'LLM provider filter/pin (list or create/update).' },
-  model: { type: 'string', description: 'LLM model filter/pin (list or create/update).' },
+  sessionId: { type: 'string', description: 'Pinned or actual execution session. Use "current" to refer to the calling agent session (list filter or execution target create/update).' },
+  provider: { type: 'string', description: 'LLM provider id or catalog label (list or create/update).' },
+  model: { type: 'string', description: 'Provider-owned model id or catalog label (list or create/update).' },
   llm: { type: 'string', enum: [...LLM_FILTERS], description: 'LLM involvement filter (list): any, only tasks with LLM configuration/execution, or none for tasks assigned to yourself.' },
   mode: { type: 'string', description: 'Agent preset pin (create/update).' },
   permission: { type: 'string', enum: ['read-only','workspace-write','danger-full-access'], description: 'Permission preset (create/update).' },
-  repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the Host copies the task onto each matching date (setSchedule).' },
-  weekdays: { type: 'array', items: { type: 'integer' }, description: 'Weekly repeat weekdays, JS numbering 0=Sunday..6=Saturday, non-empty (setSchedule).' },
-  skipHolidays: { type: 'boolean', description: 'Skip weekends + public holidays for the repeat rule (setSchedule).' },
-  triggerAgent: { type: 'boolean', description: 'Auto-run the agent at each repeat occurrence (setSchedule).' },
-  triggerAt: { type: 'string', description: 'Trigger time-of-day HH:MM; blank = the task block start (setSchedule).' },
-  dueAt: { type: 'integer', description: 'One-off due ms epoch (setSchedule).' },
-  enabled: { type: 'boolean', description: 'Whether the schedule is armed (setSchedule).' },
+  repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the Host copies the task onto each matching date (create/setSchedule).' },
+  weekdays: { type: 'array', items: { type: 'integer' }, description: 'Weekly repeat weekdays, JS numbering 0=Sunday..6=Saturday, non-empty (create/setSchedule).' },
+  skipHolidays: { type: 'boolean', description: 'Skip weekends + public holidays for the repeat rule (create/setSchedule).' },
+  triggerAgent: { type: 'boolean', description: 'Auto-run the agent at each repeat occurrence. A one-off dueAt always runs the agent (create/setSchedule).' },
+  triggerAt: { type: 'string', description: 'Trigger time-of-day HH:MM; blank = the task block start (create/setSchedule).' },
+  dueAt: { ...timeParameter, description: 'One-off agent trigger time (ms epoch or ISO-8601 datetime; create/setSchedule). A one-off dueAt automatically runs the agent.' },
+  enabled: { type: 'boolean', description: 'Whether the schedule is armed (create/setSchedule).' },
   subtasks: { type: 'array', items: { type: 'string' }, description: 'Optional subtask titles (create).' },
   allDay: { type: 'boolean', description: 'All-day flag (create/update).' },
 } as const
@@ -60,6 +68,31 @@ interface CalendarToolDeps {
   ledger: HostLedger
   /** Optional runner invoked for the run action (real execution). */
   run?: (taskId: string) => Promise<unknown>
+  /** Live Host catalog used both by the options action and to resolve labels. */
+  catalog?: () => Promise<ExecutionCatalog>
+  /** Clock injection keeps relative-time validation deterministic in tests. */
+  now?: () => number
+  /** True while the calling Agent is executing a Host-scheduled task. */
+  hasActiveScheduledExecution?: (sessionId: string) => boolean
+}
+
+interface CalendarToolContext {
+  /** The session that owns the calling Agent, if this was a model call. */
+  currentSessionId?: string
+  /** Host-derived recursion guard; never trusted from tool arguments. */
+  activeScheduledExecution?: boolean
+}
+
+interface CalendarRunResult {
+  accepted: boolean
+  outcome?: 'started' | 'failed'
+}
+
+function isCalendarRunResult(value: unknown): value is CalendarRunResult {
+  if (typeof value !== 'object' || value === null) return false
+  const row = value as { accepted?: unknown; outcome?: unknown }
+  return typeof row.accepted === 'boolean'
+    && (row.outcome === undefined || row.outcome === 'started' || row.outcome === 'failed')
 }
 
 type AnyAction = { kind: string; [k: string]: unknown }
@@ -159,17 +192,83 @@ interface ListQuery {
   llm: LlmFilter
 }
 
-function integer(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isInteger(value) ? value : undefined
+function timeMs(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+  if (typeof value !== 'string' || value.trim() === '') return undefined
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function parseListQuery(a: Record<string, unknown>): ListQuery | string {
+function normalized(value: string): string {
+  return value.trim().toLocaleLowerCase()
+}
+
+function resolveOption(value: string, options: readonly { id: string; label: string }[]): string | undefined {
+  const exact = options.find(option => option.id === value)
+  if (exact !== undefined) return exact.id
+  const key = normalized(value)
+  const matches = options.filter(option => normalized(option.label) === key)
+  return matches.length === 1 ? matches[0].id : undefined
+}
+
+function sessionIdFor(value: string | undefined, currentSessionId: string | undefined): string | undefined | string {
+  if (value === undefined) return undefined
+  if (normalized(value) !== 'current') return value
+  return currentSessionId === undefined
+    ? 'sessionId "current" is only available inside an Agent call'
+    : currentSessionId
+}
+
+async function resolveExecutionTarget(
+  deps: CalendarToolDeps,
+  a: Record<string, unknown>,
+  context: CalendarToolContext,
+): Promise<{ sessionId?: string; provider?: string; model?: string } | string> {
+  const rawSessionId = typeof a.sessionId === 'string' && a.sessionId.trim() !== '' ? a.sessionId.trim() : undefined
+  const sessionId = sessionIdFor(rawSessionId, context.currentSessionId)
+  if (typeof sessionId === 'string' && sessionId.startsWith('sessionId "current"')) return sessionId
+
+  let provider = typeof a.provider === 'string' && a.provider.trim() !== '' ? a.provider.trim() : undefined
+  let model = typeof a.model === 'string' && a.model.trim() !== '' ? a.model.trim() : undefined
+  if ((provider === undefined) !== (model === undefined)) {
+    return 'provider and model must be provided together'
+  }
+
+  let catalog: ExecutionCatalog | undefined
+  if (deps.catalog !== undefined && (sessionId !== undefined || provider !== undefined || model !== undefined)) {
+    try { catalog = await deps.catalog() } catch { /* keep exact ids when the catalog is unavailable */ }
+  }
+
+  if (catalog !== undefined) {
+    let resolvedSessionId = sessionId as string | undefined
+    const sessionIsCurrent = rawSessionId !== undefined && normalized(rawSessionId) === 'current'
+    if (!sessionIsCurrent && sessionId !== undefined && catalog.sessions.length > 0) {
+      const resolved = resolveOption(sessionId, catalog.sessions)
+      if (resolved === undefined) return `session not found in the live catalog: ${sessionId}`
+      resolvedSessionId = resolved
+    }
+    if (provider !== undefined && model !== undefined && catalog.providers.length > 0) {
+      const resolvedProvider = resolveOption(provider, catalog.providers)
+      if (resolvedProvider === undefined) return `provider not found in the live catalog: ${provider}`
+      const models = catalog.modelsByProvider[resolvedProvider] ?? []
+      const resolvedModel = models.length === 0 ? model : resolveOption(model, models)
+      if (resolvedModel === undefined) return `model not found for provider ${resolvedProvider}: ${model}`
+      provider = resolvedProvider
+      model = resolvedModel
+    }
+    return { sessionId: resolvedSessionId, provider, model }
+  }
+
+  return { sessionId: sessionId as string | undefined, provider, model }
+}
+
+function parseListQuery(a: Record<string, unknown>, context: CalendarToolContext): ListQuery | string {
   const rawFrom = a.fromAt
   const rawTo = a.toAt
-  const fromAt = integer(rawFrom)
-  const toAt = integer(rawTo)
-  if (rawFrom !== undefined && fromAt === undefined) return 'fromAt must be an integer ms epoch'
-  if (rawTo !== undefined && toAt === undefined) return 'toAt must be an integer ms epoch'
+  const fromAt = timeMs(rawFrom)
+  const toAt = timeMs(rawTo)
+  if (rawFrom !== undefined && fromAt === undefined) return 'fromAt must be an integer ms epoch or ISO-8601 datetime'
+  if (rawTo !== undefined && toAt === undefined) return 'toAt must be an integer ms epoch or ISO-8601 datetime'
   if (fromAt !== undefined && toAt !== undefined && fromAt >= toAt) return 'toAt must be greater than fromAt'
 
   const dateBy = a.dateBy === undefined ? 'scheduled' : a.dateBy
@@ -181,12 +280,15 @@ function parseListQuery(a: Record<string, unknown>): ListQuery | string {
     return `llm must be one of: ${LLM_FILTERS.join(', ')}`
   }
   const done = typeof a.done === 'boolean' ? a.done : undefined
+  const rawSessionId = typeof a.sessionId === 'string' && a.sessionId.trim() !== '' ? a.sessionId.trim() : undefined
+  const sessionId = sessionIdFor(rawSessionId, context.currentSessionId)
+  if (typeof sessionId === 'string' && sessionId.startsWith('sessionId "current"')) return sessionId
   return {
     fromAt,
     toAt,
     dateBy: dateBy as ListDateField,
     done,
-    sessionId: typeof a.sessionId === 'string' && a.sessionId.trim() !== '' ? a.sessionId.trim() : undefined,
+    sessionId: sessionId as string | undefined,
     workspaceId: typeof a.workspaceId === 'string' && a.workspaceId.trim() !== '' ? a.workspaceId.trim() : undefined,
     provider: typeof a.provider === 'string' && a.provider.trim() !== '' ? a.provider.trim() : undefined,
     model: typeof a.model === 'string' && a.model.trim() !== '' ? a.model.trim() : undefined,
@@ -236,34 +338,118 @@ function matchesListQuery(task: TaskRecord, query: ListQuery): boolean {
   return true
 }
 
+function parseRepeat(a: Record<string, unknown>): { repeat?: RepeatRule; error?: string } {
+  const rawKind = a.repeat
+  if (rawKind === undefined) return {}
+  if (rawKind !== 'daily' && rawKind !== 'weekly') return { error: 'repeat must be daily or weekly' }
+  const weekdays = Array.isArray(a.weekdays)
+    ? a.weekdays.filter((day): day is number => typeof day === 'number' && Number.isInteger(day) && day >= 0 && day <= 6)
+    : undefined
+  if (rawKind === 'weekly' && (weekdays === undefined || weekdays.length === 0)) {
+    return { error: 'weekly repeat requires at least one weekday (0=Sunday..6=Saturday)' }
+  }
+  const triggerAgent = a.triggerAgent === true
+  const triggerAt = triggerAgent && typeof a.triggerAt === 'string' && /^\d{1,2}:\d{2}$/.test(a.triggerAt)
+    ? a.triggerAt
+    : undefined
+  return {
+    repeat: {
+      kind: rawKind,
+      weekdays: rawKind === 'weekly' ? weekdays : undefined,
+      skipHolidays: a.skipHolidays === true,
+      triggerAgent,
+      triggerAt,
+    },
+  }
+}
+
+function parseCreateSchedule(a: Record<string, unknown>): { schedule?: CreateScheduleInput; error?: string } {
+  const repeatResult = parseRepeat(a)
+  if (repeatResult.error !== undefined) return repeatResult
+  const rawDueAt = a.dueAt
+  const dueAt = timeMs(rawDueAt)
+  if (rawDueAt !== undefined && dueAt === undefined) return { error: 'dueAt must be an integer ms epoch or ISO-8601 datetime' }
+  if (repeatResult.repeat !== undefined && dueAt !== undefined) {
+    return { error: 'create a repeat schedule or a one-off dueAt, not both' }
+  }
+  if (repeatResult.repeat === undefined && dueAt === undefined) return {}
+  return {
+    schedule: {
+      enabled: a.enabled !== false,
+      ...(repeatResult.repeat !== undefined ? { repeat: repeatResult.repeat } : {}),
+      ...(dueAt !== undefined ? { dueAt } : {}),
+    },
+  }
+}
+
+function parseSetSchedule(a: Record<string, unknown>): { patch?: { enabled: boolean; repeat: RepeatRule | null; dueAt: number | null }; error?: string } {
+  const repeatResult = parseRepeat(a)
+  if (repeatResult.error !== undefined) return repeatResult
+  const rawDueAt = a.dueAt
+  const dueAt = timeMs(rawDueAt)
+  if (rawDueAt !== undefined && dueAt === undefined) return { error: 'dueAt must be an integer ms epoch or ISO-8601 datetime' }
+  if (repeatResult.repeat !== undefined && dueAt !== undefined) {
+    return { error: 'set a repeat schedule or a one-off dueAt, not both' }
+  }
+  return {
+    patch: {
+      enabled: a.enabled !== false && (repeatResult.repeat !== undefined || dueAt !== undefined),
+      repeat: repeatResult.repeat ?? null,
+      dueAt: dueAt ?? null,
+    },
+  }
+}
+
 /** Define the model-callable calendar tool. */
 export function defineCalendarTool(deps: CalendarToolDeps) {
   return defineTool({
     name: 'calendar_task',
-    description: 'Manage calendar todo tasks: create, list, get, update, set Eisenhower urgency/importance, mark done, manage subtasks, set a daily/weekly repeat (the task is copied onto each matching date) or a one-off due schedule, archive/restore/delete, or trigger a real run. A schedule without triggerAgent is a reminder/materialization only; the task summary field autoRun is true only when the Host will actually trigger an Agent. Times are ms epochs. Same authoritative ledger as the calendar view.',
+    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; triggerAgent is only needed for repeat occurrences. If a one-off dueAt has already passed when the Host resumes, it is recorded as failed and not replayed. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos but cannot create or arm another auto-run schedule. Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
     parameters,
     output: {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    execute: async (args) => (await handle(deps, args as unknown as Record<string, unknown>)) as never,
+    execute: async (args, exec) => (await handle(deps, args as unknown as Record<string, unknown>, {
+      currentSessionId: exec.agent?.id === undefined ? undefined : String(exec.agent.id),
+      activeScheduledExecution: exec.agent?.id !== undefined
+        && deps.hasActiveScheduledExecution?.(String(exec.agent.id)) === true,
+    })) as never,
   })
 }
 
-async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function handle(deps: CalendarToolDeps, a: Record<string, unknown>, context: CalendarToolContext = {}): Promise<Record<string, unknown>> {
   const ledger = deps.ledger
   const action = typeof a.action === 'string' && (ACTIONS as readonly string[]).includes(a.action) ? a.action : ''
   const str = (v: unknown): string | undefined => typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined
-  const num = (v: unknown): number | undefined => typeof v === 'number' && Number.isFinite(v) ? v : undefined
   const bool = (v: unknown): boolean | undefined => typeof v === 'boolean' ? v : undefined
   const id = str(a.id)
 
   switch (action) {
+    case 'options':
+      if (deps.catalog === undefined) return { ok: false, error: 'execution catalog is unavailable' }
+      try {
+        return { ok: true, catalog: await deps.catalog() }
+      } catch (error) {
+        return { ok: false, error: `failed to read execution catalog: ${String(error)}` }
+      }
     case 'create': {
       const title = str(a.title)
       if (title === undefined) return { ok: false, error: 'title is required to create a task' }
-      const startAt = num(a.startAt) ?? Date.now()
-      const endAt = num(a.endAt) ?? startAt + 60 * 60 * 1000
+      const now = deps.now?.() ?? Date.now()
+      const rawStartAt = a.startAt
+      const startAt = rawStartAt === undefined ? now : timeMs(rawStartAt)
+      if (startAt === undefined) return { ok: false, error: 'startAt must be an integer ms epoch or ISO-8601 datetime' }
+      const rawEndAt = a.endAt
+      const endAt = rawEndAt === undefined ? startAt + 60 * 60 * 1000 : timeMs(rawEndAt)
+      if (endAt === undefined) return { ok: false, error: 'endAt must be an integer ms epoch or ISO-8601 datetime' }
+      const scheduleResult = parseCreateSchedule(a)
+      if (scheduleResult.error !== undefined) return { ok: false, error: scheduleResult.error }
+      if (context.activeScheduledExecution === true && triggersAgent(scheduleResult.schedule)) {
+        return { ok: false, error: 'a scheduled Agent cannot create another auto-run calendar task' }
+      }
+      const target = await resolveExecutionTarget(deps, a, context)
+      if (typeof target === 'string') return { ok: false, error: target }
       const input: NewTaskInput = {
         title,
         description: str(a.description) ?? '',
@@ -273,14 +459,14 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
         urgency: a.urgency === 'high' || a.urgency === 'medium' || a.urgency === 'low' ? a.urgency : 'medium',
         importance: a.importance === 'high' || a.importance === 'medium' || a.importance === 'low' ? a.importance : 'medium',
         workspaceId: str(a.workspaceId),
-        sessionId: str(a.sessionId),
-        provider: str(a.provider),
-        model: str(a.model),
+        sessionId: target.sessionId,
+        provider: target.provider,
+        model: target.model,
         mode: str(a.mode),
         permission: a.permission === 'read-only' || a.permission === 'workspace-write' || a.permission === 'danger-full-access' ? a.permission : undefined,
         subtasks: Array.isArray(a.subtasks) ? a.subtasks.filter((s): s is string => typeof s === 'string').map(t => ({ id: randomId(), title: t, done: false })) : undefined,
       }
-      const r = ledger.apply({ requestId: randomId(), action: { kind: 'create', input, schedule: undefined } as calendarAction })
+      const r = ledger.apply({ requestId: randomId(), action: { kind: 'create', input, schedule: scheduleResult.schedule } as calendarAction })
       if (!r.ok) return { ok: false, error: r.error }
       const created = r.snapshot.tasks[r.snapshot.tasks.length - 1]
       return { ok: true, task: taskSummary(created) }
@@ -289,7 +475,7 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
       if (id === undefined) return { ok: false, error: 'id is required for get' }
       { const t = ledger.taskById(id); return t === undefined ? { ok: false, error: 'task not found' } : { ok: true, task: taskSummary(t) } }
     case 'list': {
-      const parsed = parseListQuery(a)
+      const parsed = parseListQuery(a, context)
       if (typeof parsed === 'string') return { ok: false, error: parsed }
       const executionRange = parsed.fromAt === undefined && parsed.toAt === undefined
         ? undefined
@@ -303,11 +489,15 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
         const fields: Array<[string, () => unknown]> = [
           ['title', () => str(a.title)], ['description', () => str(a.description)], ['prompt', () => str(a.prompt)],
           ['urgency', () => a.urgency], ['importance', () => a.importance], ['done', () => bool(a.done)], ['allDay', () => bool(a.allDay)],
-          ['startAt', () => num(a.startAt)], ['endAt', () => num(a.endAt)],
-          ['workspaceId', () => str(a.workspaceId)], ['sessionId', () => str(a.sessionId)],
+          ['startAt', () => timeMs(a.startAt)], ['endAt', () => timeMs(a.endAt)],
+          ['workspaceId', () => str(a.workspaceId)], ['sessionId', () => sessionIdFor(str(a.sessionId), context.currentSessionId)],
           ['provider', () => str(a.provider)], ['model', () => str(a.model)], ['mode', () => str(a.mode)], ['permission', () => a.permission],
         ]
-        for (const [k, get] of fields) { const v = get(); if (v !== undefined && v !== null) patch[k] = v }
+        for (const [k, get] of fields) {
+          const v = get()
+          if (typeof v === 'string' && v.startsWith('sessionId "current"')) return { ok: false, error: v }
+          if (v !== undefined && v !== null) patch[k] = v
+        }
         return applyOk(ledger, id, { kind: 'update', id, patch })
       }
     case 'setQuadrant':
@@ -334,24 +524,14 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
     case 'setSchedule':
       if (id === undefined) return { ok: false, error: 'id is required' }
       {
-        const repeatKind = a.repeat
-        const hasRepeat = repeatKind === 'daily' || repeatKind === 'weekly'
-        const weekdays = Array.isArray(a.weekdays)
-          ? a.weekdays.filter((d): d is number => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6)
-          : undefined
-        const hasDue = typeof a.dueAt === 'number'
-        const repeat = hasRepeat
-          ? {
-            kind: repeatKind as 'daily' | 'weekly',
-            weekdays: repeatKind === 'weekly' ? weekdays : undefined,
-            skipHolidays: a.skipHolidays === true,
-            triggerAgent: a.triggerAgent === true,
-            triggerAt: a.triggerAgent === true && typeof a.triggerAt === 'string' && /^\d{1,2}:\d{2}$/.test(a.triggerAt) ? a.triggerAt : undefined,
-          }
-          : null
-        const enabled = bool(a.enabled) !== false && (hasRepeat || hasDue)
-        const patch = { enabled, repeat, dueAt: hasDue ? (a.dueAt as number) : null }
-        return applyOk(ledger, id, { kind: 'setSchedule', id, patch })
+        const scheduleResult = parseSetSchedule(a)
+        if (scheduleResult.error !== undefined || scheduleResult.patch === undefined) {
+          return { ok: false, error: scheduleResult.error ?? 'invalid schedule' }
+        }
+        if (context.activeScheduledExecution === true && triggersAgentPatch(scheduleResult.patch)) {
+          return { ok: false, error: 'a scheduled Agent cannot arm another auto-run calendar task' }
+        }
+        return applyOk(ledger, id, { kind: 'setSchedule', id, patch: scheduleResult.patch })
       }
     case 'delete':
     case 'archive':
@@ -360,8 +540,32 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
       return applyOk(ledger, id, { kind: action, id })
     case 'run':
       if (id === undefined) return { ok: false, error: 'id is required' }
-      { const r = ledger.apply({ requestId: randomId(), action: { kind: 'run', id } as calendarAction }); if (!r.ok) return { ok: false, error: r.error }; if (deps.run) void deps.run(id); return { ok: true } }
+      {
+        const r = ledger.apply({ requestId: randomId(), action: { kind: 'run', id } as calendarAction })
+        if (!r.ok) return { ok: false, error: r.error }
+        if (deps.run === undefined) return { ok: true, status: 'accepted' }
+        let result: unknown
+        try {
+          result = await deps.run(id)
+        } catch (error) {
+          return { ok: false, error: `task run failed: ${String(error)}` }
+        }
+        if (!isCalendarRunResult(result)) return { ok: true }
+        const task = ledger.taskById(id)
+        if (!result.accepted) return { ok: false, error: 'task run was not accepted', ...(task === undefined ? {} : { task: taskSummary(task) }) }
+        if (result.outcome === 'failed') return { ok: false, error: 'task run failed to start', ...(task === undefined ? {} : { task: taskSummary(task) }) }
+        return { ok: true, status: result.outcome ?? 'accepted', ...(task === undefined ? {} : { task: taskSummary(task) }) }
+      }
     default:
       return { ok: false, error: 'unknown action (expected one of: ' + ACTIONS.join(', ') + ')' }
   }
+}
+
+function triggersAgent(schedule: CreateScheduleInput | undefined): boolean {
+  return schedule?.enabled === true
+    && (schedule.dueAt !== undefined || schedule.repeat?.triggerAgent === true)
+}
+
+function triggersAgentPatch(patch: { enabled: boolean; repeat: RepeatRule | null; dueAt: number | null }): boolean {
+  return patch.enabled && (patch.dueAt !== null || patch.repeat?.triggerAgent === true)
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { calendarClientController, initialState } from '../src/client/controller.ts'
-import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
+import { MemorycalendarHostTransport, type calendarHostTransport } from '../src/client/host-api.ts'
 import type { calendarAction, calendarSnapshot } from '../src/protocol.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
 
@@ -40,6 +40,34 @@ describe('calendarClientController', () => {
     await c.dispatch({ kind: 'create', input: { title: 'Plan', description: '', prompt: '', startAt: 1000, endAt: 2000, urgency: 'high', importance: 'high' } })
     expect(c.getSnapshot().snapshot.tasks.length).toBe(1)
     expect(c.getSnapshot().snapshot.tasks[0].title).toBe('Plan')
+  })
+  it('does not let an older in-flight pull overwrite a newer Host revision', async () => {
+    const older = { ...emptySnap(), revision: 1 }
+    const newer = { ...emptySnap(), revision: 2, tasks: [{ id: 'new', title: 'new', description: '', prompt: '', startAt: 1, endAt: 2, urgency: 'high' as const, importance: 'high' as const, done: false, subtasks: [], executions: [], createdAt: 0, updatedAt: 0 }] }
+    let notify = (): void => {}
+    let stateCalls = 0
+    const pending: Array<(snapshot: calendarSnapshot) => void> = []
+    const transport: calendarHostTransport = {
+      state: () => {
+        stateCalls += 1
+        if (stateCalls === 1) return Promise.resolve(emptySnap())
+        return new Promise(resolve => pending.push(resolve))
+      },
+      action: async () => emptySnap(),
+      subscribe: listener => { notify = listener; return () => {} },
+      bootstrap: async () => emptySnap(),
+      options: async () => ({ workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [] }),
+    }
+    const c = new calendarClientController(transport, initialState(0, 0))
+    await c.start()
+    notify()
+    notify()
+    pending[1](newer)
+    await Promise.resolve()
+    pending[0](older)
+    await Promise.resolve()
+    expect(c.getSnapshot().snapshot.revision).toBe(2)
+    expect(c.getSnapshot().snapshot.tasks[0].id).toBe('new')
   })
   it('manages view state and selection', () => {
     const { transport } = makeSnapTransport()

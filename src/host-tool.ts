@@ -53,10 +53,10 @@ const parameters = {
   llm: { type: 'string', enum: [...LLM_FILTERS], description: 'LLM involvement filter (list): any, only tasks with LLM configuration/execution, or none for tasks assigned to yourself.' },
   mode: { type: 'string', description: 'Agent preset pin (create/update).' },
   permission: { type: 'string', enum: ['read-only','workspace-write','danger-full-access'], description: 'Permission preset (create/update).' },
-  repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the Host copies the task onto each matching date (create/setSchedule).' },
+  repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the template date is the first occurrence when it matches, then the Host copies the task onto later matching dates (create/setSchedule).' },
   weekdays: { type: 'array', items: { type: 'integer' }, description: 'Weekly repeat weekdays, JS numbering 0=Sunday..6=Saturday, non-empty (create/setSchedule).' },
   skipHolidays: { type: 'boolean', description: 'Skip weekends + public holidays for the repeat rule (create/setSchedule).' },
-  triggerAgent: { type: 'boolean', description: 'Auto-run the agent at each repeat occurrence. A one-off dueAt always runs the agent (create/setSchedule).' },
+  triggerAgent: { type: 'boolean', description: 'Auto-run the agent at the matching template date and each later repeat occurrence. A blank triggerAt uses the task block start; a one-off dueAt always runs the agent (create/setSchedule).' },
   triggerAt: { type: 'string', description: 'Trigger time-of-day HH:MM; blank = the task block start (create/setSchedule).' },
   dueAt: { ...timeParameter, description: 'One-off agent trigger time (ms epoch or ISO-8601 datetime; create/setSchedule). A one-off dueAt automatically runs the agent.' },
   enabled: { type: 'boolean', description: 'Whether the schedule is armed (create/setSchedule).' },
@@ -404,7 +404,7 @@ function parseSetSchedule(a: Record<string, unknown>): { patch?: { enabled: bool
 export function defineCalendarTool(deps: CalendarToolDeps) {
   return defineTool({
     name: 'calendar_task',
-    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; triggerAgent is only needed for repeat occurrences. If a one-off dueAt has already passed when the Host resumes, it is recorded as failed and not replayed. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos but cannot create or arm another auto-run schedule. Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
+    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; repeat.triggerAgent triggers the matching template date as the first occurrence and later materialized copies. Blank triggerAt uses the task block start. If a one-off dueAt or repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos but cannot create or arm another auto-run schedule. Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
     parameters,
     output: {
       schema: { type: 'json' },

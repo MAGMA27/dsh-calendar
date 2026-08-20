@@ -92,11 +92,13 @@ export interface ExecutionRecord {
 
 /**
  * A scheduled-run rule. Two mutually exclusive shapes:
- *  - a repeat rule (`repeat`): the Host materializes one plain copy of the
- *    task on each matching date (no auto-run on the template itself);
+ *  - a repeat rule (`repeat`): the template date is the first occurrence when
+ *    it matches the rule; later matching dates become plain copies, and
+ *    `triggerAgent` can auto-run both the template occurrence and copies;
  *  - a one-shot absolute instant (`dueAt`): the Host scheduler fires a real
  *    execution at that instant and then clears the schedule.
- * `nextRunAt`/`lastTriggeredAt` are the one-shot scheduler mirror;
+ * `nextRunAt`/`lastTriggeredAt` are the scheduler mirror for one-shots and a
+ * repeat template's first occurrence;
  * `materialized` is Host-owned bookkeeping of already-copied dates.
  */
 export interface ScheduleRule {
@@ -106,7 +108,7 @@ export interface ScheduleRule {
   repeat?: RepeatRule
   /** One-shot absolute instant (ms epoch, typically seeded from the drag slot). */
   dueAt?: number
-  /** Next due instant (ms epoch); maintained by the scheduler (one-shots only). */
+  /** Next due instant (ms epoch); one-shots and the first repeat occurrence. */
   nextRunAt?: number
   /** Instant of the most recent scheduled trigger. */
   lastTriggeredAt?: number

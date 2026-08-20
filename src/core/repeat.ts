@@ -1,10 +1,11 @@
 /**
  * Constrained repeat rules (replaces free-form cron): daily on every day or
  * weekly on chosen weekdays, optionally skipping weekends + public holidays.
- * The Host materializes one plain copy of the template task on each matching
- * date (see buildRepeatCopy). With `triggerAgent` the materialized copies are
- * one-shot scheduled tasks that auto-run at their due instant (default: the
- * template's block start, overridable per-rule with `triggerAt` HH:MM).
+ * The template's own date is the first occurrence when it matches the rule;
+ * the Host materializes plain copies only on later matching dates (see
+ * buildRepeatCopy). With `triggerAgent`, the matching template date and each
+ * materialized copy auto-run at their due instant (default: the template's
+ * block start, overridable per-rule with `triggerAt` HH:MM).
  *
  * Framework-free and pure so the Host ledger (materialization) and the browser
  * view (next-occurrence display) share one source of truth.

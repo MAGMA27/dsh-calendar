@@ -67,7 +67,7 @@ describe('HostScheduleService', () => {
     expect(advanced[0]).toEqual({ id: 'a', next: 31_000, last: undefined })
   })
 
-  it('never runs a repeat template; it only materializes copies', async () => {
+  it('does not run a repeat template before its first occurrence is armed', async () => {
     const t = mkTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily' } } })
     const { face, advanced, sweeps } = fakeLedger([t])
     const { face: runner, runs } = fakeRunner(true)
@@ -76,6 +76,17 @@ describe('HostScheduleService', () => {
     expect(runs).toEqual([]) // no execution for the template
     expect(advanced).toHaveLength(0)
     expect(sweeps).toEqual([2000]) // the materialization sweep ran
+  })
+
+  it('fires an armed repeat template first occurrence', async () => {
+    const t = mkTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true }, nextRunAt: 2000 } })
+    const { face, advanced } = fakeLedger([t])
+    const { face: runner, runs, triggers } = fakeRunner(true)
+    const s = new HostScheduleService(face, runner, { now: () => 2000 })
+    await s.tick()
+    expect(runs).toEqual(['tpl'])
+    expect(triggers).toEqual(['schedule'])
+    expect(advanced).toEqual([{ id: 'tpl', next: undefined, last: 2000 }])
   })
 
   it('skips disabled and not-yet-due schedules, and still sweeps', async () => {

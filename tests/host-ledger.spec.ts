@@ -233,7 +233,7 @@ describe('HostLedger advanceSchedule', () => {
     expect(ledger.taskById(id)!.schedule).toBeUndefined()
   })
 
-  it('keeps a repeat rule when a schedule is rolled forward (repeat templates materialize, never run)', () => {
+  it('keeps a non-triggering repeat rule when a schedule is rolled forward', () => {
     const { ledger } = makeLedger()
     const c = ledger.apply({ requestId: 'c2', action: {
       kind: 'setSchedule',
@@ -242,7 +242,7 @@ describe('HostLedger advanceSchedule', () => {
     } })
     if (!c.ok) throw new Error('setSchedule failed')
     const id = c.snapshot.tasks[0].id
-    expect(ledger.taskById(id)!.schedule?.nextRunAt).toBeUndefined() // repeats have no run instant
+    expect(ledger.taskById(id)!.schedule?.nextRunAt).toBeUndefined() // no triggerAgent means no run instant
     expect(ledger.advanceSchedule(id, undefined, 1000)).toBe(true)
     const t = ledger.taskById(id)!
     expect(t.schedule?.repeat?.kind).toBe('daily')
@@ -514,6 +514,7 @@ describe('HostLedger repeat materialization', () => {
     const { ledger } = makeMaterializingLedger()
     // daily + triggerAgent, no triggerAt → block start (09:00); horizon 3 → copies 01-07..09 with dueAt 09:00.
     const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true })
+    expect(ledger.taskById(id)!.schedule?.nextRunAt).toBe(at(2025, 1, 6, 9)) // template is today's first occurrence
     ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
     const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
     expect(copies).toHaveLength(3)
@@ -531,6 +532,40 @@ describe('HostLedger repeat materialization', () => {
     for (const c of copies2) {
       expect(c.schedule?.dueAt).toBe(at(new Date(c.startAt).getFullYear(), new Date(c.startAt).getMonth() + 1, new Date(c.startAt).getDate(), 7, 30))
     }
+  })
+
+  it('arms or fails the first repeat occurrence when the Host reloads', () => {
+    const persist = new MemoryPersist()
+    const start = at(2025, 1, 6, 9)
+    const created = new HostLedger(persist, () => at(2025, 1, 6, 8), () => 'template')
+    const result = created.apply({ requestId: 'repeat-first', action: {
+      kind: 'create',
+      input: { title: 'Daily', description: '', prompt: '', startAt: start, endAt: at(2025, 1, 6, 10), urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } },
+    } })
+    if (!result.ok) throw new Error('create failed')
+    const id = result.snapshot.tasks[0].id
+
+    // Simulate a ledger written by the previous behavior: the template had no
+    // first-occurrence nextRunAt, even though its trigger is still enabled.
+    persist.doc!.tasks = persist.doc!.tasks.map(task => task.id === id
+      ? { ...task, schedule: { ...task.schedule!, nextRunAt: undefined } }
+      : task)
+    const future = new HostLedger(persist, () => at(2025, 1, 6, 8, 30), () => 'future')
+    expect(future.taskById(id)!.schedule?.nextRunAt).toBe(start)
+
+    // Once that first occurrence is past, reload records the miss and never
+    // leaves a due slot that the scheduler could replay.
+    persist.doc!.tasks = persist.doc!.tasks.map(task => task.id === id
+      ? { ...task, schedule: { ...task.schedule!, nextRunAt: start } }
+      : task)
+    const late = new HostLedger(persist, () => at(2025, 1, 6, 10), () => 'missed-repeat')
+    const task = late.taskById(id)!
+    expect(task.schedule?.repeat?.triggerAgent).toBe(true)
+    expect(task.schedule?.nextRunAt).toBeUndefined()
+    expect(task.executions.at(-1)).toMatchObject({
+      triggeredBy: 'schedule', startedAt: start, result: 'failed', endedAt: at(2025, 1, 6, 10),
+    })
   })
 
   it('routes a copy schedule edit to the series: clearing the repeat on a copy cancels all future copies', () => {

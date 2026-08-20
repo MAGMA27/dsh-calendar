@@ -20,7 +20,7 @@ import {
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
   setTaskDone, settleExecution, startExecution, updateTask, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
-import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isValidRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
+import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isValidRepeat, matchesRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
 import { addDays, dayKey, minutesOfDay } from './core/calendar.ts'
 import { parseTasks } from './core/store.ts'
 import { calendarDir, ledgerPath } from './dsh-home.ts'
@@ -178,9 +178,9 @@ export class HostLedger {
         recentRequests: (loaded.recentRequests ?? []).slice(-MAX_REQUEST_CACHE),
       }
       : emptyState(timeZone())
-    // One-shot migration: drop copies whose template no longer has an active
-    // repeat rule (e.g. the rule was cleared while the Host was down). Persist
-    // immediately so the cleanup survives the next restart.
+    // Startup normalization drops orphaned copies, arms a future first repeat
+    // occurrence, and records stale first occurrences as failed without replay.
+    // Persist immediately so the reconciliation survives the next restart.
     const pruned = pruneOrphanCopies(this.state.tasks)
     const prunedAny = pruned.length !== this.state.tasks.length
     if (prunedAny) this.state.tasks = pruned
@@ -203,14 +203,36 @@ export class HostLedger {
     for (const fn of [...this.listeners]) fn()
   }
 
-  /** Fail stale one-shot schedules after a Host restart without replaying them. */
+  /** Reconcile stale schedules and the first occurrence of repeat templates. */
   private normalizeMissedSchedules(now: number): boolean {
     let changed = false
     this.state.tasks = this.state.tasks.map(task => {
-      if (!isMissedOneShot(task, now)) return task
-      changed = true
-      delete this.state.scheduler.nextRuns[task.id]
-      return failMissedScheduleTask(task, now, this.uuid())
+      if (isMissedOneShot(task, now)) {
+        changed = true
+        delete this.state.scheduler.nextRuns[task.id]
+        return failMissedScheduleTask(task, now, this.uuid())
+      }
+      const repeatDueAt = repeatTriggerDueAt(task)
+      if (repeatDueAt === undefined || hasScheduledOccurrence(task, repeatDueAt)) {
+        if (task.schedule?.repeat !== undefined && task.schedule.nextRunAt !== undefined && task.schedule.nextRunAt <= now) {
+          changed = true
+          delete this.state.scheduler.nextRuns[task.id]
+          return { ...task, schedule: { ...task.schedule, nextRunAt: undefined }, updatedAt: now }
+        }
+        return task
+      }
+      if (repeatDueAt < now) {
+        changed = true
+        delete this.state.scheduler.nextRuns[task.id]
+        return failMissedRepeatTask(task, repeatDueAt, now, this.uuid())
+      }
+      if (task.schedule?.nextRunAt !== repeatDueAt) {
+        changed = true
+        const schedule = { ...task.schedule!, nextRunAt: repeatDueAt }
+        this.state.scheduler.nextRuns[task.id] = mirrorOf(schedule)
+        return { ...task, schedule, updatedAt: now }
+      }
+      return task
     })
     return changed
   }
@@ -321,9 +343,10 @@ export class HostLedger {
    * one-shot dueAt schedule whose run was accepted has no next run — the
    * schedule has served its purpose and is REMOVED entirely, so the task stops
    * reading as scheduled (no 🕐 badge, no stale due time, no "clear schedule"
-   * affordance). Repeat templates are never advanced here (they materialize
-   * copies instead of running); if one is, its rule is simply kept. No-op when
-   * the task or its schedule is missing. Always persists + notifies. */
+   * affordance). A repeat template's first occurrence is kept as a repeat rule
+   * while its consumed nextRunAt is cleared; later dates are materialized as
+   * copies. No-op when the task or its schedule is missing. Always persists +
+   * notifies. */
   advanceSchedule(taskId: string, nextRunAt: number | undefined, lastTriggeredAt: number | undefined): boolean {
     const task = this.taskById(taskId)
     if (task === undefined || task.schedule === undefined) return false
@@ -462,6 +485,7 @@ export class HostLedger {
         // Materialize immediately so the returned snapshot already shows the
         // repeat copies (no waiting for the 30s scheduler tick).
         if (task.schedule?.repeat !== undefined) this.sweepRepeats(now, this.repeatHorizonDays)
+        this.normalizeMissedSchedules(now)
         return true
       }
       case 'update': {
@@ -568,7 +592,7 @@ export class HostLedger {
         }
         if (task.schedule !== undefined) {
           const active = task.schedule.enabled || task.schedule.repeat !== undefined || task.schedule.dueAt !== undefined
-          const nextRunAt = active ? computeNextRun(task.schedule, now) : undefined
+          const nextRunAt = active ? computeNextRun(task, now) : undefined
           tasks = setNextRun(tasks, scheduleId, nextRunAt, task.schedule.lastTriggeredAt, now)
         }
         // re-read after possible setNextRun
@@ -664,21 +688,41 @@ function mirrorOf(schedule: NonNullable<TaskRecord['schedule']>): { nextRunAt?: 
   return { nextRunAt: schedule.nextRunAt, lastTriggeredAt: schedule.lastTriggeredAt }
 }
 
-/** Arm a fresh schedule: compute the one-shot next run instant (repeat rules
- * have none — they materialize copies instead of running). */
+/** Arm a fresh schedule: one-shots and a repeat template's first occurrence
+ * get a next-run instant; later repeat dates are materialized as copies. */
 function armSchedule(task: TaskRecord, now: number): TaskRecord['schedule'] | undefined {
   const s = task.schedule
   if (s === undefined) return undefined
   if (!s.enabled && s.repeat === undefined && s.dueAt === undefined) return undefined
-  const next = computeNextRun(s, now)
+  const next = computeNextRun(task, now)
   return { ...s, nextRunAt: next ?? undefined }
 }
 
-/** Compute the one-shot next run instant for a schedule (repeat rules → none). */
-function computeNextRun(s: NonNullable<TaskRecord['schedule']>, now: number): number | undefined {
+/** Compute the next run for a one-shot or a repeat template's first occurrence. */
+function computeNextRun(task: TaskRecord, now: number): number | undefined {
+  const s = task.schedule
+  if (s === undefined) return undefined
+  const repeatDueAt = repeatTriggerDueAt(task)
+  if (repeatDueAt !== undefined && !hasScheduledOccurrence(task, repeatDueAt) && repeatDueAt >= now) return repeatDueAt
   // A due time already in the past is handled as a failed, non-replayed run.
   if (s.dueAt !== undefined && s.dueAt >= now) return s.dueAt
   return undefined
+}
+
+/** The first repeat occurrence uses the template's own calendar date. */
+function repeatTriggerDueAt(task: TaskRecord | undefined): number | undefined {
+  const schedule = task?.schedule
+  const repeat = schedule?.repeat
+  if (task === undefined || schedule?.enabled !== true || repeat?.triggerAgent !== true) return undefined
+  const dateMs = startOfDayMs(task.startAt)
+  if (!matchesRepeat(repeat, dateMs)) return undefined
+  const triggerMinutes = parseTriggerTime(repeat.triggerAt) ?? minutesOfDay(task.startAt)
+  return dateMs + triggerMinutes * 60_000
+}
+
+function hasScheduledOccurrence(task: TaskRecord, dueAt: number): boolean {
+  const occurrenceKey = dayKey(dueAt)
+  return task.executions.some(execution => execution.triggeredBy === 'schedule' && dayKey(execution.startedAt) === occurrenceKey)
 }
 
 function isMissedOneShot(task: TaskRecord | undefined, now: number): boolean {
@@ -697,6 +741,13 @@ function failMissedScheduleTask(task: TaskRecord, now: number, executionId: stri
   const started = startExecution(task, dueAt, executionId, 'schedule').task
   const failed = settleExecution(started, executionId, 'failed', now, MISSED_SCHEDULE_ERROR)
   return { ...failed, schedule: undefined }
+}
+
+/** Record a missed first repeat occurrence but keep the repeating template. */
+function failMissedRepeatTask(task: TaskRecord, dueAt: number, now: number, executionId: string): TaskRecord {
+  const started = startExecution(task, dueAt, executionId, 'schedule').task
+  const failed = settleExecution(started, executionId, 'failed', now, MISSED_SCHEDULE_ERROR)
+  return { ...failed, schedule: { ...failed.schedule!, nextRunAt: undefined } }
 }
 
 /** Human copy for an action that was rejected. */

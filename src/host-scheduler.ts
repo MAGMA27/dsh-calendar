@@ -1,16 +1,17 @@
 /**
  * Host-side scheduler. On a tick it does two jobs:
- *  1. Fire due one-shot schedules: scans the ledger for enabled schedules whose
- *     next-run instant is due, triggers the real-execution runner for each, and
+ *  1. Fire due one-shot schedules and the first occurrence of repeat templates:
+ *     scans the ledger for enabled schedules whose next-run instant is due,
+ *     triggers the real-execution runner for each, and
  *     — only after the prompt is accepted — clears the schedule (advanceSchedule
  *     removes a completed one-shot entirely). A rejected or failed setup keeps
  *     its due slot and is retried after one heartbeat, so a scheduled task is
  *     never silently lost because a pinned session was busy or a Host RPC
  *     failed.
- *     Missed one-shot dueAt records are normalized as failed by the ledger on
- *     Host startup; repeat schedules are materialized by date rather than
- *     replayed as a backlog.
- *  2. Materialize repeat copies: repeat templates never run themselves; the
+ *     Missed one-shot dueAt and repeat-template first occurrences are
+ *     normalized as failed by the ledger on Host startup; later repeat dates
+ *     are materialized by date rather than replayed as a backlog.
+ *  2. Materialize repeat copies: after the template's first occurrence, the
  *     ledger's materializeRepeats() sweep ensures one plain copy exists on each
  *     matching date (idempotent, tracked per date).
  *
@@ -115,8 +116,9 @@ export class HostScheduleService {
     for (const task of this.ledger.tasks()) {
       const schedule = task.schedule
       if (schedule === undefined || schedule.enabled !== true) continue
-      // Repeat templates never run here (no nextRunAt); the sweep below copies
-      // them onto their dates. One-shots fire at their due instant.
+      // Repeat templates normally have no nextRunAt after their first
+      // occurrence; the sweep below copies future dates. A newly armed or
+      // reloaded template may carry the first occurrence's nextRunAt.
       const due = schedule.nextRunAt
       if (due === undefined || due > now) continue
       const result = await this.runner.run(task.id, 'schedule')

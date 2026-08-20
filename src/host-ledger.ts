@@ -20,7 +20,7 @@ import {
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
   setTaskDone, settleExecution, startExecution, updateTask, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
-import { REPEAT_HORIZON_DAYS, buildRepeatCopy, isValidRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
+import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isValidRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
 import { addDays, dayKey, minutesOfDay } from './core/calendar.ts'
 import { parseTasks } from './core/store.ts'
 import { calendarDir, ledgerPath } from './dsh-home.ts'
@@ -297,12 +297,16 @@ export class HostLedger {
 
   /**
    * Materialize repeat copies (scheduler heartbeat): for every enabled,
-   * non-archived repeat template, ensure one plain copy exists on each matching
-   * date in the rolling horizon (from the day after the template's own date /
-   * today, whichever is later, up to today + horizonDays). Already-copied
-   * dates (tracked in schedule.materialized) are never re-created, so deleting
-   * one occurrence permanently removes it from future sweeps. Returns whether
-   * anything changed (only then does it persist + notify).
+   * non-archived repeat template, first align the series with its current rule
+   * (prune bound copies on dates the rule no longer matches — e.g. narrowed
+   * weekdays or holiday-skip toggled on — and drop those dates from the
+   * template's `materialized` bookkeeping), then ensure one plain copy exists
+   * on each matching date in the rolling horizon (from the day after the
+   * template's own date / today, whichever is later, up to today + horizonDays).
+   * Already-copied dates (tracked in schedule.materialized) are never
+   * re-created, so deleting one occurrence permanently removes it from future
+   * sweeps. Returns whether anything changed (only then does it persist +
+   * notify).
    */
   materializeRepeats(now: number, horizonDays?: number): boolean {
     const changed = this.sweepRepeats(now, horizonDays ?? this.repeatHorizonDays)
@@ -311,36 +315,52 @@ export class HostLedger {
   }
 
   /**
-   * Pure materialization sweep: mutates this.state.tasks (adds missing copies)
-   * and returns whether anything changed, WITHOUT persisting. Browser actions
-   * that arm a repeat (create / setSchedule) run it inline so the returned
-   * snapshot already contains the copies — no waiting for the 30s tick.
+   * Pure materialization sweep: mutates this.state.tasks (prunes stale bound
+   * copies, adds missing ones) and returns whether anything changed, WITHOUT
+   * persisting. Browser actions that arm or edit a repeat (create / setSchedule)
+   * run it inline so the returned snapshot already reflects the copies — no
+   * waiting for the 30s tick.
    */
   private sweepRepeats(now: number, horizonDays: number): boolean {
-    const tasks = this.state.tasks
     const today = startOfDayMs(now)
     const horizonEnd = addDays(today, horizonDays)
+    let next: TaskRecord[] = this.state.tasks
     let changed = false
-    let next: TaskRecord[] = tasks
-    for (const template of tasks) {
+    // Iterate the template snapshot present when the sweep started; `next` grows
+    // as copies are appended, and those copies never qualify as templates.
+    const seeds = this.state.tasks
+    for (const seed of seeds) {
+      const template = next.find(t => t.id === seed.id)
+      if (template === undefined) continue
       const s = template.schedule
       if (s === undefined || s.enabled !== true || s.repeat === undefined) continue
       if (template.archivedAt !== undefined) continue
       if (!isValidRepeat(s.repeat)) continue
-      const materialized = new Set(s.materialized ?? [])
+      // A rule change (fewer weekdays, holiday-skip on) can leave bound copies
+      // on dates the current rule no longer matches: align first — prune them
+      // and drop their materialized keys so a later re-inclusion re-copies.
+      const { tasks: aligned, prunedIds } = alignSeries(next, template.id, now)
+      if (prunedIds.length > 0) {
+        next = aligned
+        changed = true
+        for (const prunedId of prunedIds) delete this.state.scheduler.nextRuns[prunedId]
+      }
+      const tpl = next.find(t => t.id === template.id)
+      if (tpl === undefined || tpl.schedule?.repeat === undefined) continue
+      const materialized = new Set(tpl.schedule.materialized ?? [])
       // The template occupies its own date; copies start the day after, never
       // backfilling into the past.
-      const cursor = addDays(Math.max(today, startOfDayMs(template.startAt)), 1)
+      const cursor = addDays(Math.max(today, startOfDayMs(tpl.startAt)), 1)
       const added: string[] = []
-      for (const dateMs of repeatDatesBetween(s.repeat, cursor, horizonEnd)) {
+      for (const dateMs of repeatDatesBetween(tpl.schedule.repeat, cursor, horizonEnd)) {
         const key = dayKey(dateMs)
         if (materialized.has(key)) continue
-        next = [...next, buildRepeatCopy(template, dateMs, now, this.uuid())]
+        next = [...next, buildRepeatCopy(tpl, dateMs, now, this.uuid())]
         materialized.add(key)
         added.push(key)
       }
       if (added.length > 0) {
-        next = next.map(t => t.id === template.id
+        next = next.map(t => t.id === tpl.id
           ? { ...t, updatedAt: this.now(), schedule: { ...t.schedule!, materialized: [...materialized] } }
           : t)
         changed = true

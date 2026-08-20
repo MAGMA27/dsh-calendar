@@ -264,3 +264,8 @@
 修复：① 新增 `core/calendar.ts` 的 `snapNearest`，`normalizeDrag` 改为**取最近边界**（与移动/缩放一致，边界 ±15 分钟都命中，等于把指针命中区放宽一倍）；② 新增 `alignCreateStart(start,end,blocked)`——若吸附后起点落进某既有任务块内，把起点推到该任务**实际结束边界**，使新任务稳稳贴其下缘；仅动起点，尾部自由重叠仍允许（日历支持并排重叠）。WeekGrid 拖选时按目标列既有任务传 blocked。新增 snapNearest + alignCreateStart 用例、更新反向拖拽断言（+5，200 全绿）。
 ### 建任务：起点向下取整 + 终点向上取整（复测反馈·最终定稿）
 按用户明确取值最终定稿：`normalizeDrag` **起点 `snapFloor`（向下取整）**——9:50→9:30、10:20→10:00、10:35→10:30；**终点 `snapCeil`（向上取整）**——11:10→11:30（选取框覆盖所触的每个格）。历史根因已处理：① `WeekGrid` 坐标换算原先用含 sticky 表头的 `bodyRef`，使每次点击晚约 30 分钟（视觉 9:50 → 代码 ~10:13 → floor 10:00）——改用 `cellsRef`（`weekGridCells`）排除表头；② 移除会前推起点的 `alignCreateStart`；③ `endDrag` 用 ref 确定性重算、纯点击也走取整。测试 stub 带 40px 表头偏移的网格 rect，断言拖选 9:50→10:20 得 9:30–10:30、纯点击 9:50 得 9:30（合计 200 全绿）。
+### 减少重复日不清除副本（复测反馈）
+问题：详情面板把重复日从「每日」改成「每周 1-5」后，周六/周日的已物化副本仍在、未被清除（增加重复日正常）。
+根因：`setSchedule` 改规则时，物化扫描 `sweepRepeats` 只**增**不**删**——规则改窄后，不再匹配日期的副本与模板 `materialized` 记账都保留，于是周六日副本永远残留在账本。
+修复：新增 `core/repeat.ts` 纯函数 `alignSeries(tasks, templateId, now)`——删除**所有**（含归档）与当前规则不再匹配日期的绑定副本，并从模板 `schedule.materialized` 去掉这些日期键（以后重新勾选这些天会重新物化）；`sweepRepeats` 在每轮先调 `alignSeries` 再补缺，故 `setSchedule` 保存时即时生效（inline sweep 覆盖 60 天），30s tick 也自愈。规则变窄（每周天数减少、开启跳过节假日）与变宽（重新加回）均覆盖。
+测试：`repeat.spec` 新增 alignSeries 5 用例（变窄清除 + 清 materialized、跳过节假日、幂等同引用、归档副本同清、无规则 no-op）；`host-ledger.spec` 新增 2 集成用例（全周→1-5 清周六日并复加回；每日→跳过节假日清周末）。**207 单测全绿**（24 文件）。

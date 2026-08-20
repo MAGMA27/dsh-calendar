@@ -322,6 +322,45 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.taskById(id)).toBeDefined() // the original task itself stays
   })
 
+  it('reducing repeat weekdays prunes bound copies on the removed days (and re-copies when re-added)', () => {
+    const { ledger } = makeMaterializingLedger()
+    // Weekly every day with a 7-day horizon → copies on 01-07..01-13 (all 7 weekdays).
+    const id = createWithRepeat(ledger, { kind: 'weekly', weekdays: [0, 1, 2, 3, 4, 5, 6] })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 7)
+    const daysOf = (ts: number[]): number[] => ts.map(t => new Date(t).getDay()).sort((a, b) => a - b)
+    expect(daysOf(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).map(c => c.startAt))).toEqual([0, 1, 2, 3, 4, 5, 6])
+
+    // Narrow to Mon-Fri: the Sat 01-11 / Sun 01-12 copies must disappear.
+    const r = ledger.apply({ requestId: 'narrow', action: { kind: 'setSchedule', id, patch: { enabled: true, repeat: { kind: 'weekly', weekdays: [1, 2, 3, 4, 5] } } } })
+    expect(r.ok).toBe(true)
+    const narrowed = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(daysOf(narrowed.map(c => c.startAt))).toEqual([1, 2, 3, 4, 5])
+    expect(narrowed).toHaveLength(5)
+    expect(ledger.taskById(id)!.schedule?.materialized).not.toContain('2025-01-11')
+    expect(ledger.taskById(id)!.schedule?.materialized).not.toContain('2025-01-12')
+
+    // Re-add Sat/Sun: their keys were dropped, so the next full-horizon sweep
+    // re-materializes them (in production the inline setSchedule sweep already
+    // covers the 60-day horizon; the test ledger's 3-day horizon needs an
+    // explicit wide sweep).
+    const r2 = ledger.apply({ requestId: 'widen', action: { kind: 'setSchedule', id, patch: { enabled: true, repeat: { kind: 'weekly', weekdays: [0, 1, 2, 3, 4, 5, 6] } } } })
+    expect(r2.ok).toBe(true)
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 7)).toBe(true)
+    expect(daysOf(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).map(c => c.startAt))).toEqual([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it('toggling holiday-skip prunes weekend copies of a daily series', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 7) // copies on 01-07..01-13 incl. Sat 11 / Sun 12
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(7)
+    const r = ledger.apply({ requestId: 'holiday-skip', action: { kind: 'setSchedule', id, patch: { enabled: true, repeat: { kind: 'daily', skipHolidays: true } } } })
+    expect(r.ok).toBe(true)
+    const kept = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(kept).toHaveLength(5) // Sat 11 / Sun 12 pruned
+    expect(kept.every(c => !(new Date(c.startAt).getDay() === 0 || new Date(c.startAt).getDay() === 6))).toBe(true)
+  })
+
   it('prunes orphaned copies at load when the template no longer has a repeat rule', () => {
     const persist = new MemoryPersist()
     let n = 0

@@ -170,6 +170,46 @@ export function buildRepeatCopy(template: TaskRecord, dateMs: number, now: numbe
 }
 
 /**
+ * Align a repeat series with its template's current rule: drop every bound copy
+ * whose occurrence date no longer matches the rule (the rule was narrowed to
+ * fewer weekdays, or holiday-skip was toggled on) and remove those dates from
+ * the template's `materialized` bookkeeping so a later rule that re-includes
+ * them materializes fresh copies. Bound copies are ephemeral occurrences owned
+ * by the rule — like the delete cascade, they never survive a series change
+ * (archived copies included). Returns the same array reference when nothing
+ * changed, plus the ids of the pruned copies so callers can clean any
+ * scheduler mirrors.
+ */
+export function alignSeries(
+  tasks: readonly TaskRecord[],
+  templateId: string,
+  now: number,
+): { tasks: TaskRecord[]; prunedIds: string[] } {
+  const template = tasks.find(t => t.id === templateId)
+  if (template === undefined || template.schedule?.repeat === undefined) {
+    return { tasks: tasks as TaskRecord[], prunedIds: [] }
+  }
+  const rule = template.schedule.repeat
+  const prunedIds: string[] = []
+  const removedKeys = new Set<string>()
+  const kept: TaskRecord[] = []
+  for (const t of tasks) {
+    if (t.originTaskId === templateId && !matchesRepeat(rule, t.startAt)) {
+      prunedIds.push(t.id)
+      removedKeys.add(dayKey(t.startAt))
+      continue
+    }
+    kept.push(t)
+  }
+  if (prunedIds.length === 0) return { tasks: tasks as TaskRecord[], prunedIds }
+  const materialized = (template.schedule.materialized ?? []).filter(k => !removedKeys.has(k))
+  const aligned = kept.map(t => t.id === templateId
+    ? { ...t, updatedAt: now, schedule: { ...template.schedule!, materialized } }
+    : t)
+  return { tasks: aligned, prunedIds }
+}
+
+/**
  * Drop copies whose template no longer has an active repeat rule (template
  * missing, or its `schedule.repeat` removed). Runs once at ledger load so a
  * series whose rule was cleared or deleted leaves no orphaned copies behind.

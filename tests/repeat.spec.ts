@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  REPEAT_HORIZON_DAYS, buildRepeatCopy, isHoliday, isValidRepeat, matchesRepeat,
+  REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isHoliday, isValidRepeat, matchesRepeat,
   nextRepeatDate, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween,
 } from '../src/core/repeat.ts'
 import type { RepeatRule, TaskRecord } from '../src/core/tasks.ts'
@@ -163,6 +163,79 @@ describe('pruneOrphanCopies', () => {
     const c4 = mkTask({ id: 'c4', originTaskId: 'plain' }) // plain task has no rule
     const out = pruneOrphanCopies([tpl, paused, plain, c1, c2, c3, c4])
     expect(out.map(t => t.id)).toEqual(['tpl', 'paused', 'plain', 'c1', 'c2'])
+  })
+})
+
+describe('alignSeries', () => {
+  it('prunes bound copies on dates the narrowed rule no longer matches and drops their materialized keys', () => {
+    const tpl = mkTask({
+      id: 'tpl',
+      startAt: at(2025, 1, 6, 9),
+      schedule: {
+        enabled: true,
+        repeat: { kind: 'weekly', weekdays: [1, 2, 3, 4, 5] }, // Mon..Fri (was all days)
+        materialized: ['2025-01-07', '2025-01-08', '2025-01-10', '2025-01-11', '2025-01-12'],
+      },
+    })
+    const tue = mkTask({ id: 'c-tue', originTaskId: 'tpl', startAt: at(2025, 1, 7, 9) })
+    const wed = mkTask({ id: 'c-wed', originTaskId: 'tpl', startAt: at(2025, 1, 8, 9) })
+    const fri = mkTask({ id: 'c-fri', originTaskId: 'tpl', startAt: at(2025, 1, 10, 9) })
+    const sat = mkTask({ id: 'c-sat', originTaskId: 'tpl', startAt: at(2025, 1, 11, 9) })
+    const sun = mkTask({ id: 'c-sun', originTaskId: 'tpl', startAt: at(2025, 1, 12, 9) })
+    const other = mkTask({ id: 'other', originTaskId: 'x' }) // unrelated copy survives
+    const { tasks, prunedIds } = alignSeries([tpl, tue, wed, fri, sat, sun, other], 'tpl', at(2025, 1, 20, 8))
+    expect(prunedIds.sort()).toEqual(['c-sat', 'c-sun'])
+    expect(tasks.map(t => t.id)).toEqual(['tpl', 'c-tue', 'c-wed', 'c-fri', 'other'])
+    const aligned = tasks.find(t => t.id === 'tpl')!
+    expect(aligned.schedule!.materialized).toEqual(['2025-01-07', '2025-01-08', '2025-01-10']) // Sat/Sun keys dropped
+    expect(aligned.updatedAt).toBe(at(2025, 1, 20, 8))
+  })
+
+  it('prunes weekend copies when holiday-skip is toggled on', () => {
+    const tpl = mkTask({
+      id: 'tpl',
+      startAt: at(2025, 1, 6, 9),
+      schedule: { enabled: true, repeat: { kind: 'daily', skipHolidays: true }, materialized: ['2025-01-07', '2025-01-11'] },
+    })
+    const tue = mkTask({ id: 'c-tue', originTaskId: 'tpl', startAt: at(2025, 1, 7, 9) })
+    const sat = mkTask({ id: 'c-sat', originTaskId: 'tpl', startAt: at(2025, 1, 11, 9) })
+    const { tasks, prunedIds } = alignSeries([tpl, tue, sat], 'tpl', at(2025, 1, 20, 8))
+    expect(prunedIds).toEqual(['c-sat'])
+    expect(tasks.map(t => t.id)).toEqual(['tpl', 'c-tue'])
+  })
+
+  it('returns the same array reference when every copy still matches (idempotent)', () => {
+    const tpl = mkTask({
+      id: 'tpl',
+      startAt: at(2025, 1, 6, 9),
+      schedule: { enabled: true, repeat: { kind: 'weekly', weekdays: [1] }, materialized: ['2025-01-13'] },
+    })
+    const copy = mkTask({ id: 'c', originTaskId: 'tpl', startAt: at(2025, 1, 13, 9) })
+    const tasks = [tpl, copy]
+    const { tasks: out, prunedIds } = alignSeries(tasks, 'tpl', at(2025, 1, 20, 8))
+    expect(prunedIds).toEqual([])
+    expect(out).toBe(tasks)
+  })
+
+  it('prunes archived copies too (a series change owns every occurrence)', () => {
+    const tpl = mkTask({
+      id: 'tpl',
+      startAt: at(2025, 1, 6, 9),
+      schedule: { enabled: true, repeat: { kind: 'weekly', weekdays: [1] }, materialized: ['2025-01-11'] },
+    })
+    const archivedSat = mkTask({ id: 'c-arch', originTaskId: 'tpl', startAt: at(2025, 1, 11, 9), archivedAt: 1 })
+    const { tasks, prunedIds } = alignSeries([tpl, archivedSat], 'tpl', at(2025, 1, 20, 8))
+    expect(prunedIds).toEqual(['c-arch'])
+    expect(tasks.map(t => t.id)).toEqual(['tpl'])
+  })
+
+  it('no-ops for a missing template or a template without a repeat rule', () => {
+    const tpl = mkTask({ id: 'tpl', startAt: at(2025, 1, 6, 9) }) // plain task, no rule
+    const copy = mkTask({ id: 'c', originTaskId: 'tpl', startAt: at(2025, 1, 7, 9) })
+    const r1 = alignSeries([tpl, copy], 'tpl', 0)
+    expect(r1.prunedIds).toEqual([])
+    const r2 = alignSeries([copy], 'ghost', 0)
+    expect(r2.prunedIds).toEqual([])
   })
 })
 

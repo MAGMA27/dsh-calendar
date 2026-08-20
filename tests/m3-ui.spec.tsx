@@ -5,6 +5,8 @@ import { act } from 'react-dom/test-utils'
 import { calendarClientController, initialState } from '../src/client/controller.ts'
 import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
 import { TaskDetailPanel } from '../src/client/components/TaskDetailPanel.tsx'
+import { MatrixPanel } from '../src/client/components/MatrixPanel.tsx'
+import { AgendaPanel } from '../src/client/components/AgendaPanel.tsx'
 import { ExecutionSettings, type ExecutionSettingsValue } from '../src/client/components/ExecutionSettings.tsx'
 import type { calendarAction, calendarSnapshot } from '../src/protocol.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
@@ -132,6 +134,129 @@ describe('TaskDetailPanel', () => {
     await act(async () => { controller.confirmScheduleClearDay() })
     // No own schedule → the day's occurrence is removed.
     expect(dispatched.some(a => a.kind === 'delete' && a.id === 'c1')).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+})
+
+describe('MatrixPanel', () => {
+  it('shows the date of the oldest unfinished repeat occurrence', async () => {
+    const day = (offset: number): number => {
+      const d = new Date()
+      d.setHours(9, 0, 0, 0)
+      d.setDate(d.getDate() + offset)
+      return d.getTime()
+    }
+    const template = makeTask({
+      id: 'repeat-template',
+      title: 'Daily review',
+      startAt: day(0),
+      endAt: day(0) + 60 * 60_000,
+      done: true,
+      schedule: { enabled: true, repeat: { kind: 'daily' } },
+    })
+    const doneCopy = makeTask({
+      id: 'done-copy',
+      title: 'Daily review',
+      originTaskId: template.id,
+      startAt: day(1),
+      endAt: day(1) + 60 * 60_000,
+      done: true,
+    })
+    const oldestUnfinished = makeTask({
+      id: 'oldest-copy',
+      title: 'Daily review',
+      originTaskId: template.id,
+      startAt: day(2),
+      endAt: day(2) + 60 * 60_000,
+    })
+    const latestUnfinished = makeTask({
+      id: 'latest-copy',
+      title: 'Daily review',
+      originTaskId: template.id,
+      startAt: day(3),
+      endAt: day(3) + 60 * 60_000,
+    })
+    const snap: calendarSnapshot = {
+      schemaVersion: 1,
+      revision: 1,
+      tasks: [template, doneCopy, oldestUnfinished, latestUnfinished],
+      scheduler: { timeZone: 'Asia/Shanghai' },
+    }
+    const controller = new calendarClientController(new MemorycalendarHostTransport(snap), initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<MatrixPanel controller={controller} />) })
+
+    expect(host.textContent).toContain(new Date(oldestUnfinished.startAt).toLocaleDateString())
+    expect(host.textContent).not.toContain(new Date(latestUnfinished.startAt).toLocaleDateString())
+    expect(host.textContent).not.toContain(new Date(doneCopy.startAt).toLocaleDateString())
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('marks an unfinished task from a previous date as overdue', async () => {
+    const d = new Date()
+    d.setHours(9, 0, 0, 0)
+    d.setDate(d.getDate() - 1)
+    const task = makeTask({ startAt: d.getTime(), endAt: d.getTime() + 60 * 60_000 })
+    const controller = new calendarClientController(
+      new MemorycalendarHostTransport(snapshotWith(task)),
+      initialState(0, 0),
+    )
+    await controller.start()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<MatrixPanel controller={controller} />) })
+
+    const item = host.querySelector('[data-dsh-calendar-matrix] button[data-overdue]')
+    expect(item).toBeTruthy()
+    expect(item?.textContent).toContain('已过期')
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+})
+
+describe('AgendaPanel', () => {
+  it('places the oldest unfinished repeat occurrence in today when it is today', async () => {
+    const day = (offset: number): number => {
+      const d = new Date()
+      d.setHours(9, 0, 0, 0)
+      d.setDate(d.getDate() + offset)
+      return d.getTime()
+    }
+    const template = makeTask({
+      id: 'agenda-template',
+      title: 'Daily review',
+      startAt: day(0),
+      endAt: day(0) + 60 * 60_000,
+      schedule: { enabled: true, repeat: { kind: 'daily' } },
+    })
+    const tomorrow = makeTask({
+      id: 'agenda-tomorrow',
+      title: 'Daily review',
+      originTaskId: template.id,
+      startAt: day(1),
+      endAt: day(1) + 60 * 60_000,
+    })
+    const snap: calendarSnapshot = {
+      schemaVersion: 1,
+      revision: 1,
+      tasks: [template, tomorrow],
+      scheduler: { timeZone: 'Asia/Shanghai' },
+    }
+    const controller = new calendarClientController(new MemorycalendarHostTransport(snap), initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<AgendaPanel controller={controller} />) })
+
+    expect(host.querySelector('[data-group="today"]')?.textContent).toContain('Daily review')
+    expect(host.querySelector('[data-group="upcoming"]')?.textContent).not.toContain('Daily review')
 
     await act(async () => { root.unmount(); host.remove() })
   })

@@ -475,9 +475,21 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   padding: 1px 4px;
 }
 
+.taskBadgeOverdue {
+  color: var(--dsw-static-red-500);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--dsw-static-red-500);
+}
+
 .taskTime {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+.taskDate {
+  font-size: 11px;
   color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
 }
@@ -752,6 +764,8 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 }
 
 .matrixItem:hover { background: var(--dsw-alias-interactive-bg-hover); border-color: var(--dsw-alias-border-l2); box-shadow: var(--dsw-shadow-lv2); }
+
+.matrixItem[data-overdue] { border-color: var(--dsw-static-red-500); }
 
 .matrixItemTitle {
   overflow: hidden;

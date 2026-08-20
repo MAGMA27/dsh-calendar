@@ -4,9 +4,9 @@
  */
 import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
-import { type Quadrant, type Urgency, type Importance, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
+import { type Quadrant, type Urgency, type Importance, isTaskOverdue, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
 import { t, type calendarKey } from '../locales.ts'
-import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
+import { TaskDate, TaskOverdue, TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
 
 const QUADRANTS: Array<{ q: Quadrant; urgency: 'high' | 'low'; importance: 'high' | 'low' }> = [
@@ -33,7 +33,8 @@ const DRAG_KIND = 'application/x-dsh-calendar-task'
 
 export function MatrixPanel({ controller }: MatrixPanelProps) {
   const snap = controller.getSnapshot()
-  const collapsed = collapseRepeatSeries(snap.snapshot.tasks)
+  const collapsed = collapseRepeatSeries(snap.snapshot.tasks, 'oldest')
+  const now = Date.now()
   const [over, setOver] = useState<Quadrant | undefined>(undefined)
 
   const onDrop = (q: Quadrant, urgency: 'high' | 'low', importance: 'high' | 'low') => (e: React.DragEvent): void => {
@@ -63,13 +64,17 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
               {tasks.length === 0 && <p className={css.matrixEmpty}>{t('agenda.empty')}</p>}
               {tasks.map(task => {
                 const acc = ACCENT[quadrantOf(task.urgency, task.importance)]
+                const overdue = isTaskOverdue(task, now)
                 return (
                   <button type="button" key={task.id} draggable className={css.matrixItem + ' ' + acc}
+                    data-overdue={overdue || undefined}
                     onDragStart={e => e.dataTransfer.setData(DRAG_KIND, task.id)}
                     onClick={() => controller.selectTask(task.id)}>
                     <span className={css.matrixItemTitle} data-done={task.done || undefined}>{task.title}</span>
                     <span className={css.matrixItemMeta}>
+                      <TaskDate task={task} />
                       <TaskTime task={task} />
+                      <TaskOverdue task={task} now={now} />
                       <TaskBadges task={task} />
                     </span>
                     <SubtaskTrack task={task} />

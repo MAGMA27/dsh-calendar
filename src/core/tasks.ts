@@ -227,17 +227,26 @@ export function taskTriggersAgent(task: Pick<TaskRecord, 'schedule'>): boolean {
   return s.repeat?.triggerAgent === true
 }
 
+/** Whether an unfinished task starts before today's local calendar day. */
+export function isTaskOverdue(task: Pick<TaskRecord, 'startAt' | 'done'>, now: number = Date.now()): boolean {
+  if (task.done) return false
+  const todayStart = new Date(now)
+  todayStart.setHours(0, 0, 0, 0)
+  return task.startAt < todayStart.getTime()
+}
+
 /**
  * Collapse a repeat series into a single representative row for list views
  * (matrix / agenda). A series is a template (schedule.repeat, no originTaskId)
  * plus every materialized copy (originTaskId === template id). The week grid
  * keeps the real timeline, but list views would otherwise show one near-identical
- * row per materialized date. Each series contributes at most one entry: the
- * newest unfinished occurrence (max startAt among not-done members — including
- * the template itself); if every member is done, the newest member is kept so
- * the task is not lost entirely. Standalone tasks pass through unchanged.
+ * row per materialized date. Each series contributes at most one entry. The
+ * default keeps the newest unfinished occurrence; callers such as the matrix
+ * can request the oldest unfinished occurrence to surface the earliest pending
+ * date. If every member is done, the corresponding newest/oldest member is kept
+ * so the task is not lost entirely. Standalone tasks pass through unchanged.
  */
-export function collapseRepeatSeries(tasks: readonly TaskRecord[]): TaskRecord[] {
+export function collapseRepeatSeries(tasks: readonly TaskRecord[], order: 'newest' | 'oldest' = 'newest'): TaskRecord[] {
   const copies = new Map<string, TaskRecord[]>()
   const templates = new Map<string, TaskRecord>()
   const standalone: TaskRecord[] = []
@@ -262,7 +271,7 @@ export function collapseRepeatSeries(tasks: readonly TaskRecord[]): TaskRecord[]
     const incomplete = members.filter(m => !m.done)
     const pool = incomplete.length > 0 ? incomplete : members
     pool.sort((a, b) => a.startAt - b.startAt)
-    out.push(pool[pool.length - 1])
+    out.push(order === 'oldest' ? pool[0] : pool[pool.length - 1])
   }
   return out
 }

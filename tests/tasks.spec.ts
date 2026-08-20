@@ -4,7 +4,7 @@ import {
   completedSubtaskCount, createTask,
   deleteTask, quadrantOf, removeSubtask, restoreTask, setQuadrant, setSchedule,
   setSubtaskDone, setTaskDone, settleExecution, startExecution, subtaskProgress,
-  taskTriggersAgent, updateTask, type NewTaskInput, type TaskRecord,
+  isTaskOverdue, taskTriggersAgent, updateTask, type NewTaskInput, type TaskRecord,
 } from '../src/core/tasks.ts'
 
 function baseInput(over: Partial<NewTaskInput> = {}): NewTaskInput {
@@ -159,6 +159,17 @@ describe('taskTriggersAgent (the clock badge)', () => {
   })
 })
 
+describe('isTaskOverdue', () => {
+  it('marks only unfinished tasks before the current local day as overdue', () => {
+    const now = new Date(2026, 7, 20, 12, 0).getTime()
+    const yesterday = new Date(2026, 7, 19, 9, 0).getTime()
+    const today = new Date(2026, 7, 20, 9, 0).getTime()
+    expect(isTaskOverdue({ startAt: yesterday, done: false }, now)).toBe(true)
+    expect(isTaskOverdue({ startAt: yesterday, done: true }, now)).toBe(false)
+    expect(isTaskOverdue({ startAt: today, done: false }, now)).toBe(false)
+  })
+})
+
 function mkCopy(id: string, origin: string, start: number, done = false, over: Partial<TaskRecord> = {}): TaskRecord {
   return {
     id, title: 'T', description: '', prompt: '', startAt: start, endAt: start + 3_600_000,
@@ -192,5 +203,12 @@ describe('collapseRepeatSeries (list views)', () => {
     const c1 = mkCopy('a', 'uni', 1_000, false)
     const out = collapseRepeatSeries([tpl, c1])
     expect(out.map(x => x.id)).toEqual(['uni'])
+  })
+  it('can pick the oldest unfinished member', () => {
+    const tpl: TaskRecord = { ...mkCopy('tpl', '', 1_000, true), originTaskId: undefined, schedule: { enabled: true, repeat: { kind: 'daily' } } }
+    const older = mkCopy('older', 'tpl', 2_000, false)
+    const newer = mkCopy('newer', 'tpl', 3_000, false)
+    const out = collapseRepeatSeries([tpl, older, newer], 'oldest')
+    expect(out.map(x => x.id)).toEqual(['older'])
   })
 })

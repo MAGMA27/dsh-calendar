@@ -1,9 +1,9 @@
-/** Shared meta pieces for rich task rows (matrix / agenda): the time range
- * chip and the status badges (running / scheduled / subtasks / pinned LLM).
+/** Shared meta pieces for rich task rows (matrix / agenda): the date/time
+ * chips and the status badges (running / scheduled / subtasks / pinned LLM).
  */
 import type { ReactNode } from 'react'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { completedSubtaskCount, taskTriggersAgent } from '../../core/tasks.ts'
+import { completedSubtaskCount, isTaskOverdue, taskTriggersAgent } from '../../core/tasks.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { t } from '../locales.ts'
 import css from '../calendar.module.css'
@@ -11,6 +11,17 @@ import css from '../calendar.module.css'
 /** "09:00–10:30" chip for a timed task block. */
 export function TaskTime({ task }: { task: TaskRecord }): ReactNode {
   return <span className={css.taskTime}>{hhmm(task.startAt)}–{hhmm(task.endAt)}</span>
+}
+
+/** Local calendar date chip for list-style task cards. */
+export function TaskDate({ task }: { task: TaskRecord }): ReactNode {
+  return <span className={css.taskDate}>{new Date(task.startAt).toLocaleDateString()}</span>
+}
+
+/** Red marker for an unfinished task whose calendar date has passed. */
+export function TaskOverdue({ task, now = Date.now() }: { task: TaskRecord; now?: number }): ReactNode {
+  if (!isTaskOverdue(task, now)) return null
+  return <span className={`${css.taskBadge} ${css.taskBadgeOverdue}`} title={t('agenda.overdue')}>{t('agenda.overdue')}</span>
 }
 
 /** Status chips for one task: running / scheduled / subtask progress / pinned LLM. */

@@ -43,7 +43,8 @@
 | delegate | 紧急 | `--dsw-static-amber-500` | `--dsw-static-amber-100` | 委托 |
 | eliminate | 低优先 | `--dsw-alias-label-tertiary` | `--dsw-alias-bg-layer-2` | 丢弃 |
 
-- **矩阵面板（M2 已实现）**：2×2 象限格，边框用主色；按 `quadrantOf` 分组展示；点任务选中。**标题美化（commit `017467c`→`343c1cd`）**：象限标题放大到 18px/700（主文字色 `label-primary`），标题行底部加 3px 象限色横条；计数徽标同步放大。
+- **矩阵面板（M2 已实现）**：2×2 象限格，边框用主色；按 `quadrantOf` 分组展示；点任务选中。列表卡显示本地日期和时间；重复系列取最旧未完成 occurrence；未完成且日期早于今天的任务以红色边框和「已过期」徽标标记。**标题美化（commit `017467c`→`343c1cd`）**：象限标题放大到 18px/700（主文字色 `label-primary`），标题行底部加 3px 象限色横条；计数徽标同步放大。
+- **议程面板**：重复系列同样取最旧未完成 occurrence 后再按本地日期归入「已过期 / 今天 / 近期」；完成项单独进入「已完成」。
 - **象限拖拽改优先级（M3 已实现）**：任务块 draggable，拖放到另一象限（dataTransfer 携带任务 id）→ dispatch setQuadrant；悬停象限高亮 matrixOver。
 
 ## 5. 组件细节

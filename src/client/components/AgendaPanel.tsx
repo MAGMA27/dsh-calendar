@@ -4,7 +4,7 @@
  */
 import type { calendarClientController } from '../controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
+import { isTaskOverdue, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
@@ -24,9 +24,8 @@ const ACCENT: Record<string, string> = {
 
 function bucket(task: TaskRecord, now: number): Bucket {
   if (task.done) return 'done'
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0)
   const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999)
-  if (task.startAt < todayStart.getTime()) return 'overdue'
+  if (isTaskOverdue(task, now)) return 'overdue'
   if (task.startAt <= todayEnd.getTime()) return 'today'
   return 'upcoming'
 }
@@ -34,7 +33,7 @@ function bucket(task: TaskRecord, now: number): Bucket {
 export function AgendaPanel({ controller }: AgendaPanelProps) {
   const snap = controller.getSnapshot()
   const now = Date.now()
-  const collapsed = collapseRepeatSeries(snap.snapshot.tasks)
+  const collapsed = collapseRepeatSeries(snap.snapshot.tasks, 'oldest')
   const groups: Array<{ key: Bucket; label: string; tasks: TaskRecord[] }> = [
     { key: 'overdue', label: t('agenda.overdue'), tasks: [] },
     { key: 'today', label: t('agenda.today'), tasks: [] },

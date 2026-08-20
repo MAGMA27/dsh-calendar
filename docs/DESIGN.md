@@ -105,7 +105,7 @@ client 依赖已对齐 rc.7（`@deepseek-ai/dsh-*@0.1.0-rc.7` + `dsh-client-ui-c
 
 - **周/月日期导航 `DateNav`**：`‹ 期标签 › + 今天`。core `calendar.ts` 新增 `addDays / addMonths / sameMonth / monthLabel / weekRangeLabel`；`addMonths` 按目标月天数钳制日（1月31日+1月→2月28/29）。周视图步进 ±7 天、月视图 ±1 月；期标签带年份，`aria-live` 播报。
 - **任务搜索**：曾实现 `taskMatchesQuery` 过滤四视图（`c5ec7b1`），用户复测认为无用后**整体移除**（`28a99cc`）——无搜索栏。
-- **月视图**：顶部 sticky 周几表头（随 `weekStart` 周一起始）；`sameMonth` 判当前月，相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、任务 chips 半透明）；`.monthWrap`（表头 + 可滚动 `.monthGrid`）替代原单一网格。已完成任务条使用 `bg-layer-1`、降低透明度、虚线边框和删除线，未完成任务保持实线与主文字色。**日期样式（commit `a003320` 系列→`78f027d`）**：色带方案反复迭代后**弃用**，改为干净的日期行——日期数字 **18px/700**，**每月 1 号在数字旁标月份短名（字号与日期一致，如「9月 1」，月份 `label-secondary` 主次区分）**；相邻月日期 `label-tertiary`；今天数字套品牌蓝圆底白字（`--dsw-static-deepseek-500`，勿用亮色下近黑的 `--dsw-alias-brand-primary`）。
+- **月视图**：顶部 sticky 周几表头（随 `weekStart` 周一起始）；`sameMonth` 判当前月，相邻月单元格 `data-outside` 变淡（背景 `bg-layer-1`、任务 chips 半透明）；`.monthWrap`（表头 + 可滚动 `.monthGrid`）替代原单一网格。已完成任务条使用 `bg-layer-1`、降低透明度、虚线边框和删除线，未完成任务保持实线与主文字色。**日期样式（commit `a003320` 系列→`78f027d`）**：色带方案反复迭代后**弃用**，改为干净的日期行——日期数字 **18px/700**，**每月 1 号在数字旁标月份短名（字号与日期一致，如「9月 1」，月份 `label-secondary` 主次区分）**；相邻月日期 `label-tertiary`；今天数字使用 28px 黑色圆形底和前景字色（`--dsw-alias-button-primary-fill` + `--dsw-alias-label-primary-foreground`）。
 
 ## 11. 执行与定时运行（M4/M5 宿主行为，host-runner / host-scheduler / host-ledger）
 

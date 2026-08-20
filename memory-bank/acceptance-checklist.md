@@ -61,6 +61,7 @@
 - [ ] Host 已注册 calendar_task tool（ctx.tools.register），命令区/对话中 agent 可见 schema
 - [ ] 对话里让 agent（或用户指令）**创建任务** → 日历视图即时出现（账本同步）
 - [ ] 查（list/get）、改（update/优先级/完成）、**子任务**增改删、**定时**（每日/每周重复或一次到时）
+- [x] tool 返回值通过 lossless JSON 边界：含 schedule/repeat 的 `list/get` 不再因 `undefined` 字段失败（`tests/host-tool.spec.ts`）
 - [ ] 执行钉子（provider/model/预设/权限）随 create/update 生效
 - [ ] `run` 触发真实执行（经 host-runner）
 - [ ] 与 UI 操作**共享同一账本与幂等**（无分身数据源）

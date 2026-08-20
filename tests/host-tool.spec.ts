@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { validateJsonSchemaValue, valueSchemaSpecToJsonSchema } from '@deepseek-ai/dsh-tools'
 import { defineCalendarTool } from '../src/host-tool.ts'
 import { HostLedger, NoopLedgerPersist } from '../src/host-ledger.ts'
 
@@ -36,9 +37,12 @@ describe('calendar_task tool', () => {
   it('lists and gets tasks', async () => {
     const { tool } = mk()
     await exec(tool, { action: 'create', title: 'A' })
-    await exec(tool, { action: 'create', title: 'B' })
+    const second = await exec(tool, { action: 'create', title: 'B' })
+    await exec(tool, { action: 'setSchedule', id: (second.task as Record<string, unknown>).id, repeat: 'daily' })
     const list = await exec(tool, { action: 'list' })
     expect((list.tasks as unknown[]).length).toBe(2)
+    const jsonSchema = valueSchemaSpecToJsonSchema({ type: 'json' })
+    expect(validateJsonSchemaValue(jsonSchema, list)).toEqual([])
     const first = (list.tasks as Array<Record<string, unknown>>)[0]
     const got = await exec(tool, { action: 'get', id: first.id })
     expect((got.task as Record<string, unknown>).title).toBe('A')

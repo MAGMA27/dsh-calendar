@@ -70,6 +70,8 @@
 - **注册**：host index `ctx.tools.register(...)`（inject 增加 `tools`），`apply` 里接线并 dispose。
 - **依赖**：追加 devDep `@deepseek-ai/dsh-tools@0.1.0-rc.6`（host 侧 bundle）。
 - **测试**：host-tool.spec（8）覆盖建/查/列/改/象限/完成/子任务/定时/归档恢复删除/run/非法输入；**113 单测全绿**（原 105 + 8）。
+- **输出契约修复（本轮）**：`taskSummary` 对 schedule/repeat 递归省略 `undefined` 可选字段，避免 dsh-tools 的 lossless JSON 边界拒绝带重复规则的 `list/get`；`host-tool.spec` 增加带 daily schedule 的输出校验。
+- **本轮验证**：`pnpm typecheck` ✅ / `pnpm build` ✅ / `pnpm test` ✅（24 个测试文件、218 个测试）。
 
 ## 重命名与近期修复（M7 之后）
 - **拼写重命名（commit `970d53b`）**：包/代码/文档 `dsh-calender` → `dsh-calendar`（51 文件：`calender.module.css`→`calendar.module.css`、`scripts/dsh-calender.js`→`dsh-calendar.js`、`ui-calender`→`ui-calendar`、`/api/calender/*`→`/api/calendar/*`、账本 `$DSH_HOME/calendar/ledger-v1.json`、localStorage `dsh.calendar.*`）。

@@ -64,7 +64,7 @@ interface TaskRecord {
 | **M4 真实执行** ✅ | host-runner（会话/provider/预设/权限 钉子 + 结算）+ 执行记录 + 会话跳转 + 运行/会话徽标 | fake ApiProxy 测试（选择/失败关闭/结算）——92 单测 |
 | **M5 定时调度** ✅ | Host cron + 到期触发（只接受后滚动）+ 重启对账 + SSE 广播 + v1 迁移 | host-scheduler/runner 测试——105 单测 |
 | **M6 完善** ✅ | 设置卡（calendar 命名空间）+ SystemPrompt 段（可开关）+ 设计打磨 + 全量测试 + 文档 + scripts/dsh-calendar.js CLI | 全量验证矩阵通过——105 单测 |
-| **M7 日历 Tool** ✅ | 把日历暴露为对话中 LLM 可调用的 `calendar_task` tool（创建/删除/修改/查询任务，含子任务与执行钉子）；Host 侧把 tool 调用映射到同一 HostLedger.apply | host-tool 测试（建/查/改/删/子任务/定时/run/非法输入）——113 单测 |
+| **M7 日历 Tool** ✅ | 把日历暴露为对话中 LLM 可调用的 `calendar_task` tool（创建/删除/修改/查询任务，含子任务与执行钉子）；Host 侧把 tool 调用映射到同一 HostLedger.apply；输出 DTO 遵守 lossless JSON 契约 | host-tool 测试（建/查/改/删/子任务/定时/run/非法输入/含 schedule 的输出校验）——当前全量 218 单测 |
 
 ## 7. 测试与验证
 

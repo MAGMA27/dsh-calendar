@@ -66,11 +66,33 @@ function applyOk(ledger: HostLedger, id: string | undefined, action: AnyAction):
   return t === undefined ? { ok: true } : { ok: true, task: taskSummary(t) }
 }
 
+function repeatSummary(repeat: NonNullable<NonNullable<TaskRecord['schedule']>['repeat']>): Record<string, unknown> {
+  return {
+    kind: repeat.kind,
+    ...(repeat.weekdays !== undefined ? { weekdays: [...repeat.weekdays] } : {}),
+    ...(repeat.skipHolidays !== undefined ? { skipHolidays: repeat.skipHolidays } : {}),
+    ...(repeat.triggerAgent !== undefined ? { triggerAgent: repeat.triggerAgent } : {}),
+    ...(repeat.triggerAt !== undefined ? { triggerAt: repeat.triggerAt } : {}),
+  }
+}
+
+function scheduleSummary(schedule: TaskRecord['schedule']): Record<string, unknown> | null {
+  if (schedule === undefined) return null
+  return {
+    enabled: schedule.enabled,
+    ...(schedule.repeat !== undefined ? { repeat: repeatSummary(schedule.repeat) } : {}),
+    ...(schedule.dueAt !== undefined ? { dueAt: schedule.dueAt } : {}),
+    ...(schedule.nextRunAt !== undefined ? { nextRunAt: schedule.nextRunAt } : {}),
+    ...(schedule.lastTriggeredAt !== undefined ? { lastTriggeredAt: schedule.lastTriggeredAt } : {}),
+    ...(schedule.materialized !== undefined ? { materialized: [...schedule.materialized] } : {}),
+  }
+}
+
 function taskSummary(task: TaskRecord): Record<string, unknown> {
   return {
     id: task.id, title: task.title, done: task.done, startAt: task.startAt, endAt: task.endAt,
     urgency: task.urgency, importance: task.importance, provider: task.provider ?? null, model: task.model ?? null,
-    workspaceId: task.workspaceId ?? null, sessionId: task.sessionId ?? null, schedule: task.schedule ?? null,
+    workspaceId: task.workspaceId ?? null, sessionId: task.sessionId ?? null, schedule: scheduleSummary(task.schedule),
     subtasks: task.subtasks.map(s => ({ id: s.id, title: s.title, done: s.done })),
   }
 }

@@ -40,4 +40,4 @@ M0–M6 已完成：日历 UI / 任务编辑 / 真实执行（host-runner）/ Ho
 `node scripts/dsh-calendar.js status|mount|unmount [--profile P]`
 
 ## 日历 Tool（M7）
-`calendar_task`：对话中 LLM 可直接建/查/改/删任务、管理子任务、设置每日/每周重复或一次到时、钉执行钉子或触发真实 run，与日历视图共享同一 authoritative ledger（HostLedger.apply，request-id 幂等）。依赖 `@deepseek-ai/dsh-tools`。
+`calendar_task`：对话中 LLM 可直接建/查/改/删任务、管理子任务、设置每日/每周重复或一次到时、钉执行钉子或触发真实 run，与日历视图共享同一 authoritative ledger（HostLedger.apply，request-id 幂等）。工具返回的任务摘要会将 schedule/repeat 的可选字段规范化为严格 JSON，带重复规则的任务也可以正常 list/get。依赖 `@deepseek-ai/dsh-tools`。

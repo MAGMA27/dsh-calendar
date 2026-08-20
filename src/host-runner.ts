@@ -18,7 +18,7 @@
  * fails the run without sending the prompt — running under different settings
  * than the task declared is worse than not running.
  */
-import type { TaskRecord } from './core/tasks.ts'
+import type { ExecutionTrigger, TaskRecord } from './core/tasks.ts'
 import { randomId } from './protocol.ts'
 
 /** A session row as the runner reads it from `sessions.list`. */
@@ -80,7 +80,7 @@ export interface HostExecutionEnv {
 /** The narrow ledger face the runner writes executions through. */
 export interface RunnerLedgerFace {
   taskById(id: string): TaskRecord | undefined
-  openExecution(taskId: string, executionId: string, now: number): boolean
+  openExecution(taskId: string, executionId: string, now: number, triggeredBy?: ExecutionTrigger): boolean
   settleExecution(taskId: string, executionId: string, outcome: 'succeeded' | 'failed' | 'cancelled', now: number, error: string | undefined, sessionId?: string): boolean
 }
 
@@ -152,12 +152,12 @@ export class HostExecutionRunner {
    * settlement). Returns whether the run was accepted and, when it was, the
    * detached promise that settles the execution record once the turn completes.
    */
-  async run(taskId: string): Promise<RunResult> {
+  async run(taskId: string, triggeredBy: ExecutionTrigger = 'manual'): Promise<RunResult> {
     const task = this.ledger.taskById(taskId)
     if (task === undefined) return { accepted: false }
     const executionId = this.uuid()
     const startedAt = this.now()
-    if (!this.ledger.openExecution(taskId, executionId, startedAt)) return { accepted: false }
+    if (!this.ledger.openExecution(taskId, executionId, startedAt, triggeredBy)) return { accepted: false }
     let sessionId: string | undefined
     try {
       const { sessionId: sid, fresh } = await this.connectSession(task)

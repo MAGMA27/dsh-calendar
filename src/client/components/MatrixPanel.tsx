@@ -4,7 +4,7 @@
  */
 import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
-import { type Quadrant, type Urgency, type Importance, isTaskOverdue, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
+import { type Quadrant, type Urgency, type Importance, isTaskOverdue, isTaskVisibleInOverview, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
 import { t, type calendarKey } from '../locales.ts'
 import { TaskDate, TaskOverdue, TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
@@ -33,8 +33,11 @@ const DRAG_KIND = 'application/x-dsh-calendar-task'
 
 export function MatrixPanel({ controller }: MatrixPanelProps) {
   const snap = controller.getSnapshot()
-  const collapsed = collapseRepeatSeries(snap.snapshot.tasks, 'oldest')
   const now = Date.now()
+  const collapsed = collapseRepeatSeries(
+    snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskVisibleInOverview(task, now)),
+    'oldest',
+  )
   const [over, setOver] = useState<Quadrant | undefined>(undefined)
 
   const onDrop = (q: Quadrant, urgency: 'high' | 'low', importance: 'high' | 'low') => (e: React.DragEvent): void => {
@@ -48,7 +51,7 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
   return (
     <div className={css.matrixPanel} data-dsh-calendar-matrix="">
       {QUADRANTS.map(({ q, urgency, importance }) => {
-        const tasks = collapsed.filter(task => !task.archivedAt && task.urgency === urgency && task.importance === importance)
+        const tasks = collapsed.filter(task => task.urgency === urgency && task.importance === importance)
         return (
           <div key={q}
             className={css.matrixQuadrant + ' ' + ACCENT[q] + (over === q ? ' ' + css.matrixOver : '')}

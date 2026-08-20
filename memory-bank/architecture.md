@@ -35,12 +35,38 @@
 
 - **Host 为权威**：账本/调度/结算全部在 Host；浏览器动作只提交 `action`（判别联合 + requestId 幂等），UI 状态 = 最近 Host snapshot。
 - **共享纯层**：`src/core/`（tasks/calendar/schedule/store）与 `src/protocol.ts` 为纯 TS，host/client 共用；client 不得值导入 host 包。
-- **执行（host-runner）**：手动/定时共用 host-runner；步骤：`ledger.openExecution` 开记录 → 建/复用会话（sessionId 或 workspaceId 钉子 → 否则 `workspace.list` 首个工作区）→ `sessions.selectModel`（provider/model 钉子；缺一即失败关闭）→ `agentPresets.select`（复用且钉预设时）→ `/permission <id>` 斜杠命令 → `sessions.rename`（装饰性）→ `sessions.prompt('queue')` → **结算**。结算=轮询 `sessions.list`：会话消失→cancelled、停止且 `updatedAt>startedAt`（有 prompt 证据）→succeeded、超时→cancelled；写回 `ledger.settleExecution`（附带会话 id）并通知浏览器。路由 `kind:'run'` fire-and-forget 交给 runner。失败即关闭：任一钉子无法按任务声明应用即 fail，不发 Prompt。
+- **执行（host-runner）**：手动/定时共用 host-runner；步骤：`ledger.openExecution` 开记录 → 建/复用会话（sessionId 或 workspaceId 钉子 → 否则 `workspace.list` 首个工作区）→ `sessions.selectModel`（provider/model 钉子；缺一即失败关闭）→ `agentPresets.select`（复用且钉预设时）→ `/permission <id>` 斜杠命令 → `sessions.rename`（装饰性）→ `sessions.prompt('queue')` → **结算**。开记录时写入 `triggeredBy=manual|schedule`，旧账本记录没有来源时 Tool 返回 `null`。结算=轮询 `sessions.list`：会话消失→cancelled、停止且 `updatedAt>startedAt`（有 prompt 证据）→succeeded、超时→cancelled；写回 `ledger.settleExecution`（附带会话 id）并通知浏览器。路由 `kind:'run'` fire-and-forget 交给 runner。失败即关闭：任一钉子无法按任务声明应用即 fail，不发 Prompt。
 - **执行设置目录（/api/calendar/options）**：Host 经 `ctx.apiProxy`（llm.models / workspace.list / sessions.list）组装 ExecutionCatalog 供浏览器下拉：工作区→会话二级分组、隐藏归档会话、provider→model 联动。**会话标题**从 `sessions.list` 的 `projections.values.title` 读取（真实持久标题，未命名回退 cwd 基名→id）。
 - **调度（HostScheduleService，M5）**：Host cron（30s tick + start 时立即 catch-up + 重启对账）；nextRunAt<=now 触发 → runner.run（fire-and-forget）→ **仅 run 被接受后** `advanceSchedule` 滚动到下一 cron 匹配点；已 running（被拒）保留到期槽下个 tick 重试；错过不补；`enabled=false` 暂停；单次 dueAt 触发即结束。index.ts 里 runner 与 scheduler 一并构造、start 于 apply、dispose 于卸载。
 - **SSE 广播（M5）**：`/api/calendar/events` 经 `ledger.subscribe` 在账本变更（浏览器动作/定时触发/执行结算/滚动写回）时向每个已连 EventSource 推送 `{revision, ledgerId}`；浏览器收到提示即重拉 `/state`。
 - **设置卡 + SystemPrompt（M6）**：Host 经 `installSettingsSection(ctx, settingsNamespace('calendar'), Config, ...)` 注册 `calendar` 设置命名空间（`announceToAgent`/`enabled`，schemastery）；`ctx.systemPrompt.section('plugin:calendar', order 160)` 向 agent 宣告日历，受设置实时门控（关开关即撤销段、无需重启）。host `apply(ctx, config?)` 带 Config schema。
-- **日历 Tool（M7）**：`ctx.tools.register(defineCalendarTool(...))` 注册 `calendar_task` tool（inject 增加 `tools`；`@deepseek-ai/dsh-tools` devDep）。单一 tool，`action` 枚举 create/get/list/update/setQuadrant/setDone/addSubtask/setSubtaskDone/removeSubtask/setSchedule/delete/archive/restore/run；参数 schema 化；每个动作以 minted requestId 映射到**同一 HostLedger.apply**（与浏览器共享账本与幂等），读走 snapshot，`run` 委托 host-runner。defineTool 在 execute 前做参数/枚举校验。
+- **日历 Tool（M7）**：`ctx.tools.register(defineCalendarTool(...))` 注册 `calendar_task` tool（inject 增加 `tools`；`@deepseek-ai/dsh-tools` devDep）。单一 tool，`action` 枚举 create/get/list/update/setQuadrant/setDone/addSubtask/setSubtaskDone/removeSubtask/setSchedule/delete/archive/restore/run；参数 schema 化；每个动作以 minted requestId 映射到**同一 HostLedger.apply**（与浏览器共享账本与幂等），读走 snapshot，`run` 委托 host-runner。`list` 支持 `fromAt/toAt` 半开时间范围、`dateBy`（scheduled/completed/created/updated/executed）、done、session（任务钉住或实际执行 session）、workspace/project、provider/model 和 `llm`（any/only/none）过滤；任务摘要包含 `completedAt`、`scheduled`、`autoRun`、`hasLlm`、`executionCount/totalExecutionCount` 和按查询时间窗裁剪的 executions，记录带 `triggeredBy` 来源。`scheduled` 与 `autoRun` 分离：普通重复提醒可被调度物化但不自动触发 Agent。`completedAt` 在任务从未完成变为完成时写入，重新打开时清除。defineTool 在 execute 前做参数/枚举校验。
+
+### 3.1 账本按年份分片预案（未实施）
+
+当前继续使用单一 `$DSH_HOME/calendar/ledger-v1.json`。当账本增长到单文件写入或启动加载开始可感知时，再考虑按年份分片；目前不为 82KB 级别的账本提前引入跨文件一致性。
+
+目标结构：
+
+```text
+$DSH_HOME/calendar/
+  index-v2.json          # 全局 revision、时区、锁/幂等元数据、taskId → 分片定位
+  ledger-2025.json       # 任务分片
+  ledger-2026.json
+  ledger-2027.json
+  ledger.lock            # 全局锁
+```
+
+约定与边界：
+
+- 任务的 canonical 分片按 Host 本地时区下的 `startAt` 年份归属，不能按 UTC 直接切年。
+- 跨年任务仍只保存一份；按 `scheduled` 查询时要检查相邻年份分片。
+- `completed`、`created`、`updated`、`executed` 查询不能只看 `startAt` 年份，需要索引中的时间元数据定位候选分片。
+- 重复模板与物化副本可以跨年份；修改模板、取消系列、同步副本时必须在全局锁下完成跨文件事务。
+- Host 启动不能只加载当前年份，还要从索引加载旧年份中仍有 `nextRunAt` 或未结算 execution 的 active 任务。
+- 跨年份移动任务、分片写入和全局索引更新采用临时文件 + 校验 + 最后替换索引；失败时保留旧文件可重试。
+
+迁移方案：取得现有 ledger lock → 读取旧 `ledger-v1.json` → 按本地年份拆分 → 临时写入各年分片 → 校验任务 ID/数量、调度、执行记录和 revision → 原子写入索引 → 保留旧 JSON 作为回退备份。迁移是一次性 `O(任务数)` 操作，不删除旧数据直到新格式验证通过。
 
 ## 4. 协议（protocol.ts）
 

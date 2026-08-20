@@ -4,7 +4,7 @@
  */
 import type { calendarClientController } from '../controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { isTaskOverdue, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
+import { isTaskOverdue, isTaskVisibleInOverview, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
@@ -33,7 +33,10 @@ function bucket(task: TaskRecord, now: number): Bucket {
 export function AgendaPanel({ controller }: AgendaPanelProps) {
   const snap = controller.getSnapshot()
   const now = Date.now()
-  const collapsed = collapseRepeatSeries(snap.snapshot.tasks, 'oldest')
+  const collapsed = collapseRepeatSeries(
+    snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskVisibleInOverview(task, now)),
+    'oldest',
+  )
   const groups: Array<{ key: Bucket; label: string; tasks: TaskRecord[] }> = [
     { key: 'overdue', label: t('agenda.overdue'), tasks: [] },
     { key: 'today', label: t('agenda.today'), tasks: [] },
@@ -41,7 +44,6 @@ export function AgendaPanel({ controller }: AgendaPanelProps) {
     { key: 'done', label: t('agenda.done'), tasks: [] },
   ]
   for (const task of collapsed) {
-    if (task.archivedAt !== undefined) continue
     const b = bucket(task, now)
     const g = groups.find(g => g.key === b)!
     g.tasks.push(task)

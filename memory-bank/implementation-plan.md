@@ -44,7 +44,7 @@ Host cron + 到期触发（只接受后滚动）+ 重启对账 + SSE 广播 + v1
 
 ### M7（新增，用户提出）日历 Tool 集成 ✅ 已完成
 把日历暴露为供对话中 LLM 直接调用的 **tool**：通过 dsh 的 tool 机制（`ctx.tools.register` + `defineTool`），让 agent 在对话里「创建 / 删除 / 修改 / 查询」任务（含子任务与执行钉子）。Host 半边把 tool 调用映射到同一 HostLedger.apply，保证与 UI 同一份账本与幂等。
-**验收**：✅ host-tool 测试（建/查/列/改/象限/完成/子任务/定时/归档恢复删除/run/非法输入枚举拒绝）；含 schedule/repeat 的输出通过 lossless JSON 回归校验；tool schema 齐全、文档化；当前全量 218 单测全绿。
+**验收**：✅ host-tool/runner/scheduler/store/tasks 测试（建/查/列/时间与状态过滤/session、project、model、LLM 参与度过滤/改/象限/完成/子任务/定时/归档恢复删除/run/非法输入枚举拒绝）；含 schedule/repeat 的输出通过 lossless JSON 回归校验；tool schema 齐全、文档化；查询结果区分 `scheduled`/`autoRun`，按时间窗返回 executions 并保留总数，执行记录带 `triggeredBy`。
 
 ## 验证矩阵
 - 单元：calendar/schedule/tasks/store（纯函数）

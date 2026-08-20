@@ -19,7 +19,7 @@
  * functions are injectable so start/dispose are testable without real
  * intervals.
  */
-import type { TaskRecord } from './core/tasks.ts'
+import type { ExecutionTrigger, TaskRecord } from './core/tasks.ts'
 import { REPEAT_HORIZON_DAYS } from './core/repeat.ts'
 
 /** The narrow ledger face the scheduler needs. */
@@ -32,7 +32,7 @@ export interface SchedulerLedgerFace {
 
 /** The narrow runner face the scheduler calls. */
 export interface SchedulerRunnerFace {
-  run(taskId: string): Promise<{ accepted: boolean; settleFinished?: Promise<void> }>
+  run(taskId: string, triggeredBy?: ExecutionTrigger): Promise<{ accepted: boolean; settleFinished?: Promise<void> }>
   reconcile(taskId: string): Promise<boolean>
 }
 
@@ -116,7 +116,7 @@ export class HostScheduleService {
       // them onto their dates. One-shots fire at their due instant.
       const due = schedule.nextRunAt
       if (due === undefined || due > now) continue
-      const result = await this.runner.run(task.id)
+      const result = await this.runner.run(task.id, 'schedule')
       if (result.accepted) this.ledger.advanceSchedule(task.id, undefined, now)
     }
     this.ledger.materializeRepeats(now, REPEAT_HORIZON_DAYS)

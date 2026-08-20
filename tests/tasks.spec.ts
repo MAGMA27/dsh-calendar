@@ -4,7 +4,7 @@ import {
   completedSubtaskCount, createTask,
   deleteTask, quadrantOf, removeSubtask, restoreTask, setQuadrant, setSchedule,
   setSubtaskDone, setTaskDone, settleExecution, startExecution, subtaskProgress,
-  isTaskOverdue, taskTriggersAgent, updateTask, type NewTaskInput, type TaskRecord,
+  isTaskOverdue, isTaskVisibleInOverview, taskTriggersAgent, updateTask, type NewTaskInput, type TaskRecord,
 } from '../src/core/tasks.ts'
 
 function baseInput(over: Partial<NewTaskInput> = {}): NewTaskInput {
@@ -73,6 +73,21 @@ describe('update / subtasks', () => {
   it('setDone toggles the flag', () => {
     const [u] = setTaskDone([one()], 't1', true, 6)
     expect(u.done).toBe(true)
+    expect(u.completedAt).toBe(6)
+    const [reopened] = setTaskDone([u], 't1', false, 7)
+    expect(reopened.done).toBe(false)
+    expect(reopened.completedAt).toBeUndefined()
+  })
+  it('preserves the original completion time when setting an already done task', () => {
+    const [done] = setTaskDone([one()], 't1', true, 6)
+    const [again] = setTaskDone([done], 't1', true, 7)
+    expect(again.completedAt).toBe(6)
+  })
+  it('tracks completion time through update patches', () => {
+    const [done] = updateTask([one()], 't1', { done: true }, 8)
+    expect(done.completedAt).toBe(8)
+    const [reopened] = updateTask([done], 't1', { done: false }, 9)
+    expect(reopened.completedAt).toBeUndefined()
   })
 })
 
@@ -103,12 +118,18 @@ describe('execution lifecycle', () => {
     const t = one()
     const { task, execution } = startExecution(t, 10, 'e1')
     expect(task.executions.length).toBe(1)
+    expect(execution.triggeredBy).toBe('manual')
     expect(execution.endedAt).toBeUndefined()
     const withSession = attachExecutionSession(task, 'e1', 'sess-1', 11)
     expect(withSession.executions[0].sessionId).toBe('sess-1')
     const settled = settleExecution(withSession, 'e1', 'succeeded', 12, undefined)
     expect(settled.executions[0].result).toBe('succeeded')
     expect(settled.executions[0].endedAt).toBe(12)
+  })
+
+  it('preserves the scheduler source when an execution is opened by Host scheduling', () => {
+    const { execution } = startExecution(one(), 10, 'e1', 'schedule')
+    expect(execution.triggeredBy).toBe('schedule')
   })
 })
 
@@ -167,6 +188,20 @@ describe('isTaskOverdue', () => {
     expect(isTaskOverdue({ startAt: yesterday, done: false }, now)).toBe(true)
     expect(isTaskOverdue({ startAt: yesterday, done: true }, now)).toBe(false)
     expect(isTaskOverdue({ startAt: today, done: false }, now)).toBe(false)
+  })
+})
+
+describe('isTaskVisibleInOverview', () => {
+  it('keeps unfinished tasks but only keeps completed tasks scheduled today', () => {
+    const now = new Date(2026, 7, 20, 12, 0).getTime()
+    const today = new Date(2026, 7, 20, 9, 0).getTime()
+    const yesterday = new Date(2026, 7, 19, 9, 0).getTime()
+    const tomorrow = new Date(2026, 7, 21, 9, 0).getTime()
+    expect(isTaskVisibleInOverview({ startAt: yesterday, done: false }, now)).toBe(true)
+    expect(isTaskVisibleInOverview({ startAt: tomorrow, done: false }, now)).toBe(true)
+    expect(isTaskVisibleInOverview({ startAt: today, done: true }, now)).toBe(true)
+    expect(isTaskVisibleInOverview({ startAt: yesterday, done: true }, now)).toBe(false)
+    expect(isTaskVisibleInOverview({ startAt: tomorrow, done: true }, now)).toBe(false)
   })
 })
 

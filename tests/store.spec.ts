@@ -11,8 +11,9 @@ describe('parseTasks', () => {
     const tasks = parseTasks(JSON.stringify([{
       id: 't1', title: 'Hi', description: '', prompt: '', startAt: 1, endAt: 2,
       createdAt: 1, updatedAt: 1, urgency: 'nonsense', importance: 'low',
+      done: true, completedAt: 9,
       subtasks: [{ id: 's1', title: 'sub', done: true }, { id: 'bad' }],
-      executions: [{ id: 'e1', startedAt: 5, result: 'succeeded' }, { id: 'e2', startedAt: 6, result: 'failed' }],
+      executions: [{ id: 'e1', startedAt: 5, result: 'succeeded', triggeredBy: 'schedule' }, { id: 'e2', startedAt: 6, result: 'failed' }],
       workspaceId: '  w  ',
     }]))
     expect(tasks.length).toBe(1)
@@ -21,6 +22,9 @@ describe('parseTasks', () => {
     expect(t.importance).toBe('low')
     expect(t.subtasks.length).toBe(1) // bad subtask dropped
     expect(t.executions.length).toBe(2)
+    expect(t.executions[0].triggeredBy).toBe('schedule')
+    expect(t.executions[1].triggeredBy).toBeUndefined()
+    expect(t.completedAt).toBe(9)
     expect(t.workspaceId).toBe('w')
     expect(t.archivedAt).toBeUndefined()
   })

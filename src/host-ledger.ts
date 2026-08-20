@@ -18,7 +18,7 @@ import { randomId, SCHEMA_VERSION, type calendarAction, type calendarActionResul
 import {
   addSubtask, archiveTask, attachExecutionSession, createTask,
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
-  setTaskDone, settleExecution, startExecution, updateTask, type TaskRecord, type TaskUpdatePatch,
+  setTaskDone, settleExecution, startExecution, updateTask, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
 import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isValidRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
 import { addDays, dayKey, minutesOfDay } from './core/calendar.ts'
@@ -234,13 +234,13 @@ export class HostLedger {
    * execution. Appends the running record, bumps the revision, persists, and
    * notifies the browser so the view shows the run as started.
    */
-  openExecution(taskId: string, executionId: string, now: number): boolean {
+  openExecution(taskId: string, executionId: string, now: number, triggeredBy: ExecutionTrigger = 'manual'): boolean {
     const task = this.taskById(taskId)
     if (task === undefined) return false
     if (task.executions.some(e => e.endedAt === undefined)) return false
     this.state.tasks = this.state.tasks.map(t => {
       if (t.id !== taskId) return t
-      return startExecution(t, now, executionId).task
+      return startExecution(t, now, executionId, triggeredBy).task
     })
     this.commit()
     return true

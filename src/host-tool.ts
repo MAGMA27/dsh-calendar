@@ -13,10 +13,15 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { randomId } from './protocol.ts'
 import type { calendarAction, calendarActionEnvelope } from './protocol.ts'
-import type { NewTaskInput, TaskRecord } from './core/tasks.ts'
+import { taskTriggersAgent, type ExecutionRecord, type NewTaskInput, type TaskRecord } from './core/tasks.ts'
 import type { HostLedger } from './host-ledger.ts'
 
 const ACTIONS = ['create','get','list','update','setQuadrant','setDone','addSubtask','setSubtaskDone','removeSubtask','setSchedule','delete','archive','restore','run'] as const
+const LIST_DATE_FIELDS = ['scheduled', 'completed', 'created', 'updated', 'executed'] as const
+const LLM_FILTERS = ['any', 'only', 'none'] as const
+
+type ListDateField = (typeof LIST_DATE_FIELDS)[number]
+type LlmFilter = (typeof LLM_FILTERS)[number]
 
 const parameters = {
   action: { type: 'string', enum: [...ACTIONS], required: true, description: 'Which calendar operation to run.' },
@@ -26,14 +31,18 @@ const parameters = {
   prompt: { type: 'string', description: 'Instruction sent to the agent when run (create/update).' },
   startAt: { type: 'integer', description: 'Start ms epoch (create/update).' },
   endAt: { type: 'integer', description: 'End ms epoch (create/update).' },
+  fromAt: { type: 'integer', description: 'Lower bound ms epoch, inclusive (list query).' },
+  toAt: { type: 'integer', description: 'Upper bound ms epoch, exclusive (list query).' },
+  dateBy: { type: 'string', enum: [...LIST_DATE_FIELDS], description: 'Which task activity the list time range matches: scheduled block, completedAt, createdAt, updatedAt, or execution interval (list query; default scheduled).' },
   urgency: { type: 'string', enum: ['high','medium','low'], description: 'Eisenhower urgency (create/setQuadrant).' },
   importance: { type: 'string', enum: ['high','medium','low'], description: 'Eisenhower importance (create/setQuadrant).' },
-  done: { type: 'boolean', description: 'Done flag (setDone/setSubtaskDone/update).' },
+  done: { type: 'boolean', description: 'Done flag (setDone/setSubtaskDone/update) or completion filter (list).' },
   subtaskId: { type: 'string', description: 'Subtask id (add/setDone/removeSubtask).' },
-  workspaceId: { type: 'string', description: 'Execution target workspace (create/update).' },
-  sessionId: { type: 'string', description: 'Execution target session (create/update).' },
-  provider: { type: 'string', description: 'LLM provider pin (create/update).' },
-  model: { type: 'string', description: 'LLM model pin (create/update).' },
+  workspaceId: { type: 'string', description: 'Project/workspace id (list filter or execution target create/update).' },
+  sessionId: { type: 'string', description: 'Pinned or actual execution session (list filter or execution target create/update).' },
+  provider: { type: 'string', description: 'LLM provider filter/pin (list or create/update).' },
+  model: { type: 'string', description: 'LLM model filter/pin (list or create/update).' },
+  llm: { type: 'string', enum: [...LLM_FILTERS], description: 'LLM involvement filter (list): any, only tasks with LLM configuration/execution, or none for tasks assigned to yourself.' },
   mode: { type: 'string', description: 'Agent preset pin (create/update).' },
   permission: { type: 'string', enum: ['read-only','workspace-write','danger-full-access'], description: 'Permission preset (create/update).' },
   repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the Host copies the task onto each matching date (setSchedule).' },
@@ -88,20 +97,150 @@ function scheduleSummary(schedule: TaskRecord['schedule']): Record<string, unkno
   }
 }
 
-function taskSummary(task: TaskRecord): Record<string, unknown> {
+function executionSummary(execution: ExecutionRecord): Record<string, unknown> {
   return {
-    id: task.id, title: task.title, done: task.done, startAt: task.startAt, endAt: task.endAt,
+    id: execution.id,
+    triggeredBy: execution.triggeredBy ?? null,
+    sessionId: execution.sessionId ?? null,
+    startedAt: execution.startedAt,
+    endedAt: execution.endedAt ?? null,
+    result: execution.result ?? null,
+    ...(execution.error !== undefined ? { error: execution.error } : {}),
+  }
+}
+
+/** Whether a task has been configured for, scheduled for, or actually used with an LLM. */
+function hasLlmParticipation(task: TaskRecord): boolean {
+  return task.prompt.trim() !== ''
+    || task.executions.length > 0
+    || taskTriggersAgent(task)
+    || task.sessionId !== undefined
+    || task.provider !== undefined
+    || task.model !== undefined
+    || task.reasoningEffort !== undefined
+    || task.mode !== undefined
+    || task.permission !== undefined
+}
+
+interface ExecutionRange {
+  fromAt?: number
+  toAt?: number
+}
+
+function taskSummary(task: TaskRecord, executionRange?: ExecutionRange): Record<string, unknown> {
+  const executions = executionRange === undefined
+    ? task.executions
+    : task.executions.filter(execution => intervalOverlaps(execution.startedAt, execution.endedAt, executionRange.fromAt, executionRange.toAt))
+  return {
+    id: task.id, title: task.title, description: task.description, prompt: task.prompt,
+    done: task.done, completedAt: task.completedAt ?? null, startAt: task.startAt, endAt: task.endAt,
+    createdAt: task.createdAt, updatedAt: task.updatedAt,
     urgency: task.urgency, importance: task.importance, provider: task.provider ?? null, model: task.model ?? null,
     workspaceId: task.workspaceId ?? null, sessionId: task.sessionId ?? null, schedule: scheduleSummary(task.schedule),
+    scheduled: task.schedule?.enabled === true,
+    autoRun: taskTriggersAgent(task),
+    hasLlm: hasLlmParticipation(task),
+    executionCount: executions.length,
+    totalExecutionCount: task.executions.length,
+    executions: executions.map(executionSummary),
     subtasks: task.subtasks.map(s => ({ id: s.id, title: s.title, done: s.done })),
   }
+}
+
+interface ListQuery {
+  fromAt?: number
+  toAt?: number
+  dateBy: ListDateField
+  done?: boolean
+  sessionId?: string
+  workspaceId?: string
+  provider?: string
+  model?: string
+  llm: LlmFilter
+}
+
+function integer(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) ? value : undefined
+}
+
+function parseListQuery(a: Record<string, unknown>): ListQuery | string {
+  const rawFrom = a.fromAt
+  const rawTo = a.toAt
+  const fromAt = integer(rawFrom)
+  const toAt = integer(rawTo)
+  if (rawFrom !== undefined && fromAt === undefined) return 'fromAt must be an integer ms epoch'
+  if (rawTo !== undefined && toAt === undefined) return 'toAt must be an integer ms epoch'
+  if (fromAt !== undefined && toAt !== undefined && fromAt >= toAt) return 'toAt must be greater than fromAt'
+
+  const dateBy = a.dateBy === undefined ? 'scheduled' : a.dateBy
+  if (typeof dateBy !== 'string' || !(LIST_DATE_FIELDS as readonly string[]).includes(dateBy)) {
+    return `dateBy must be one of: ${LIST_DATE_FIELDS.join(', ')}`
+  }
+  const llm = a.llm === undefined ? 'any' : a.llm
+  if (typeof llm !== 'string' || !(LLM_FILTERS as readonly string[]).includes(llm)) {
+    return `llm must be one of: ${LLM_FILTERS.join(', ')}`
+  }
+  const done = typeof a.done === 'boolean' ? a.done : undefined
+  return {
+    fromAt,
+    toAt,
+    dateBy: dateBy as ListDateField,
+    done,
+    sessionId: typeof a.sessionId === 'string' && a.sessionId.trim() !== '' ? a.sessionId.trim() : undefined,
+    workspaceId: typeof a.workspaceId === 'string' && a.workspaceId.trim() !== '' ? a.workspaceId.trim() : undefined,
+    provider: typeof a.provider === 'string' && a.provider.trim() !== '' ? a.provider.trim() : undefined,
+    model: typeof a.model === 'string' && a.model.trim() !== '' ? a.model.trim() : undefined,
+    llm: llm as LlmFilter,
+  }
+}
+
+function pointInRange(value: number | undefined, fromAt: number | undefined, toAt: number | undefined): boolean {
+  if (value === undefined) return false
+  return (fromAt === undefined || value >= fromAt) && (toAt === undefined || value < toAt)
+}
+
+function intervalOverlaps(startAt: number, endAt: number | undefined, fromAt: number | undefined, toAt: number | undefined): boolean {
+  if (toAt !== undefined && startAt >= toAt) return false
+  if (fromAt !== undefined && endAt !== undefined && endAt <= fromAt) return false
+  return true
+}
+
+function matchesDateQuery(task: TaskRecord, query: ListQuery): boolean {
+  if (query.fromAt === undefined && query.toAt === undefined) return true
+  switch (query.dateBy) {
+    case 'scheduled':
+      return intervalOverlaps(task.startAt, task.endAt, query.fromAt, query.toAt)
+    case 'completed':
+      return pointInRange(task.completedAt, query.fromAt, query.toAt)
+    case 'created':
+      return pointInRange(task.createdAt, query.fromAt, query.toAt)
+    case 'updated':
+      return pointInRange(task.updatedAt, query.fromAt, query.toAt)
+    case 'executed':
+      return task.executions.some(execution => intervalOverlaps(execution.startedAt, execution.endedAt, query.fromAt, query.toAt))
+  }
+}
+
+function matchesListQuery(task: TaskRecord, query: ListQuery): boolean {
+  if (!matchesDateQuery(task, query)) return false
+  if (query.done !== undefined && task.done !== query.done) return false
+  if (query.sessionId !== undefined
+    && task.sessionId !== query.sessionId
+    && !task.executions.some(execution => execution.sessionId === query.sessionId
+      && intervalOverlaps(execution.startedAt, execution.endedAt, query.fromAt, query.toAt))) return false
+  if (query.workspaceId !== undefined && task.workspaceId !== query.workspaceId) return false
+  if (query.provider !== undefined && task.provider !== query.provider) return false
+  if (query.model !== undefined && task.model !== query.model) return false
+  if (query.llm === 'only' && !hasLlmParticipation(task)) return false
+  if (query.llm === 'none' && hasLlmParticipation(task)) return false
+  return true
 }
 
 /** Define the model-callable calendar tool. */
 export function defineCalendarTool(deps: CalendarToolDeps) {
   return defineTool({
     name: 'calendar_task',
-    description: 'Manage calendar todo tasks: create, list, get, update, set Eisenhower urgency/importance, mark done, manage subtasks, set a daily/weekly repeat (the task is copied onto each matching date) or a one-off due schedule, archive/restore/delete, or trigger a real run. Times are ms epochs. Same authoritative ledger as the calendar view.',
+    description: 'Manage calendar todo tasks: create, list, get, update, set Eisenhower urgency/importance, mark done, manage subtasks, set a daily/weekly repeat (the task is copied onto each matching date) or a one-off due schedule, archive/restore/delete, or trigger a real run. A schedule without triggerAgent is a reminder/materialization only; the task summary field autoRun is true only when the Host will actually trigger an Agent. Times are ms epochs. Same authoritative ledger as the calendar view.',
     parameters,
     output: {
       schema: { type: 'json' },
@@ -149,8 +288,14 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>): Promi
     case 'get':
       if (id === undefined) return { ok: false, error: 'id is required for get' }
       { const t = ledger.taskById(id); return t === undefined ? { ok: false, error: 'task not found' } : { ok: true, task: taskSummary(t) } }
-    case 'list':
-      return { ok: true, tasks: ledger.getSnapshot().tasks.map(taskSummary) }
+    case 'list': {
+      const parsed = parseListQuery(a)
+      if (typeof parsed === 'string') return { ok: false, error: parsed }
+      const executionRange = parsed.fromAt === undefined && parsed.toAt === undefined
+        ? undefined
+        : { fromAt: parsed.fromAt, toAt: parsed.toAt }
+      return { ok: true, tasks: ledger.getSnapshot().tasks.filter(task => matchesListQuery(task, parsed)).map(task => taskSummary(task, executionRange)) }
+    }
     case 'update':
       if (id === undefined) return { ok: false, error: 'id is required for update' }
       {

@@ -40,4 +40,4 @@ M0–M6 已完成：日历 UI / 任务编辑 / 真实执行（host-runner）/ Ho
 `node scripts/dsh-calendar.js status|mount|unmount [--profile P]`
 
 ## 日历 Tool（M7）
-`calendar_task`：对话中 LLM 可直接建/查/改/删任务、管理子任务、设置每日/每周重复或一次到时、钉执行钉子或触发真实 run，与日历视图共享同一 authoritative ledger（HostLedger.apply，request-id 幂等）。工具返回的任务摘要会将 schedule/repeat 的可选字段规范化为严格 JSON，带重复规则的任务也可以正常 list/get。依赖 `@deepseek-ai/dsh-tools`。
+`calendar_task`：对话中 LLM 可直接建/查/改/删任务、管理子任务、设置每日/每周重复或一次到时、钉执行钉子或触发真实 run，与日历视图共享同一 authoritative ledger（HostLedger.apply，request-id 幂等）。`list` 支持 `fromAt/toAt` 时间范围（半开区间）、`dateBy`（scheduled/completed/created/updated/executed）、完成状态、session、project/workspace、provider/model 和 `llm`（any/only/none）过滤；结果包含 `completedAt`、`scheduled`、`autoRun`、`hasLlm` 与执行记录，便于查询今日安排、今日完成和指定会话/模型的工作。`scheduled=true` 只表示启用了日历调度；`autoRun=true` 才表示到点会实际触发 Agent，因此普通重复提醒可以是 `scheduled=true, autoRun=false`。带 `fromAt/toAt` 的 `list` 只返回时间窗内的 executions，同时用 `executionCount/totalExecutionCount` 区分窗口结果与历史总数；每条记录的 `triggeredBy` 标记 `manual` 或 `schedule`，旧记录可能为 `null`。`llm:none` 表示没有 Prompt、执行记录、Agent 触发或执行钉子，是布置给自己的任务。工具返回的任务摘要会将 schedule/repeat 的可选字段规范化为严格 JSON，带重复规则的任务也可以正常 list/get。依赖 `@deepseek-ai/dsh-tools`。

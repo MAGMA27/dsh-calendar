@@ -90,8 +90,10 @@ function normalizeExecution(value: unknown): ExecutionRecord | undefined {
   const r = value as Record<string, unknown>
   if (typeof r.id !== 'string' || r.id === '' || typeof r.startedAt !== 'number') return undefined
   const result = normalizeEnum(r.result, ['succeeded', 'failed', 'cancelled'])
+  const triggeredBy = normalizeEnum(r.triggeredBy, ['manual', 'schedule'])
   return {
     id: r.id,
+    triggeredBy,
     sessionId: typeof r.sessionId === 'string' ? r.sessionId : undefined,
     startedAt: r.startedAt,
     endedAt: typeof r.endedAt === 'number' ? r.endedAt : undefined,
@@ -139,6 +141,7 @@ export function parseTasks(raw: string | null): TaskRecord[] {
       urgency: normalizeEnum(row.urgency, ['high', 'medium', 'low']) ?? 'medium',
       importance: normalizeEnum(row.importance, ['high', 'medium', 'low']) ?? 'medium',
       done: row.done === true,
+      completedAt: row.done === true && typeof row.completedAt === 'number' ? row.completedAt : undefined,
       subtasks,
       executions,
       schedule,

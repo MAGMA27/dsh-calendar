@@ -10,7 +10,7 @@
 ## 0. 基线（每次改动后必跑）
 - [x] `pnpm typecheck` 通过
 - [x] `pnpm build` 通过（产出 lib/index.js 与 lib/client.js）
-- [x] `pnpm test` 全绿 = **218 单测**（vitest run，24 个测试文件）
+- [x] `pnpm test` 全绿 = **222 单测**（vitest run，24 个测试文件）
 - [x] 工作树 git 干净，提交信息遵循 Conventional Commits
 
 ## 1. 挂载 / 生效 / 数据位置
@@ -28,8 +28,8 @@
 - [x] 任务详情页可编辑开始日期、固定 15 分钟时间选项和持续时间；持续时间输入自动吸附到最近的 15 分钟档位且上限 24 小时；普通任务可跨周、跨日移动，重复任务沿用时间修改确认
 - [x] 周/月视图已完成任务与未完成任务有明确视觉区分（灰化、降低透明度、虚线边框、删除线）
 - [x] 周/月视图「今天」按钮可用；矩阵/议程视图正确分组（含「已完成」组）
-- [x] 矩阵任务卡显示日期；重复系列取最旧未完成项，过期项显示红色「已过期」标记
-- [x] 议程重复系列按最旧未完成项正确归入「已过期 / 今天 / 近期」
+- [x] 矩阵任务卡显示日期；重复系列取最旧未完成项，过期项显示红色「已过期」标记；未完成项保留，已完成项仅显示任务日期为今天的内容
+- [x] 议程重复系列按最旧未完成项正确归入「已过期 / 今天 / 近期」；未完成过期项保留，非今日已完成项隐藏
 - [x] 主任务挂**子任务**：添加/勾选完成/删除 + 进度汇总
 - [x] **艾森豪威尔矩阵**四象限显示 + 象限间**拖拽改紧急/重要**
 - [x] 详情面板：改标题/描述/Prompt、象限 knobs、定时（受限重复：每日/每周 + 跳过节假日，或一次到时 + 下次运行显示）、保存
@@ -61,6 +61,7 @@
 - [ ] Host 已注册 calendar_task tool（ctx.tools.register），命令区/对话中 agent 可见 schema
 - [ ] 对话里让 agent（或用户指令）**创建任务** → 日历视图即时出现（账本同步）
 - [ ] 查（list/get）、改（update/优先级/完成）、**子任务**增改删、**定时**（每日/每周重复或一次到时）
+- [x] `list` 支持 `fromAt/toAt` + `dateBy`（scheduled/completed/created/updated/executed）、done、session、project/workspace、provider/model 和 `llm:any|only|none` 过滤；结果包含 `completedAt`，并区分 `scheduled`/`autoRun`，按查询时间窗返回 executions、总数和 `triggeredBy` 来源
 - [x] tool 返回值通过 lossless JSON 边界：含 schedule/repeat 的 `list/get` 不再因 `undefined` 字段失败（`tests/host-tool.spec.ts`）
 - [ ] 执行钉子（provider/model/预设/权限）随 create/update 生效
 - [ ] `run` 触发真实执行（经 host-runner）

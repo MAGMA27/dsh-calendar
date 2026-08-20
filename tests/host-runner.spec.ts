@@ -223,6 +223,14 @@ describe('HostExecutionRunner', () => {
     expect(ex.error).toContain('no live agent')
   })
 
+  it('records a scheduler-triggered execution separately from a manual run', async () => {
+    const { ledger, id } = mkLedger({ model: undefined })
+    const { env, gates } = makeHarness()
+    const result = await mkRunner(ledger, env, gates).run(id, 'schedule')
+    expect(result.accepted).toBe(true)
+    expect(ledger.taskById(id)!.executions[0].triggeredBy).toBe('schedule')
+  })
+
   it('settles failed when the task prompt is rejected', async () => {
     const { ledger, id } = mkLedger()
     // make the *second* prompt (the real one) fail: first is not a permission cmd

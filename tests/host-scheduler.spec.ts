@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { HostScheduleService, type HostSchedulerTimers, type SchedulerLedgerFace, type SchedulerRunnerFace } from '../src/host-scheduler.ts'
-import type { TaskRecord } from '../src/core/tasks.ts'
+import type { ExecutionTrigger, TaskRecord } from '../src/core/tasks.ts'
 
 function mkTask(p: Partial<TaskRecord> & { id: string }): TaskRecord {
   return { title: 'T', description: '', prompt: '', startAt: 0, endAt: 1000, urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [], createdAt: 0, updatedAt: 0, ...p } as TaskRecord
@@ -22,22 +22,24 @@ function fakeLedger(tasks: TaskRecord[]) {
 }
 function fakeRunner(accept: boolean) {
   const runs: string[] = []
+  const triggers: Array<ExecutionTrigger | undefined> = []
   const reconciles: string[] = []
   const face: SchedulerRunnerFace = {
-    run: async (id: string) => { runs.push(id); return { accepted: accept } },
+    run: async (id: string, triggeredBy?: ExecutionTrigger) => { runs.push(id); triggers.push(triggeredBy); return { accepted: accept } },
     reconcile: async (id: string) => { reconciles.push(id); return true },
   }
-  return { face, runs, reconciles }
+  return { face, runs, triggers, reconciles }
 }
 
 describe('HostScheduleService', () => {
   it('fires a due one-shot and advances it to undefined (schedule cleared after acceptance)', async () => {
     const t = mkTask({ id: 'a', schedule: { enabled: true, dueAt: 900, nextRunAt: 1000 } })
     const { face, advanced } = fakeLedger([t])
-    const { face: runner, runs } = fakeRunner(true)
+    const { face: runner, runs, triggers } = fakeRunner(true)
     const s = new HostScheduleService(face, runner, { now: () => 2000 })
     await s.tick()
     expect(runs).toEqual(['a'])
+    expect(triggers).toEqual(['schedule'])
     expect(advanced).toHaveLength(1)
     expect(advanced[0].id).toBe('a')
     expect(advanced[0].next).toBeUndefined()

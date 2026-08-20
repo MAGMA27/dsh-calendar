@@ -3,9 +3,14 @@
 > ✏️ **2026 重命名记录**：包名/代码/文档统一由 `dsh-calender` 更正为 `dsh-calendar`（commit `970d53b`，51 文件）。仓库文件夹同步迁移到 **`D:\Dev\agents\dsh-calendar`（本份 memory-bank 即新目录内容，新会话请以它为工作区）**；旧 `dsh-calender` 目录因会话占用无法原位删除，会话结束后手动清除即可。账本数据已从 `~/.dsh/calender` 复制到 `~/.dsh/calendar`；profile 已卸载 `dsh-calender` 并重新挂载 `dsh-calendar`（`ui-calendar`），重启 dsh web 生效。localStorage 旧键 `dsh.calender.*` 已废弃（不触发重复导入）。
 
 ## 当前状态
-- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**218 单测全绿**（24 文件）。**定时模型已从自由 cron 重构为「受限重复规则（每日/每周 + 跳过节假日，物化副本 + 模板同步 + 可选触发 Agent）+ 一次性到时」**（见文末三节）。
+- **阶段**：**M0–M7 全部完成并通过测试**，经历 9 轮验收反馈与 M4–M7（真实执行 / Host 定时调度 / 完善 / 日历 Tool）及 M7 后多轮 UI 迭代与分支 `feature/calendar-slot-view` 修复落地；**227 单测全绿**（24 文件）。**定时模型已从自由 cron 重构为「受限重复规则（每日/每周 + 跳过节假日，物化副本 + 模板同步 + 可选触发 Agent）+ 一次性到时」**（见文末三节）。
 - 计划已批准（Host 权威架构）。
 - 📋 **验收清单见 [acceptance-checklist.md](memory-bank/acceptance-checklist.md)**：基线 / 挂载 / M0–M7 逐项 GUI 与 Host·工具行为验收。
+
+### 日历 Tool 查询增强（2026-08）
+- `calendar_task list` 支持时间范围 + `dateBy` 查询，以及 done、session、project/workspace、provider/model、LLM 参与度过滤。
+- 任务完成状态记录 `completedAt`；tool 摘要返回 `completedAt`、`hasLlm` 和规范化执行记录，支持查询今日完成、指定会话/模型工作和无 LLM 的个人任务。
+- 修正定时任务语义：`scheduled` 表示启用了日历调度，`autoRun` 才表示到点触发 Agent；普通重复提醒为 `scheduled=true, autoRun=false`。带时间范围的 list 只投影窗口内 executions，另给 `executionCount/totalExecutionCount`；新执行记录标记 `triggeredBy=manual|schedule`，旧记录保持 `null`，不会把历史执行次数冒充为今日执行。
 
 ## 已完成里程碑（均通过 ✓，已提交）
 | 里程碑 | 提交 | 验收 |
@@ -193,7 +198,13 @@
 - **复测修复（commit 本轮）**：弹窗里「取消这一天」此前只在副本**自带触发到时**时才显示，无触发的普通副本看不到。改为**任何绑定副本都显示**——带触发到时的副本清掉该到时（保留为普通任务）；普通副本则移除当天 occurrence（删除，日期不补回）。模板仍只提供「取消整个系列」。m3-ui +1（普通副本 →「这一天」→ 派发 delete）。**188 单测全绿**（24 文件）。
 
 ## 下一步
-全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 更多 tool 细化（如按日期范围查询）/ 进一步视觉打磨。
+全部里程碑（M0–M7）已完成，M7 后完成拼写重命名与多轮 UI/交互迭代。后续可按需：真实组合验收打勾 / 进一步视觉打磨 / **账本按年份分片存储预案**（见 `memory-bank/architecture.md` §3.1，当前未实施）。
+
+## 账本按年份分片预案（未实施）
+- 当前继续使用单一 `$DSH_HOME/calendar/ledger-v1.json`；在单文件大小和全量写入成本开始可感知前，不提前引入跨文件一致性。
+- 后续目标：`index-v2.json` + `ledger-YYYY.json` 分片；按 Host 本地时区的 `startAt` 归属，查询按 `dateBy` 和索引定位，旧年份按需加载。
+- 迁移必须在全局锁下完成：旧账本读取 → 按年临时写分片 → 校验任务/调度/执行记录 → 最后原子替换索引；旧 `ledger-v1.json` 保留为回退备份。
+- 重点风险：跨年任务、重复模板与副本跨年、旧年份 active 调度/执行、completed/executed 查询维度，以及跨文件移动的原子性。
 
 ## 交付挂载（需用户环境）
 `dsh plugin --profile web add link:D:\Dev\agents\dsh-calendar` → 重启 dsh web（页面刷新不够）。验证 `GET /api/calendar/state` + 侧边栏入口 + 中间列日历。
@@ -266,6 +277,9 @@
 - 矩阵任务卡补充本地日期；未完成且开始日期早于今天的任务显示红色边框和「已过期」徽标，完成任务不标过期。
 - 新增 `isTaskOverdue` 纯函数和矩阵/议程回归测试；当前基线为 **212 单测全绿**（24 文件），`pnpm typecheck` / `pnpm build` 已通过。
 - 本轮改动已获授权，按 Conventional Commits 提交。
+### 矩阵/议程完成项日期过滤（2026-08-20）
+- 矩阵和议程在折叠重复系列前过滤任务：所有未完成项（包括过期和未来）保留，已完成项仅保留任务日期为今天的内容；因此历史已完成项不会继续占据两个概览视图。
+- 新增 `isTaskVisibleInOverview` 纯函数与矩阵/议程 UI 回归测试；当前基线为 **227 单测全绿**（24 文件）。
 ### 周/月视图完成态视觉强化（2026-08-20）
 - 周视图 `TaskBlock` 和月视图 `taskChip` 统一暴露 `data-done`；已完成任务使用浅层背景、降低透明度、虚线边框和删除线，周视图时间一并弱化，左侧象限色保留。
 - 新增周/月完成态 UI 回归测试；当前验证基线为 **214 单测全绿**（24 文件），`pnpm typecheck` / `pnpm build` 已通过。

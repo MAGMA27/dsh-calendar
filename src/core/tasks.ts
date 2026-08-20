@@ -72,10 +72,15 @@ export interface SubtaskRecord {
   done: boolean
 }
 
+/** How an execution was started. Legacy records may not have this field. */
+export type ExecutionTrigger = 'manual' | 'schedule'
+
 /** One real execution attempt against a dsh session. */
 export interface ExecutionRecord {
   /** Execution attempt id. */
   id: string
+  /** Whether the run came from a user/tool request or the Host scheduler. */
+  triggeredBy?: ExecutionTrigger
   /** The dsh session that ran this attempt; filled once known. */
   sessionId?: string
   startedAt: number
@@ -125,6 +130,8 @@ export interface TaskRecord {
   urgency: Urgency
   importance: Importance
   done: boolean
+  /** When the task was most recently marked done; absent for unfinished/legacy tasks. */
+  completedAt?: number
   subtasks: SubtaskRecord[]
   executions: ExecutionRecord[]
   schedule?: ScheduleRule
@@ -235,6 +242,16 @@ export function isTaskOverdue(task: Pick<TaskRecord, 'startAt' | 'done'>, now: n
   return task.startAt < todayStart.getTime()
 }
 
+/** Keep all unfinished tasks (including overdue/future ones), but only keep completed tasks scheduled for today. */
+export function isTaskVisibleInOverview(task: Pick<TaskRecord, 'startAt' | 'done'>, now: number = Date.now()): boolean {
+  if (!task.done) return true
+  const todayStart = new Date(now)
+  todayStart.setHours(0, 0, 0, 0)
+  const tomorrowStart = new Date(todayStart)
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1)
+  return task.startAt >= todayStart.getTime() && task.startAt < tomorrowStart.getTime()
+}
+
 /**
  * Collapse a repeat series into a single representative row for list views
  * (matrix / agenda). A series is a template (schedule.repeat, no originTaskId)
@@ -335,7 +352,12 @@ export function updateTask(tasks: readonly TaskRecord[], id: string, patch: Task
     if (patch.allDay !== undefined) next.allDay = patch.allDay
     if (patch.urgency !== undefined && isUrgency(patch.urgency)) next.urgency = patch.urgency
     if (patch.importance !== undefined && isImportance(patch.importance)) next.importance = patch.importance
-    if (patch.done !== undefined) next.done = patch.done
+    if (patch.done !== undefined) {
+      next.done = patch.done
+      next.completedAt = patch.done
+        ? (task.done && task.completedAt !== undefined ? task.completedAt : now)
+        : undefined
+    }
     if (patch.workspaceId !== undefined) next.workspaceId = normalizeTargetId(patch.workspaceId ?? undefined)
     if (patch.sessionId !== undefined) next.sessionId = normalizeTargetId(patch.sessionId ?? undefined)
     if (patch.provider !== undefined) next.provider = normalizeTargetId(patch.provider ?? undefined)
@@ -356,7 +378,17 @@ export function setQuadrant(tasks: readonly TaskRecord[], id: string, urgency: U
 
 /** Toggle the task's done flag. */
 export function setTaskDone(tasks: readonly TaskRecord[], id: string, done: boolean, now: number): TaskRecord[] {
-  return tasks.map(task => task.id === id ? { ...task, done, updatedAt: now } : task)
+  return tasks.map(task => {
+    if (task.id !== id) return task
+    return {
+      ...task,
+      done,
+      completedAt: done
+        ? (task.done && task.completedAt !== undefined ? task.completedAt : now)
+        : undefined,
+      updatedAt: now,
+    }
+  })
 }
 
 /** Add an unduplicated subtask (blank titles dropped). */
@@ -471,8 +503,9 @@ export function setNextRun(
 /** Open a fresh execution: mark running and append an execution record. */
 export function startExecution(
   task: TaskRecord, now: number, executionId: string,
+  triggeredBy: ExecutionTrigger = 'manual',
 ): { task: TaskRecord; execution: ExecutionRecord } {
-  const execution: ExecutionRecord = { id: executionId, startedAt: now }
+  const execution: ExecutionRecord = { id: executionId, triggeredBy, startedAt: now }
   return {
     task: { ...task, executions: [...task.executions, execution], updatedAt: now },
     execution,

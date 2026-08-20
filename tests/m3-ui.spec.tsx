@@ -287,6 +287,34 @@ describe('Calendar completion styling', () => {
 })
 
 describe('MatrixPanel', () => {
+  it('hides completed tasks from other dates but keeps today and overdue tasks', async () => {
+    const day = (offset: number): number => {
+      const d = new Date()
+      d.setHours(9, 0, 0, 0)
+      d.setDate(d.getDate() + offset)
+      return d.getTime()
+    }
+    const oldDone = makeTask({ id: 'old-done', title: 'Done yesterday', startAt: day(-1), endAt: day(-1) + 60 * 60_000, done: true })
+    const todayDone = makeTask({ id: 'today-done', title: 'Done today', startAt: day(0), endAt: day(0) + 60 * 60_000, done: true })
+    const overdue = makeTask({ id: 'overdue', title: 'Still overdue', startAt: day(-2), endAt: day(-2) + 60 * 60_000 })
+    const controller = new calendarClientController(
+      new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [oldDone, todayDone, overdue], scheduler: { timeZone: 'Asia/Shanghai' } }),
+      initialState(0, 0),
+    )
+    await controller.start()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<MatrixPanel controller={controller} />) })
+
+    const text = host.querySelector('[data-dsh-calendar-matrix]')?.textContent ?? ''
+    expect(text).toContain(todayDone.title)
+    expect(text).toContain(overdue.title)
+    expect(text).not.toContain(oldDone.title)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
   it('shows the date of the oldest unfinished repeat occurrence', async () => {
     const day = (offset: number): number => {
       const d = new Date()
@@ -368,6 +396,35 @@ describe('MatrixPanel', () => {
 })
 
 describe('AgendaPanel', () => {
+  it('hides completed tasks from other dates but keeps today and overdue groups', async () => {
+    const day = (offset: number): number => {
+      const d = new Date()
+      d.setHours(9, 0, 0, 0)
+      d.setDate(d.getDate() + offset)
+      return d.getTime()
+    }
+    const oldDone = makeTask({ id: 'agenda-old-done', title: 'Done yesterday', startAt: day(-1), endAt: day(-1) + 60 * 60_000, done: true })
+    const todayDone = makeTask({ id: 'agenda-today-done', title: 'Done today', startAt: day(0), endAt: day(0) + 60 * 60_000, done: true })
+    const overdue = makeTask({ id: 'agenda-overdue', title: 'Still overdue', startAt: day(-2), endAt: day(-2) + 60 * 60_000 })
+    const controller = new calendarClientController(
+      new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [oldDone, todayDone, overdue], scheduler: { timeZone: 'Asia/Shanghai' } }),
+      initialState(0, 0),
+    )
+    await controller.start()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<AgendaPanel controller={controller} />) })
+
+    const doneText = host.querySelector('[data-group="done"]')?.textContent ?? ''
+    const overdueText = host.querySelector('[data-group="overdue"]')?.textContent ?? ''
+    expect(doneText).toContain(todayDone.title)
+    expect(doneText).not.toContain(oldDone.title)
+    expect(overdueText).toContain(overdue.title)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
   it('places the oldest unfinished repeat occurrence in today when it is today', async () => {
     const day = (offset: number): number => {
       const d = new Date()

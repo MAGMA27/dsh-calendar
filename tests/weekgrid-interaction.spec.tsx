@@ -79,7 +79,7 @@ describe('WeekGrid create-drag snapping', () => {
     return cells
   }
 
-  it('floors a drag-create: click at 9:50, drag to 10:20 -> draft 9:30-10:00', async () => {
+  it('floors the start, ceils the end: click at 9:50, drag to 10:20 -> draft 9:30-10:30', async () => {
     const now = new Date(2026, 0, 12, 8, 0, 0) // a Monday
     const transport = new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }, undefined)
     const controller = new calendarClientController(transport, initialState(now.getTime(), 0))
@@ -104,7 +104,7 @@ describe('WeekGrid create-drag snapping', () => {
     expect(draft).toBeDefined()
     expect(new Date(draft!.start).getMinutes()).toBe(30)   // floor(9:50) -> 9:30
     expect(new Date(draft!.start).getHours()).toBe(9)
-    expect(new Date(draft!.end).getMinutes()).toBe(0)      // floor(10:20) -> 10:00
+    expect(new Date(draft!.end).getMinutes()).toBe(30)     // ceil(10:20) -> 10:30
     expect(new Date(draft!.end).getHours()).toBe(10)
 
     await act(async () => { root.unmount(); host.remove() })

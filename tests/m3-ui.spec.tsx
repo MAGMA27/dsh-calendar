@@ -5,6 +5,7 @@ import { act } from 'react-dom/test-utils'
 import { calendarClientController, initialState } from '../src/client/controller.ts'
 import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
 import { TaskDetailPanel } from '../src/client/components/TaskDetailPanel.tsx'
+import { CreateTaskModal } from '../src/client/components/CreateTaskModal.tsx'
 import { ScheduleClearConfirm } from '../src/client/components/ScheduleClearConfirm.tsx'
 import { RepeatDeleteConfirm } from '../src/client/components/RepeatDeleteConfirm.tsx'
 import { MatrixPanel } from '../src/client/components/MatrixPanel.tsx'
@@ -45,7 +46,7 @@ function recordTransport(initial: calendarSnapshot) {
 }
 
 describe('TaskDetailPanel', () => {
-  it('toggles a subtask; archival and delete dispatch', async () => {
+  it('toggles a subtask and hides archive actions', async () => {
     const task = makeTask({ subtasks: [{ id: 's1', title: 'Step one', done: false }] })
     const { transport, dispatched } = recordTransport(snapshotWith(task))
     const controller = new calendarClientController(transport, initialState(0, 0))
@@ -59,10 +60,45 @@ describe('TaskDetailPanel', () => {
     // Simulate a user click by dispatching a native click (React listens on click for checkboxes).
     await act(async () => { (checks[0] as HTMLInputElement).click() })
     expect(dispatched.some(a => a.kind === 'setSubtaskDone')).toBe(true)
+    const footerButtons = [...host.querySelectorAll('[data-dsh-calendar-detail-footer] button')]
+    expect(footerButtons.some(button => /归档|恢复|Archive|Restore/.test(button.textContent ?? ''))).toBe(false)
+    const footerLabels = footerButtons.map(button => button.textContent?.trim())
+    expect(footerLabels.indexOf('删除')).toBeLessThan(footerLabels.indexOf('立即执行'))
 
-    // Archive button is present (task not archived).
-    const archiveBtn = [...host.querySelectorAll('button')].find(b => b.textContent === '归档' || b.textContent === 'Archive')
-    expect(archiveBtn).toBeTruthy()
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('confirms before deleting a one-off task', async () => {
+    const task = makeTask({ id: 'single', title: 'One-off task' })
+    const { transport, dispatched } = recordTransport(snapshotWith(task))
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    let closed = false
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={task} onClose={() => { closed = true }} />) })
+
+    const deleteButton = [...host.querySelectorAll('[data-dsh-calendar-detail-footer] button')]
+      .find(button => button.textContent === '删除' || button.textContent === 'Delete') as HTMLButtonElement | undefined
+    expect(deleteButton).toBeTruthy()
+    await act(async () => { deleteButton!.click() })
+    expect(dispatched.some(action => action.kind === 'delete')).toBe(false)
+    expect(host.querySelector('[data-dsh-calendar-confirm-dialog]')).toBeTruthy()
+    expect(host.textContent).toContain('一次性任务')
+
+    const cancel = [...host.querySelectorAll('[data-dsh-calendar-confirm-dialog] button')]
+      .find(button => button.textContent === '取消' || button.textContent === 'Cancel') as HTMLButtonElement | undefined
+    expect(cancel).toBeTruthy()
+    await act(async () => { cancel!.click() })
+    expect(host.querySelector('[data-dsh-calendar-confirm-dialog]')).toBeNull()
+    expect(dispatched.some(action => action.kind === 'delete')).toBe(false)
+
+    await act(async () => { deleteButton!.click() })
+    const confirm = host.querySelector('[data-dsh-calendar-confirm-action]') as HTMLButtonElement | null
+    expect(confirm).toBeTruthy()
+    await act(async () => { confirm!.click() })
+    expect(dispatched.some(action => action.kind === 'delete' && action.id === task.id)).toBe(true)
+    expect(closed).toBe(true)
 
     await act(async () => { root.unmount(); host.remove() })
   })
@@ -359,6 +395,107 @@ describe('TaskDetailPanel', () => {
   })
 })
 
+describe('CreateTaskModal', () => {
+  it('uses the compact detail layout for a week drag-created task', async () => {
+    const controller = new calendarClientController(
+      new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }),
+      initialState(0, 0),
+    )
+    await controller.start()
+    controller.setDraft({ start: 9 * 60 * 60_000, end: 10 * 60 * 60_000 })
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<CreateTaskModal controller={controller} onClose={() => {}} />) })
+
+    const modal = host.querySelector('[data-dsh-calendar-create]')
+    expect(modal).toBeTruthy()
+    expect(modal?.querySelector('[data-dsh-calendar-create-body]')).toBeTruthy()
+    expect(modal?.querySelectorAll('details')).toHaveLength(5)
+    expect(modal?.querySelector('[data-dsh-calendar-disclosure="content"]')).toBeTruthy()
+    expect(modal?.querySelector('[data-dsh-calendar-disclosure="execution"]')).toBeTruthy()
+    expect(modal?.textContent).toContain('创建')
+    expect([...modal?.querySelectorAll('button') ?? []].some(button => /关闭|Close/.test(button.textContent ?? ''))).toBe(false)
+    expect([...modal?.querySelectorAll('button') ?? []].some(button => /取消|Cancel/.test(button.textContent ?? ''))).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('submits edited date, start time, and duration instead of the drag draft', async () => {
+    const draftStart = new Date(2026, 7, 20, 9, 0).getTime()
+    const draftEnd = new Date(2026, 7, 20, 10, 0).getTime()
+    const { transport, dispatched } = recordTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } })
+    const controller = new calendarClientController(transport, initialState(draftStart, 0))
+    await controller.start()
+    controller.setDraft({ start: draftStart, end: draftEnd })
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<CreateTaskModal controller={controller} onClose={() => {}} />) })
+
+    const titleInput = host.querySelector('input[aria-label]') as HTMLInputElement
+    const startDateInput = host.querySelector('#dsh-calendar-new-task-start-date') as HTMLInputElement
+    const startTimeSelect = host.querySelector('#dsh-calendar-new-task-start-time') as HTMLSelectElement
+    const durationInput = host.querySelector('#dsh-calendar-new-task-duration') as HTMLInputElement
+    expect(titleInput).toBeTruthy()
+    expect(startDateInput).toBeTruthy()
+    expect(startTimeSelect).toBeTruthy()
+    expect(durationInput).toBeTruthy()
+
+    const nextStartDate = '2026-08-21'
+    const nextStartTime = '10:15'
+    const nextDuration = '90'
+    await act(async () => {
+      setInputValue(titleInput, 'Adjustable')
+      setInputValue(startDateInput, nextStartDate)
+      startTimeSelect.value = nextStartTime
+      startTimeSelect.dispatchEvent(new Event('change', { bubbles: true }))
+      setInputValue(durationInput, nextDuration)
+    })
+
+    const create = [...host.querySelectorAll('button')].find(b => b.textContent === '创建' || b.textContent === 'Create')
+    expect(create).toBeTruthy()
+    await act(async () => { create!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+
+    const action = dispatched.find(a => a.kind === 'create')
+    expect(action?.kind).toBe('create')
+    if (action?.kind === 'create') {
+      const nextStart = new Date(`${nextStartDate}T${nextStartTime}`).getTime()
+      expect(action.input.startAt).toBe(nextStart)
+      expect(action.input.endAt).toBe(nextStart + Number(nextDuration) * 60_000)
+    }
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('renders new subtasks as compact checkable rows', async () => {
+    const { transport } = recordTransport({ schemaVersion: 1, revision: 1, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } })
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    controller.setDraft({ start: 9 * 60 * 60_000, end: 10 * 60 * 60_000 })
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<CreateTaskModal controller={controller} onClose={() => {}} />) })
+
+    const input = host.querySelector('[data-dsh-calendar-create-subtask-input]') as HTMLInputElement
+    const add = host.querySelector('[data-dsh-calendar-create-subtask-add]') as HTMLButtonElement
+    expect(input).toBeTruthy()
+    expect(add).toBeTruthy()
+    await act(async () => {
+      setInputValue(input, 'Review the draft')
+      add.click()
+    })
+
+    const row = host.querySelector('[data-dsh-calendar-create-subtask]')
+    const checkbox = row?.querySelector('input[type="checkbox"]') as HTMLInputElement | null
+    expect(row).toBeTruthy()
+    expect(checkbox).toBeTruthy()
+    expect(row?.querySelector('[class*=subtaskRemove]')).toBeTruthy()
+    await act(async () => { checkbox?.click() })
+    expect(checkbox?.checked).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+})
+
 describe('Calendar completion styling', () => {
   it('marks a completed week task block at the card level', async () => {
     const host = document.createElement('div')
@@ -449,6 +586,38 @@ describe('Calendar completion styling', () => {
 })
 
 describe('MatrixPanel', () => {
+  it('sorts tasks in each quadrant by start time', async () => {
+    const base = new Date()
+    base.setHours(9, 0, 0, 0)
+    const earlier = makeTask({
+      id: 'matrix-earlier',
+      title: 'Earlier task',
+      startAt: base.getTime(),
+      endAt: base.getTime() + 60 * 60_000,
+    })
+    const later = makeTask({
+      id: 'matrix-later',
+      title: 'Later task',
+      startAt: base.getTime() + 6 * 60 * 60_000,
+      endAt: base.getTime() + 7 * 60 * 60_000,
+    })
+    const controller = new calendarClientController(
+      new MemorycalendarHostTransport({ schemaVersion: 1, revision: 1, tasks: [later, earlier], scheduler: { timeZone: 'Asia/Shanghai' } }),
+      initialState(0, 0),
+    )
+    await controller.start()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<MatrixPanel controller={controller} />) })
+
+    const labels = [...host.querySelectorAll('[data-dsh-calendar-matrix] [role="group"] [role="button"]')]
+      .map(item => item.getAttribute('aria-label'))
+    expect(labels).toEqual(['Earlier task', 'Later task'])
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
   it('hides completed tasks from other dates but keeps today and overdue tasks', async () => {
     const day = (offset: number): number => {
       const d = new Date()

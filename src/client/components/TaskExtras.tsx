@@ -59,7 +59,7 @@ export function TaskDoneCheckbox({ task, onToggle, compact = false }: {
   const label = task.done ? t('detail.notDone') : t('detail.doneToggle')
   const stop = (e: React.SyntheticEvent<HTMLElement>): void => { e.stopPropagation() }
   return (
-    <span className={`${css.doneCheckbox} ${compact ? css.doneCheckboxCompact : ''}`} data-dsh-calendar-done-toggle=""
+    <span className={`${css.doneCheckbox} ${compact ? css.doneCheckboxCompact : ''}`} data-dsh-calendar-done-toggle="" data-checked={task.done || undefined}
       onPointerDown={stop} onClick={stop} onKeyDown={stop}>
       <input type="checkbox" checked={task.done} aria-label={label}
         onChange={e => { e.stopPropagation(); onToggle(e.currentTarget.checked) }} />

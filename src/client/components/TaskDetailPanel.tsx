@@ -4,7 +4,6 @@
  * from here.
  */
 import { useState } from 'react'
-import type { ReactNode } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
@@ -12,6 +11,17 @@ import { isRepeatMember, isRepeatTemplate, nextRepeatDate, repeatTargetId } from
 import { hasIncompleteModelPin, type TaskRecord, type TaskUpdatePatch, type Urgency, type Importance, type RepeatRule } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
 import { ScheduleSettings, type ScheduleSettingsValue } from './ScheduleSettings.tsx'
+import { DetailDisclosure, type DetailSectionKey } from './DetailDisclosure.tsx'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
+import {
+  durationMinutes,
+  fromStartTimeParts,
+  MAX_DURATION_MINUTES,
+  MIN_DURATION_MINUTES,
+  QUARTER_HOUR_OPTIONS,
+  snapDurationMinutes,
+  toStartTimeParts,
+} from '../task-time.ts'
 import { t, type calendarKey } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -58,71 +68,6 @@ function initialSchedule(task: TaskRecord): ScheduleSettingsValue {
   }
 }
 
-const QUARTER_HOUR_OPTIONS = Array.from({ length: 96 }, (_, i) => {
-  const minutes = i * 15
-  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
-})
-const MIN_DURATION_MINUTES = 15
-const MAX_DURATION_MINUTES = 24 * 60
-
-interface StartTimeParts {
-  date: string
-  time: string
-}
-
-/** Format an epoch as a local date plus a fixed 15-minute time slot. */
-function toStartTimeParts(ms: number): StartTimeParts {
-  const d = new Date(ms)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  d.setMinutes(Math.floor(d.getMinutes() / 15) * 15, 0, 0)
-  return {
-    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-  }
-}
-
-/** Parse a local date and one of the fixed quarter-hour slots. */
-function fromStartTimeParts(date: string, time: string): number | undefined {
-  if (date === '' || !QUARTER_HOUR_OPTIONS.includes(time)) return undefined
-  const ms = new Date(`${date}T${time}`).getTime()
-  return Number.isFinite(ms) ? ms : undefined
-}
-
-/** Snap free-form duration input to the nearest valid quarter-hour range. */
-function snapDurationMinutes(value: string): string {
-  if (value.trim() === '') return ''
-  const minutes = Number(value)
-  if (!Number.isFinite(minutes)) return ''
-  const snapped = Math.round(minutes / MIN_DURATION_MINUTES) * MIN_DURATION_MINUTES
-  return String(Math.min(MAX_DURATION_MINUTES, Math.max(MIN_DURATION_MINUTES, snapped)))
-}
-
-function durationMinutes(task: TaskRecord): number {
-  return Number(snapDurationMinutes(String(Math.round((task.endAt - task.startAt) / 900_000) * MIN_DURATION_MINUTES)))
-}
-
-type DetailSectionKey = 'content' | 'time' | 'subtasks' | 'schedule' | 'execution' | 'executions'
-
-function DetailDisclosure(props: {
-  section: DetailSectionKey
-  title: string
-  meta?: string
-  open: boolean
-  onToggle: (open: boolean) => void
-  children: ReactNode
-}): JSX.Element {
-  return (
-    <details className={css.detailDisclosure} data-dsh-calendar-disclosure={props.section}
-      open={props.open} onToggle={event => props.onToggle(event.currentTarget.open)}>
-      <summary className={css.detailDisclosureSummary}>
-        <span className={css.detailDisclosureTitle}>{props.title}</span>
-        {props.meta !== undefined && <span className={css.detailDisclosureMeta}>{props.meta}</span>}
-      </summary>
-      <div className={css.detailDisclosureBody}>{props.children}</div>
-    </details>
-  )
-}
-
 export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: TaskDetailPanelProps) {
   // A copy's schedule IS the series' schedule: initialize and display from the
   // template so copies read consistently with the original. Ledger routes
@@ -136,13 +81,14 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   const initialStart = toStartTimeParts(task.startAt)
   const [startDate, setStartDate] = useState(initialStart.date)
   const [startTime, setStartTime] = useState(initialStart.time)
-  const [duration, setDuration] = useState(() => String(durationMinutes(task)))
+  const [duration, setDuration] = useState(() => String(durationMinutes(task.startAt, task.endAt)))
   const [subtaskInput, setSubtaskInput] = useState('')
   const [schedule, setSchedule] = useState<ScheduleSettingsValue>(initialSchedule(seriesTask))
   const [exec, setExec] = useState<ExecutionSettingsValue>(quadKnobs(task))
   const [dirty, setDirty] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [sectionOpen, setSectionOpen] = useState<Record<DetailSectionKey, boolean>>(() => ({
     content: true,
     time: true,
@@ -266,8 +212,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
 
   const deleteTask = async (): Promise<void> => {
     if (!isRepeatMember(task)) {
-      await controller.dispatch({ kind: 'delete', id: task.id })
-      onClose()
+      setDeleteConfirmOpen(true)
       return
     }
     const choice = await controller.requestRepeatDelete(task.id)
@@ -277,6 +222,12 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
     } else {
       await controller.dispatch({ kind: 'delete', id: repeatTargetId(task, 'series') })
     }
+    onClose()
+  }
+
+  const confirmSingleDelete = async (): Promise<void> => {
+    setDeleteConfirmOpen(false)
+    await controller.dispatch({ kind: 'delete', id: task.id })
     onClose()
   }
 
@@ -404,7 +355,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
                 <input type="checkbox" checked={s.done}
                   onChange={e => void controller.dispatch({ kind: 'setSubtaskDone', id: task.id, subtaskId: s.id, done: e.target.checked })} />
                 <span className={s.done ? css.subtaskDone : css.subtaskText}>{s.title}</span>
-                <button type="button" className={css.subtaskRemove} onClick={() => void controller.dispatch({ kind: 'removeSubtask', id: task.id, subtaskId: s.id })} aria-label="remove">×</button>
+                <button type="button" className={css.subtaskRemove} onClick={() => void controller.dispatch({ kind: 'removeSubtask', id: task.id, subtaskId: s.id })} aria-label={t('detail.removeSubtask')}>×</button>
               </div>
             ))}
             <div className={css.detailInlineRow}>
@@ -480,16 +431,24 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
           </div>
         )}
         <div className={css.detailActions}>
-          <button type="button" className={css.btnGhost} onClick={() => void runNow()}>{t('detail.runNow')}</button>
-          {task.archivedAt === undefined
-            ? <button type="button" className={css.btnGhost} onClick={() => { void controller.dispatch({ kind: 'archive', id: task.id }); onClose() }}>{t('detail.archive')}</button>
-            : <button type="button" className={css.btnGhost} onClick={() => void controller.dispatch({ kind: 'restore', id: task.id })}>{t('detail.restore')}</button>}
           <button type="button" className={css.btnDanger} onClick={() => { void deleteTask() }}>{t('detail.delete')}</button>
+          <button type="button" className={css.btnGhost} onClick={() => void runNow()}>{t('detail.runNow')}</button>
           <button type="button" className={`${css.btnPrimary} ${css.detailSaveButton}`} onClick={() => { void save(); dismissMsg(setMessage) }}>
             {t('detail.save')}
           </button>
         </div>
       </div>
+      {deleteConfirmOpen && (
+        <ConfirmDialog
+          title={t('deleteConfirm.title')}
+          body={t('deleteConfirm.body')}
+          confirmLabel={t('deleteConfirm.confirm')}
+          taskLabel={task.title}
+          danger
+          onConfirm={() => { void confirmSingleDelete() }}
+          onCancel={() => setDeleteConfirmOpen(false)}
+        />
+      )}
     </aside>
   )
 }

@@ -18,7 +18,7 @@ import {
 import type { TaskRecord } from '../../core/tasks.ts'
 import { isTaskOccurrenceVisible } from '../../core/tasks.ts'
 import { TaskBlock, type TaskEditKind } from './TaskBlock.tsx'
-import { t } from '../locales.ts'
+import { t, type calendarKey } from '../locales.ts'
 import css from '../calendar.module.css'
 
 const MIN_BLOCK_MS = 15 * 60_000
@@ -364,11 +364,9 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
   )
 }
 
-/** Short local weekday name (e.g. "Mon"); swaps the CSS order to match. */
+/** Short weekday name from the active calendar dictionary (e.g. "Mon"). */
 function dayShortLabel(jsWeekday: number): string {
-  const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
-  const d = new Date(2026, 0, 4 + jsWeekday) // 2026-01-04 is Sunday
-  return fmt.format(d)
+  return t(`weekday.${(jsWeekday + 6) % 7}` as calendarKey)
 }
 
 function dayKeyEquals(day: DayCell, dateMs: number): boolean {

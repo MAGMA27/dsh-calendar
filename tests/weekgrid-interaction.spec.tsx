@@ -278,4 +278,23 @@ describe('WeekGrid header', () => {
 
     await act(async () => { root.unmount(); host.remove() })
   })
+
+  it('uses the active English dictionary for weekday labels', async () => {
+    const previousLanguage = document.documentElement.lang
+    document.documentElement.lang = 'en'
+    const now = new Date(2026, 0, 12, 10, 0, 0)
+    const snap2: calendarSnapshot = { schemaVersion: 1, revision: 2, tasks: [], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const c2 = new calendarClientController(new MemorycalendarHostTransport(snap2, undefined), initialState(now.getTime(), 0))
+    await c2.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => { root.render(<WeekGrid controller={c2} />) })
+      const labels = [...host.querySelectorAll('[class*=weekHeaderDay]')].map(label => label.textContent)
+      expect(labels).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+    } finally {
+      await act(async () => { root.unmount(); host.remove() })
+      document.documentElement.lang = previousLanguage
+    }
+  })
 })

@@ -52,7 +52,9 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
   return (
     <div className={css.matrixPanel} data-dsh-calendar-matrix="">
       {QUADRANTS.map(({ q, urgency, importance }) => {
-        const tasks = collapsed.filter(task => task.urgency === urgency && task.importance === importance)
+        const tasks = collapsed
+          .filter(task => task.urgency === urgency && task.importance === importance)
+          .sort((a, b) => a.startAt - b.startAt)
         return (
           <div key={q}
             className={css.matrixQuadrant + ' ' + ACCENT[q] + (over === q ? ' ' + css.matrixOver : '')}

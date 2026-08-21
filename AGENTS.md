@@ -13,7 +13,7 @@
 - 监听构建: `pnpm watch`（`tsdown --watch`，配合 client HMR）
 - 测试: `pnpm test`（vitest run）；单个: `pnpm test -- -t "测试名"`
 - 挂载: `dsh plugin --profile web add link:<本目录>`（自动对账 `dsh.profile.bundles`）
-- 卸载: `dsh plugin --profile web remove dsh-calendar`
+- 卸载: `dsh plugin --profile web remove @magma27/dsh-calendar`
 - 组合验证: `dsh --profile web --dump-config`
 - 生效: 挂载/卸载后需重启 dsh web 进程（页面刷新不够）
 

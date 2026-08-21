@@ -301,7 +301,7 @@ describe('calendar_task tool', () => {
     expect(((got3.task as Record<string, unknown>).subtasks as unknown[]).length).toBe(2)
   })
 
-  it('sets a repeat schedule and archives/restores/deletes', async () => {
+  it('sets a repeat schedule and deletes', async () => {
     const { tool, ledger } = mk()
     const created = await exec(tool, { action: 'create', title: 'z' })
     const id = (created.task as Record<string, unknown>).id as string
@@ -310,10 +310,6 @@ describe('calendar_task tool', () => {
     expect(s).not.toBeNull()
     expect((s.repeat as Record<string, unknown>).kind).toBe('weekly')
     expect((s.repeat as Record<string, unknown>).weekdays).toEqual([1, 3])
-    await exec(tool, { action: 'archive', id })
-    expect(ledger.taskById(id)!.archivedAt).toBeDefined()
-    await exec(tool, { action: 'restore', id })
-    expect(ledger.taskById(id)!.archivedAt).toBeUndefined()
     await exec(tool, { action: 'delete', id })
     expect(ledger.taskById(id)).toBeUndefined()
   })
@@ -340,6 +336,8 @@ describe('calendar_task tool', () => {
     const { tool } = mk()
     // an enum-violating action is rejected by defineTool arg validation before execute
     await expect(exec(tool, { action: 'bogus' })).rejects.toThrow()
+    await expect(exec(tool, { action: 'archive', id: 'task' })).rejects.toThrow()
+    await expect(exec(tool, { action: 'restore', id: 'task' })).rejects.toThrow()
     const noid = await exec(tool, { action: 'get' })
     expect(noid.ok).toBe(false)
     expect(noid.error).toContain('id')

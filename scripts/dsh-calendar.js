@@ -4,7 +4,7 @@
  *
  *   node scripts/dsh-calendar.js status                # is the plugin mounted in a profile?
  *   node scripts/dsh-calendar.js mount [--profile P]   # dsh plugin add link:<dir>
- *   node scripts/dsh-calendar.js unmount [--profile P] # dsh plugin remove dsh-calendar
+ *   node scripts/dsh-calendar.js unmount [--profile P] # dsh plugin remove @magma27/dsh-calendar
  *
  * Depends only on Node stdlib; shells out to the `dsh` CLI for mount/unmount and
  * reads the profile manifest (package.json "dsh.profile.bundles") for status.
@@ -15,7 +15,7 @@ const { existsSync, readFileSync } = require('node:fs')
 const { homedir } = require('node:os')
 const { join, resolve } = require('node:path')
 
-const PACKAGE = 'dsh-calendar'
+const PACKAGE = '@magma27/dsh-calendar'
 const DEFAULT_PROFILE = process.env.DSH_PROFILE || 'web'
 
 function profileDir(profile) {

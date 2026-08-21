@@ -3,7 +3,7 @@
  *
  * A single `calendar_task` tool performs the common calendar write/read
  * operations: create / get / list / update / setQuadrant / setDone / add- &
- * toggle- & remove-subtask / setSchedule / delete / archive / restore / run.
+ * toggle- & remove-subtask / setSchedule / delete / run.
  * Every mutation is mapped onto the SAME HostLedger.apply the browser uses
  * (a minted requestId + the existing discriminated union + request-id
  * idempotency), so the tool and the calendar UI share one authoritative
@@ -17,7 +17,7 @@ import { isTaskOccurrenceVisible, MAX_SCHEDULED_RECURSION_DEPTH, SCHEDULE_MAX_AT
 import type { ExecutionCatalog } from './core/exec-catalog.ts'
 import type { ActiveScheduledExecution, HostLedger, HostMutationOptions } from './host-ledger.ts'
 
-const ACTIONS = ['options','create','get','list','update','setQuadrant','setDone','addSubtask','setSubtaskDone','removeSubtask','setSchedule','delete','archive','restore','run'] as const
+const ACTIONS = ['options','create','get','list','update','setQuadrant','setDone','addSubtask','setSubtaskDone','removeSubtask','setSchedule','delete','run'] as const
 const LIST_DATE_FIELDS = ['scheduled', 'completed', 'created', 'updated', 'executed'] as const
 const LLM_FILTERS = ['any', 'only', 'none'] as const
 
@@ -37,8 +37,8 @@ const parameters = {
   title: { type: 'string', description: 'Task title (create/update/addSubtask).' },
   description: { type: 'string', description: 'Free-form note (create/update).' },
   prompt: { type: 'string', description: 'Instruction sent to the agent when run (create/update).' },
-  startAt: { ...timeParameter, description: 'Start time (ms epoch or ISO-8601 datetime; create/update).' },
-  endAt: { ...timeParameter, description: 'End time (ms epoch or ISO-8601 datetime; create/update).' },
+  startAt: { ...timeParameter, description: 'Calendar task block start, not an Agent trigger time (ms epoch or ISO-8601 datetime; create/update).' },
+  endAt: { ...timeParameter, description: 'Calendar task block end, not an Agent trigger time (ms epoch or ISO-8601 datetime; create/update).' },
   fromAt: { ...timeParameter, description: 'Lower bound time, inclusive (ms epoch or ISO-8601 datetime; list query).' },
   toAt: { ...timeParameter, description: 'Upper bound time, exclusive (ms epoch or ISO-8601 datetime; list query).' },
   dateBy: { type: 'string', enum: [...LIST_DATE_FIELDS], description: 'Which task activity the list time range matches: scheduled block, completedAt, createdAt, updatedAt, or execution interval (list query; default scheduled).' },
@@ -53,12 +53,12 @@ const parameters = {
   llm: { type: 'string', enum: [...LLM_FILTERS], description: 'LLM involvement filter (list): any, only tasks with LLM configuration/execution, or none for tasks assigned to yourself.' },
   mode: { type: 'string', description: 'Agent preset pin (create/update); blank inherits a reused session mode, and a started session cannot switch to a different mode.' },
   permission: { type: 'string', enum: ['read-only','workspace-write','danger-full-access'], description: 'Permission preset (create/update).' },
-  repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the template date is the first occurrence when it matches, then the Host copies the task onto later matching dates (create/setSchedule).' },
+  repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Repeat rule kind for recurring Agent schedules; the Host copies the task onto later matching dates (create/setSchedule).' },
   weekdays: { type: 'array', items: { type: 'integer' }, description: 'Weekly repeat weekdays, JS numbering 0=Sunday..6=Saturday, non-empty (create/setSchedule).' },
   skipHolidays: { type: 'boolean', description: 'Skip weekends + public holidays for the repeat rule (create/setSchedule).' },
-  triggerAgent: { type: 'boolean', description: 'Auto-run the agent at the matching template date and each later repeat occurrence. A blank triggerAt uses the task block start; a one-off dueAt always runs the agent (create/setSchedule).' },
-  triggerAt: { type: 'string', description: 'Trigger time-of-day HH:MM; blank = the task block start (create/setSchedule).' },
-  dueAt: { ...timeParameter, description: 'One-off agent trigger time (ms epoch or ISO-8601 datetime; create/setSchedule). A one-off dueAt automatically runs the agent.' },
+  triggerAgent: { type: 'boolean', description: 'For a repeat rule, auto-run the Agent on the matching template date and later occurrences. A blank triggerAt follows the task block start; a one-off dueAt always runs the Agent (create/setSchedule).' },
+  triggerAt: { type: 'string', description: 'Recurring trigger time of day in HH:MM for each matching date; blank follows the task block start. This is not an absolute datetime (create/setSchedule).' },
+  dueAt: { ...timeParameter, description: 'One-off absolute Agent trigger datetime; distinct from the calendar block startAt/endAt and not used for a repeat rule (create/setSchedule). A one-off dueAt automatically runs the Agent.' },
   enabled: { type: 'boolean', description: 'Whether the schedule is armed (create/setSchedule).' },
   subtasks: { type: 'array', items: { type: 'string' }, description: 'Optional subtask titles (create).' },
   allDay: { type: 'boolean', description: 'All-day flag (create/update).' },
@@ -587,8 +587,6 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>, contex
         return applyOk(ledger, id, { kind: 'setSchedule', id, patch: scheduleResult.patch }, scheduledMutationOptions(scheduledDepth.depth))
       }
     case 'delete':
-    case 'archive':
-    case 'restore':
       if (id === undefined) return { ok: false, error: 'id is required' }
       return applyOk(ledger, id, { kind: action, id })
     case 'run':

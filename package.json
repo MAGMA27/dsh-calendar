@@ -1,7 +1,18 @@
 {
-  "name": "dsh-calendar",
+  "name": "@magma27/dsh-calendar",
   "description": "Calendar todo plugin for the dsh web GUI: a sidebar entry plus a week/month calendar where you drag-select time ranges to create tasks, with Eisenhower urgency/importance quadrants, subtasks, pinned execution session + LLM provider, and host-authoritative scheduling — constrained daily/weekly repeats copied onto their dates (optional holiday skip) plus one-off auto runs through real dsh sessions. Host-authoritative ledger + scheduler; browser is a same-origin async view. Mounted via dsh plugin, no dsh source changes.",
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MAGMA27/dsh-calendar.git"
+  },
+  "homepage": "https://github.com/MAGMA27/dsh-calendar#readme",
+  "bugs": {
+    "url": "https://github.com/MAGMA27/dsh-calendar/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -79,8 +90,7 @@
     "lib/**/*.d.ts",
     "lib/**/*.d.ts.map",
     "src",
-    "cordis.patch.yml",
-    "memory-bank"
+    "cordis.patch.yml"
   ],
   "pnpm": {
     "onlyBuiltDependencies": [

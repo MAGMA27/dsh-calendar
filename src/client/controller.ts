@@ -5,6 +5,7 @@
  * browser is a pure view — the Host snapshot is the only confirmed truth.
  */
 import type { WeekStart } from '../core/calendar.ts'
+import { isRepeatTemplate } from '../core/repeat.ts'
 import type { TaskRecord } from '../core/tasks.ts'
 import type { calendarAction, calendarSnapshot } from '../protocol.ts'
 import type { calendarHostTransport } from './host-api.ts'
@@ -94,6 +95,8 @@ export interface calendarClientState {
   pendingRepeatTimeEdit: PendingRepeatTimeEdit | undefined
   /** A repeat-series schedule clear awaiting "this day" vs "the whole series". */
   pendingScheduleClear: { taskId: string } | undefined
+  /** A repeat-series deletion awaiting "this occurrence" vs "the whole series". */
+  pendingRepeatDelete: { taskId: string } | undefined
   status: 'loading' | 'ready' | 'error'
   error: string | null
 }
@@ -199,7 +202,7 @@ export class calendarClientController {
     if (edit === undefined) return
     this.set({ pendingRepeatTimeEdit: undefined })
     const task = this.state.snapshot.tasks.find(t => t.id === edit.taskId)
-    const isTemplate = task !== undefined && task.originTaskId === undefined && task.schedule?.repeat !== undefined
+    const isTemplate = isRepeatTemplate(task)
     if (choice === 'this') {
       await this.dispatch({
         kind: 'reschedule',
@@ -220,14 +223,39 @@ export class calendarClientController {
 
   // --- repeat-series schedule-clear confirmation -----------------------------
   private scheduleClearResolve: ((choice: 'day' | 'all' | 'cancel') => void) | undefined
+  private repeatDeleteResolve: ((choice: 'this' | 'all' | 'cancel') => void) | undefined
+
+  /** Stage a repeat-series deletion and return the user's scope choice. */
+  requestRepeatDelete(taskId: string): Promise<'this' | 'all' | 'cancel'> {
+    if (this.scheduleClearResolve !== undefined) this.resolveScheduleClear('cancel')
+    if (this.repeatDeleteResolve !== undefined) this.resolveRepeatDelete('cancel')
+    return new Promise<'this' | 'all' | 'cancel'>(resolve => {
+      this.repeatDeleteResolve = resolve
+      this.set({ pendingRepeatDelete: { taskId } })
+    })
+  }
+
+  private resolveRepeatDelete(choice: 'this' | 'all' | 'cancel'): void {
+    const resolve = this.repeatDeleteResolve
+    this.repeatDeleteResolve = undefined
+    this.set({ pendingRepeatDelete: undefined })
+    resolve?.(choice)
+  }
+
+  confirmRepeatDeleteThis(): void { this.resolveRepeatDelete('this') }
+  confirmRepeatDeleteAll(): void { this.resolveRepeatDelete('all') }
+  cancelRepeatDelete(): void { this.resolveRepeatDelete('cancel') }
+
   /**
    * Stage a repeat-series schedule clear and return a promise for the user's
-   * choice: 'day' (this copy only — clear its own trigger one-shot) | 'all'
-   * (cancel the whole series) | 'cancel' (abort). Used by the "clear schedule"
-   * button and by saving a repeat series as "no repeat".
+   * choice: 'day' (this repeat member only — a copy clears its own trigger
+   * one-shot, while a template skips its own date) | 'all' (cancel the whole
+   * series) | 'cancel' (abort). Used by the "clear schedule" button and by
+   * saving a repeat series as "no repeat".
    */
   requestScheduleClear(taskId: string): Promise<'day' | 'all' | 'cancel'> {
-    this.scheduleClearResolve?.('cancel')
+    if (this.repeatDeleteResolve !== undefined) this.resolveRepeatDelete('cancel')
+    if (this.scheduleClearResolve !== undefined) this.resolveScheduleClear('cancel')
     return new Promise<'day' | 'all' | 'cancel'>(resolve => {
       this.scheduleClearResolve = resolve
       this.set({ pendingScheduleClear: { taskId } })
@@ -270,6 +298,7 @@ export function initialState(cursor: number = Date.now(), weekStart: WeekStart =
     catalog: { workspaces: [], sessions: [], projects: [], providers: [], modelsByProvider: {}, modes: [] },
     pendingRepeatTimeEdit: undefined,
     pendingScheduleClear: undefined,
+    pendingRepeatDelete: undefined,
     status: 'loading',
     error: null,
   }

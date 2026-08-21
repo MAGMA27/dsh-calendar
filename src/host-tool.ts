@@ -13,9 +13,9 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { randomId } from './protocol.ts'
 import type { calendarAction, calendarActionEnvelope, CreateScheduleInput } from './protocol.ts'
-import { SCHEDULE_MAX_ATTEMPTS, taskTriggersAgent, type ExecutionRecord, type NewTaskInput, type RepeatRule, type TaskRecord } from './core/tasks.ts'
+import { isTaskOccurrenceVisible, MAX_SCHEDULED_RECURSION_DEPTH, SCHEDULE_MAX_ATTEMPTS, taskTriggersAgent, type ExecutionRecord, type NewTaskInput, type RepeatRule, type TaskRecord } from './core/tasks.ts'
 import type { ExecutionCatalog } from './core/exec-catalog.ts'
-import type { HostLedger } from './host-ledger.ts'
+import type { ActiveScheduledExecution, HostLedger, HostMutationOptions } from './host-ledger.ts'
 
 const ACTIONS = ['options','create','get','list','update','setQuadrant','setDone','addSubtask','setSubtaskDone','removeSubtask','setSchedule','delete','archive','restore','run'] as const
 const LIST_DATE_FIELDS = ['scheduled', 'completed', 'created', 'updated', 'executed'] as const
@@ -51,7 +51,7 @@ const parameters = {
   provider: { type: 'string', description: 'LLM provider id or catalog label (list or create/update); set together with model, or leave both blank.' },
   model: { type: 'string', description: 'Provider-owned model id or catalog label (list or create/update); set together with provider, or leave both blank.' },
   llm: { type: 'string', enum: [...LLM_FILTERS], description: 'LLM involvement filter (list): any, only tasks with LLM configuration/execution, or none for tasks assigned to yourself.' },
-  mode: { type: 'string', description: 'Agent preset pin (create/update).' },
+  mode: { type: 'string', description: 'Agent preset pin (create/update); blank inherits a reused session mode, and a started session cannot switch to a different mode.' },
   permission: { type: 'string', enum: ['read-only','workspace-write','danger-full-access'], description: 'Permission preset (create/update).' },
   repeat: { type: 'string', enum: ['daily', 'weekly'], description: 'Constrained repeat rule kind; the template date is the first occurrence when it matches, then the Host copies the task onto later matching dates (create/setSchedule).' },
   weekdays: { type: 'array', items: { type: 'integer' }, description: 'Weekly repeat weekdays, JS numbering 0=Sunday..6=Saturday, non-empty (create/setSchedule).' },
@@ -72,7 +72,11 @@ interface CalendarToolDeps {
   catalog?: () => Promise<ExecutionCatalog>
   /** Clock injection keeps relative-time validation deterministic in tests. */
   now?: () => number
-  /** True while the calling Agent is executing a Host-scheduled task. */
+  /** Host-owned lineage of the calling Agent's active scheduled execution. */
+  getActiveScheduledExecution?: (sessionId: string) => ActiveScheduledExecution | undefined
+  /** Current Host setting; 0 keeps nested auto-run creation disabled. */
+  maxScheduledDepth?: () => number
+  /** Legacy boolean seam retained for direct embedders/tests. */
   hasActiveScheduledExecution?: (sessionId: string) => boolean
 }
 
@@ -81,6 +85,10 @@ interface CalendarToolContext {
   currentSessionId?: string
   /** Host-derived recursion guard; never trusted from tool arguments. */
   activeScheduledExecution?: boolean
+  /** Depth of the active scheduled execution; root scheduled tasks are depth 0. */
+  scheduledDepth?: number
+  /** Validated Host setting for the maximum child depth. */
+  maxScheduledDepth?: number
 }
 
 interface CalendarRunResult {
@@ -101,11 +109,41 @@ function envelope(action: AnyAction): calendarActionEnvelope {
   return { requestId: randomId(), action: action as unknown as calendarAction }
 }
 
-function applyOk(ledger: HostLedger, id: string | undefined, action: AnyAction): Record<string, unknown> {
-  const r = ledger.apply(envelope(action))
+function applyOk(ledger: HostLedger, id: string | undefined, action: AnyAction, options: HostMutationOptions = {}): Record<string, unknown> {
+  const r = ledger.apply(envelope(action), options)
   if (!r.ok) return { ok: false, error: r.error }
   const t = id === undefined ? undefined : r.snapshot.tasks.find(x => x.id === id)
   return t === undefined ? { ok: true } : { ok: true, task: taskSummary(t) }
+}
+
+interface ScheduledDepthDecision {
+  depth?: number
+  error?: string
+}
+
+function scheduledAutoRunChild(context: CalendarToolContext, operation: 'create' | 'arm'): ScheduledDepthDecision {
+  if (context.activeScheduledExecution !== true) return {}
+  const current = typeof context.scheduledDepth === 'number'
+    && Number.isSafeInteger(context.scheduledDepth)
+    && context.scheduledDepth >= 0
+    ? context.scheduledDepth
+    : 0
+  const configured = context.maxScheduledDepth
+  const maximum = typeof configured === 'number'
+    && Number.isSafeInteger(configured)
+    && configured >= 0
+    ? Math.min(configured, MAX_SCHEDULED_RECURSION_DEPTH)
+    : 0
+  const depth = current + 1
+  if (depth > maximum) {
+    const verb = operation === 'create' ? 'create' : 'arm'
+    return { error: `a scheduled Agent cannot ${verb} another auto-run calendar task: recursion depth ${depth} exceeds configured maximum ${maximum}` }
+  }
+  return { depth }
+}
+
+function scheduledMutationOptions(depth: number | undefined): HostMutationOptions {
+  return depth === undefined ? {} : { scheduledDepth: depth }
 }
 
 function repeatSummary(repeat: NonNullable<NonNullable<TaskRecord['schedule']>['repeat']>): Record<string, unknown> {
@@ -129,6 +167,8 @@ function scheduleSummary(schedule: TaskRecord['schedule']): Record<string, unkno
     maxAttempts: SCHEDULE_MAX_ATTEMPTS,
     ...(schedule.retryCount !== undefined ? { retryCount: schedule.retryCount } : {}),
     ...(schedule.materialized !== undefined ? { materialized: [...schedule.materialized] } : {}),
+    ...(schedule.skippedDates !== undefined ? { skippedDates: [...schedule.skippedDates] } : {}),
+    ...(schedule.deletedDates !== undefined ? { deletedDates: [...schedule.deletedDates] } : {}),
   }
 }
 
@@ -406,17 +446,23 @@ function parseSetSchedule(a: Record<string, unknown>): { patch?: { enabled: bool
 export function defineCalendarTool(deps: CalendarToolDeps) {
   return defineTool({
     name: 'calendar_task',
-    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Provider and model must both be set or both be blank; the Host rejects an incomplete pin during create/update. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; repeat.triggerAgent triggers the matching template date as the first occurrence and later materialized copies. Blank triggerAt uses the task block start. If a one-off dueAt or repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Failed setup attempts retry at most three total times, then the current occurrence stops. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos but cannot create or arm another auto-run schedule. Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
+    description: 'Manage calendar todo tasks. Use options to resolve provider/model/session labels, then create a task atomically with its execution pins and schedule. Provider and model must both be set or both be blank; the Host rejects an incomplete pin during create/update. Use sessionId "current" for the calling Agent session. A one-off dueAt automatically triggers the Agent; repeat.triggerAgent triggers the matching template date as the first occurrence and later materialized copies. Blank triggerAt uses the task block start. If a one-off dueAt or repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Failed setup attempts retry at most three total times, then the current occurrence stops. Repeat rules materialize only current/future occurrences; missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todos; auto-run child schedules are allowed only up to the configured maximum recursion depth in Settings → Plugins → calendar (default 0, maximum 3). Times accept ms epochs or ISO-8601 datetimes. Same authoritative ledger as the calendar view.',
     parameters,
     output: {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    execute: async (args, exec) => (await handle(deps, args as unknown as Record<string, unknown>, {
-      currentSessionId: exec.agent?.id === undefined ? undefined : String(exec.agent.id),
-      activeScheduledExecution: exec.agent?.id !== undefined
-        && deps.hasActiveScheduledExecution?.(String(exec.agent.id)) === true,
-    })) as never,
+    execute: async (args, exec) => {
+      const currentSessionId = exec.agent?.id === undefined ? undefined : String(exec.agent.id)
+      const active = currentSessionId === undefined ? undefined : deps.getActiveScheduledExecution?.(currentSessionId)
+      const legacyActive = currentSessionId !== undefined && deps.hasActiveScheduledExecution?.(currentSessionId) === true
+      return await handle(deps, args as unknown as Record<string, unknown>, {
+        currentSessionId,
+        activeScheduledExecution: active !== undefined || legacyActive,
+        scheduledDepth: active?.scheduledDepth ?? (legacyActive ? 0 : undefined),
+        maxScheduledDepth: deps.maxScheduledDepth?.() ?? 0,
+      }) as never
+    },
   })
 }
 
@@ -447,9 +493,10 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>, contex
       if (endAt === undefined) return { ok: false, error: 'endAt must be an integer ms epoch or ISO-8601 datetime' }
       const scheduleResult = parseCreateSchedule(a)
       if (scheduleResult.error !== undefined) return { ok: false, error: scheduleResult.error }
-      if (context.activeScheduledExecution === true && triggersAgent(scheduleResult.schedule)) {
-        return { ok: false, error: 'a scheduled Agent cannot create another auto-run calendar task' }
-      }
+      const scheduledDepth = triggersAgent(scheduleResult.schedule)
+        ? scheduledAutoRunChild(context, 'create')
+        : {}
+      if (scheduledDepth.error !== undefined) return { ok: false, error: scheduledDepth.error }
       const target = await resolveExecutionTarget(deps, a, context)
       if (typeof target === 'string') return { ok: false, error: target }
       const input: NewTaskInput = {
@@ -468,7 +515,10 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>, contex
         permission: a.permission === 'read-only' || a.permission === 'workspace-write' || a.permission === 'danger-full-access' ? a.permission : undefined,
         subtasks: Array.isArray(a.subtasks) ? a.subtasks.filter((s): s is string => typeof s === 'string').map(t => ({ id: randomId(), title: t, done: false })) : undefined,
       }
-      const r = ledger.apply({ requestId: randomId(), action: { kind: 'create', input, schedule: scheduleResult.schedule } as calendarAction })
+      const r = ledger.apply(
+        { requestId: randomId(), action: { kind: 'create', input, schedule: scheduleResult.schedule } as calendarAction },
+        scheduledMutationOptions(scheduledDepth.depth),
+      )
       if (!r.ok) return { ok: false, error: r.error }
       const created = r.snapshot.tasks[r.snapshot.tasks.length - 1]
       return { ok: true, task: taskSummary(created) }
@@ -482,7 +532,7 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>, contex
       const executionRange = parsed.fromAt === undefined && parsed.toAt === undefined
         ? undefined
         : { fromAt: parsed.fromAt, toAt: parsed.toAt }
-      return { ok: true, tasks: ledger.getSnapshot().tasks.filter(task => matchesListQuery(task, parsed)).map(task => taskSummary(task, executionRange)) }
+      return { ok: true, tasks: ledger.getSnapshot().tasks.filter(task => isTaskOccurrenceVisible(task) && matchesListQuery(task, parsed)).map(task => taskSummary(task, executionRange)) }
     }
     case 'update':
       if (id === undefined) return { ok: false, error: 'id is required for update' }
@@ -530,10 +580,11 @@ async function handle(deps: CalendarToolDeps, a: Record<string, unknown>, contex
         if (scheduleResult.error !== undefined || scheduleResult.patch === undefined) {
           return { ok: false, error: scheduleResult.error ?? 'invalid schedule' }
         }
-        if (context.activeScheduledExecution === true && triggersAgentPatch(scheduleResult.patch)) {
-          return { ok: false, error: 'a scheduled Agent cannot arm another auto-run calendar task' }
-        }
-        return applyOk(ledger, id, { kind: 'setSchedule', id, patch: scheduleResult.patch })
+        const scheduledDepth = triggersAgentPatch(scheduleResult.patch)
+          ? scheduledAutoRunChild(context, 'arm')
+          : {}
+        if (scheduledDepth.error !== undefined) return { ok: false, error: scheduledDepth.error }
+        return applyOk(ledger, id, { kind: 'setSchedule', id, patch: scheduleResult.patch }, scheduledMutationOptions(scheduledDepth.depth))
       }
     case 'delete':
     case 'archive':

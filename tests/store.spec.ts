@@ -64,6 +64,26 @@ describe('parseTasks', () => {
     expect(t.schedule?.repeat?.skipHolidays).toBe(true)
     expect(t.schedule?.materialized).toEqual(['2025-01-06'])
   })
+  it('normalizes repeat template skipped dates', () => {
+    const [t] = parseTasks(JSON.stringify([{
+      id: 't1', title: 'A', description: '', prompt: '', startAt: 1, endAt: 2, createdAt: 1, updatedAt: 1,
+      schedule: {
+        enabled: true, repeat: { kind: 'daily' },
+        skippedDates: ['2025-01-06', 'bad', '2025-01-06'],
+      },
+    }]))
+    expect(t.schedule?.skippedDates).toEqual(['2025-01-06'])
+  })
+  it('normalizes repeat template deleted dates', () => {
+    const [t] = parseTasks(JSON.stringify([{
+      id: 't1', title: 'A', description: '', prompt: '', startAt: 1, endAt: 2, createdAt: 1, updatedAt: 1,
+      schedule: {
+        enabled: true, repeat: { kind: 'daily' },
+        deletedDates: ['2025-01-06', 'bad', '2025-01-06'],
+      },
+    }]))
+    expect(t.schedule?.deletedDates).toEqual(['2025-01-06'])
+  })
   it('carries originTaskId for repeat copies', () => {
     const [t] = parseTasks(JSON.stringify([{
       id: 't1', title: 'A', description: '', prompt: '', startAt: 1, endAt: 2, createdAt: 1, updatedAt: 1,

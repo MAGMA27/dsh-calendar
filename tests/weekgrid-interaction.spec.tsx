@@ -273,6 +273,7 @@ describe('WeekGrid header', () => {
     const blocks = [...host.querySelectorAll('[data-dsh-calendar-block]')] as HTMLElement[]
     expect(blocks.length).toBe(2)
     const lefts = blocks.map(b => b.style.left)
+    expect(lefts[0]).toBe('0%')
     expect(lefts[0]).not.toBe(lefts[1])
 
     await act(async () => { root.unmount(); host.remove() })

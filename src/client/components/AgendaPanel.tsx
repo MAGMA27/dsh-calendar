@@ -4,7 +4,7 @@
  */
 import type { calendarClientController } from '../controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { isTaskOverdue, isTaskVisibleInOverview, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
+import { isTaskOccurrenceVisible, isTaskOverdue, isTaskVisibleInOverview, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
@@ -34,7 +34,7 @@ export function AgendaPanel({ controller }: AgendaPanelProps) {
   const snap = controller.getSnapshot()
   const now = Date.now()
   const collapsed = collapseRepeatSeries(
-    snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskVisibleInOverview(task, now)),
+    snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskOccurrenceVisible(task) && isTaskVisibleInOverview(task, now)),
     'oldest',
   )
   const groups: Array<{ key: Bucket; label: string; tasks: TaskRecord[] }> = [

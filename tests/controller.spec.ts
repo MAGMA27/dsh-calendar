@@ -107,4 +107,26 @@ describe('calendarClientController', () => {
     expect(await p3).toBe('cancel')
     expect(c.getSnapshot().pendingScheduleClear).toBeUndefined()
   })
+
+  it('repeat-delete confirm stages a pending choice and resolves this/all/cancel', async () => {
+    const tpl: TaskRecord = { id: 'tpl', title: 'T', description: '', prompt: '', startAt: 0, endAt: 1000, urgency: 'high', importance: 'high', done: false, subtasks: [], executions: [], schedule: { enabled: true, repeat: { kind: 'daily' } }, createdAt: 0, updatedAt: 0 }
+    const snap: calendarSnapshot = { schemaVersion: 1, revision: 1, tasks: [tpl], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const transport = new MemorycalendarHostTransport(snap, (a) => { void a; return snap })
+    const c = new calendarClientController(transport, initialState(0, 0))
+    await c.start()
+
+    const p1 = c.requestRepeatDelete('tpl')
+    expect(c.getSnapshot().pendingRepeatDelete).toEqual({ taskId: 'tpl' })
+    c.confirmRepeatDeleteThis()
+    expect(await p1).toBe('this')
+
+    const p2 = c.requestRepeatDelete('tpl')
+    c.confirmRepeatDeleteAll()
+    expect(await p2).toBe('all')
+
+    const p3 = c.requestRepeatDelete('tpl')
+    c.cancelRepeatDelete()
+    expect(await p3).toBe('cancel')
+    expect(c.getSnapshot().pendingRepeatDelete).toBeUndefined()
+  })
 })

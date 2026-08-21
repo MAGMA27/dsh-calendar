@@ -275,28 +275,51 @@ export interface DayBlockLayout {
 /**
  * Assign overlapping tasks on one day into non-overlapping side-by-side
  * columns (the classic calendar-event layout): each task occupies the first
- * column whose previous occupant has already ended. Returns positions without
- * mutating input; tasks are treated by their [startAt, endAt) intervals.
+ * column whose previous occupant has already ended. Column counts are scoped
+ * to each connected overlap group, so an overlap at one time of day does not
+ * make unrelated tasks elsewhere in the day unnecessarily narrow. Returns
+ * positions without mutating input; tasks are treated by their [startAt, endAt)
+ * intervals.
  */
 export function layoutDayTasks<T extends { id: string; startAt: number; endAt: number }>(tasks: readonly T[]): DayBlockLayout[] {
   const sorted = [...tasks].sort((a, b) => a.startAt - b.startAt || a.endAt - b.endAt)
-  const columnEnds: number[] = []
   const map = new Map<string, DayBlockLayout>()
-  for (const t of sorted) {
-    let column = columnEnds.findIndex(end => end <= t.startAt)
-    if (column === -1) {
-      column = columnEnds.length
-      columnEnds.push(t.endAt)
-    } else {
-      columnEnds[column] = t.endAt
+
+  let group: T[] = []
+  let groupEnd = Number.NEGATIVE_INFINITY
+
+  const layoutGroup = (groupTasks: readonly T[]): void => {
+    const columnEnds: number[] = []
+    for (const t of groupTasks) {
+      let column = columnEnds.findIndex(end => end <= t.startAt)
+      if (column === -1) {
+        column = columnEnds.length
+        columnEnds.push(t.endAt)
+      } else {
+        columnEnds[column] = t.endAt
+      }
+      map.set(t.id, { id: t.id, column, columnCount: 0 })
     }
-    map.set(t.id, { id: t.id, column, columnCount: 0 })
+    const columnCount = columnEnds.length
+    for (const t of groupTasks) {
+      const pos = map.get(t.id)
+      if (pos !== undefined) map.set(t.id, { ...pos, columnCount })
+    }
   }
-  const columnCount = columnEnds.length
-  const result: DayBlockLayout[] = []
+
   for (const t of sorted) {
-    const pos = map.get(t.id)!
-    result.push({ ...pos, columnCount })
+    // A new group begins once every task in the previous group has ended.
+    // Using the furthest end preserves transitive overlap (A overlaps B and B
+    // overlaps C) as one layout group even when A and C do not overlap.
+    if (group.length > 0 && t.startAt >= groupEnd) {
+      layoutGroup(group)
+      group = []
+      groupEnd = Number.NEGATIVE_INFINITY
+    }
+    group.push(t)
+    groupEnd = Math.max(groupEnd, t.endAt)
   }
-  return result
+  layoutGroup(group)
+
+  return sorted.map(t => map.get(t.id)!).filter((layout): layout is DayBlockLayout => layout !== undefined)
 }

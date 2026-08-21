@@ -3,10 +3,11 @@
  * opens an execution record on the Host ledger, connects a real dsh session
  * (reusing a task-pinned session or creating a fresh one in the target or
  * recent workspace), applies the task's execution pins (provider+model via
- * `sessions.selectModel`, agent preset via `agentPresets.select`, permission
- * via the `/permission <id>` slash command), renames the session to the task
- * title, sends the task prompt through `sessions.prompt` (mode 'queue'), and
- * settles the execution record once the session's turn completes.
+ * `sessions.selectModel`, agent preset on a blank session via
+ * `agentPresets.select`, permission via the `/permission <id>` slash command),
+ * renames the session to the task title, sends the task prompt through
+ * `sessions.prompt` (mode 'queue'), and settles the execution record once the
+ * session's turn completes.
  *
  * It is host-authoritative and deliberately framework-free: every runtime
  * face is a narrow structural slice of the ApiProxy session/workspace/presets
@@ -26,6 +27,8 @@ export interface RunnerSessionRow {
   sessionId: unknown
   running?: boolean
   blank?: boolean
+  /** The preset that produced the session's current agent composition. */
+  agentPreset?: string
   updatedAt?: number
 }
 
@@ -126,6 +129,12 @@ function req<P extends object = Record<string, unknown>>(payload: P = {} as P): 
 
 type SessionStatus = 'running' | 'stopped' | 'gone'
 
+interface ConnectedSession {
+  sessionId: string
+  fresh: boolean
+  row?: RunnerSessionRow
+}
+
 /**
  * Host-runner: opens an execution, drives a real dsh session, and settles the
  * execution record. `run()` is async and resolves once the prompt is accepted
@@ -163,10 +172,10 @@ export class HostExecutionRunner {
     if (!this.ledger.openExecution(taskId, executionId, startedAt, triggeredBy)) return { accepted: false }
     let sessionId: string | undefined
     try {
-      const { sessionId: sid, fresh } = await this.connectSession(task)
-      sessionId = sid
+      const connected = await this.connectSession(task)
+      sessionId = connected.sessionId
       this.ledger.attachExecutionSession?.(taskId, executionId, sessionId, this.now())
-      await this.applyPins(task, sessionId, fresh)
+      await this.applyPins(task, connected)
       await this.sendPrompt(task, sessionId)
     } catch (error) {
       this.ledger.settleExecution(taskId, executionId, 'failed', this.now(), messageOf(error), sessionId)
@@ -208,12 +217,12 @@ export class HostExecutionRunner {
   }
 
   /** Connect (reuse or create) the execution session. */
-  private async connectSession(task: TaskRecord): Promise<{ sessionId: string; fresh: boolean }> {
+  private async connectSession(task: TaskRecord): Promise<ConnectedSession> {
     if (task.sessionId !== undefined && task.sessionId !== '') {
       const row = await this.findSessionRow(task.sessionId)
       if (row === undefined) throw new Error(`pinned execution session not found: ${task.sessionId}`)
       if (row.running === true) throw new Error(`pinned execution session is busy: ${task.sessionId}`)
-      return { sessionId: task.sessionId, fresh: false }
+      return { sessionId: task.sessionId, fresh: false, row }
     }
     const workspaceId = await this.resolveWorkspaceId(task)
     const agentPreset = task.mode !== undefined && task.mode !== '' ? task.mode : undefined
@@ -243,18 +252,29 @@ export class HostExecutionRunner {
    * Apply the task's pins. Everything runs before the prompt; any rejection
    * throws and fails the run without sending the task prompt.
    */
-  private async applyPins(task: TaskRecord, sessionId: string, fresh: boolean): Promise<void> {
-    // Agent preset: fresh sessions were created under it already; a reused
-    // session must be recomposed (only legal while still blank).
-    if (task.mode !== undefined && task.mode !== '' && !fresh) {
-      const preset = this.env.agentPresets
-      if (preset === undefined) throw new Error(`this deployment does not support agent presets (task asks for ${task.mode})`)
-      const res = await preset.select(req({ sessionId, agentPreset: task.mode }))
-      if (res?.result?.ok !== true) {
-        const reason = rpcError(res)
-        throw new Error(reason !== undefined
-          ? `agent preset switch to ${task.mode} rejected: ${reason}`
-          : `agent preset switch to ${task.mode} rejected`)
+  private async applyPins(task: TaskRecord, connection: ConnectedSession): Promise<void> {
+    const sessionId = connection.sessionId
+    // Fresh sessions were created under the requested preset already. A blank
+    // reused session may still be recomposed, but a started session's preset
+    // is immutable: matching pins are a no-op, while mismatches fail closed.
+    if (task.mode !== undefined && task.mode !== '' && !connection.fresh) {
+      const row = connection.row
+      if (row?.agentPreset !== task.mode) {
+        if (row?.blank !== true) {
+          const current = row?.agentPreset
+          throw new Error(current !== undefined
+            ? `pinned execution session ${sessionId} uses agent preset ${current}; cannot switch to ${task.mode} after the session has started`
+            : `pinned execution session ${sessionId} has started; cannot verify agent preset ${task.mode}`)
+        }
+        const preset = this.env.agentPresets
+        if (preset === undefined) throw new Error(`this deployment does not support agent presets (task asks for ${task.mode})`)
+        const res = await preset.select(req({ sessionId, agentPreset: task.mode }))
+        if (res?.result?.ok !== true) {
+          const reason = rpcError(res)
+          throw new Error(reason !== undefined
+            ? `agent preset switch to ${task.mode} rejected: ${reason}`
+            : `agent preset switch to ${task.mode} rejected`)
+        }
       }
     }
     // Provider + model route.

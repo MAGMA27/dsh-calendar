@@ -21,7 +21,7 @@ import {
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
   setTaskDone, settleExecution, startExecution, updateTask, scheduleRetryExhausted, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
-import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isValidRepeat, matchesRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
+import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isRepeatMember, isRepeatTemplate, isValidRepeat, matchesRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
 import { addDays, dayKey, minutesOfDay } from './core/calendar.ts'
 import { parseTasks } from './core/store.ts'
 import { calendarDir, ledgerPath } from './dsh-home.ts'
@@ -66,6 +66,13 @@ export interface ActiveScheduledExecution {
   taskId: string
   executionId: string
   sessionId: string
+  /** Host-owned lineage depth: 0 is a user-created scheduled root. */
+  scheduledDepth: number
+}
+
+/** Host-only metadata for mutations initiated by an already scheduled Agent. */
+export interface HostMutationOptions {
+  scheduledDepth?: number
 }
 
 /** The narrow node:fs face the ledger needs (injected for tests). */
@@ -251,7 +258,7 @@ export class HostLedger {
    * Apply a browser action. Idempotent per requestId: a fingerprint already
    * recorded short-circuits to the current snapshot without re-applying.
    */
-  apply(envelope: calendarActionEnvelope): calendarActionResult {
+  apply(envelope: calendarActionEnvelope, options: HostMutationOptions = {}): calendarActionResult {
     const { requestId, action } = envelope
     const fingerprint = fingerprintOf(envelope)
     const dup = this.state.recentRequests.find(r => r.requestId === requestId)
@@ -260,7 +267,7 @@ export class HostLedger {
     }
     const validationError = this.validationError(action)
     if (validationError !== undefined) return { ok: false, error: validationError }
-    const ok = this.dispatch(action)
+    const ok = this.dispatch(action, options)
     if (!ok) return { ok: false, error: actionError(action) }
     this.state.revision += 1
     this.state.recentRequests.push({ requestId, fingerprint })
@@ -338,7 +345,7 @@ export class HostLedger {
     if (sessionId === '') return undefined
     for (const task of this.state.tasks) {
       const execution = task.executions.find(e => e.sessionId === sessionId && e.endedAt === undefined && e.triggeredBy === 'schedule')
-      if (execution !== undefined) return { taskId: task.id, executionId: execution.id, sessionId }
+      if (execution !== undefined) return { taskId: task.id, executionId: execution.id, sessionId, scheduledDepth: task.scheduledDepth ?? 0 }
     }
     return undefined
   }
@@ -453,7 +460,9 @@ export class HostLedger {
       for (const dateMs of repeatDatesBetween(tpl.schedule.repeat, cursor, horizonEnd)) {
         const key = dayKey(dateMs)
         if (materialized.has(key)) continue
-        next = [...next, buildRepeatCopy(tpl, dateMs, now, this.uuid())]
+        const copy = buildRepeatCopy(tpl, dateMs, now, this.uuid())
+        next = [...next, copy]
+        if (copy.schedule !== undefined) this.state.scheduler.nextRuns[copy.id] = mirrorOf(copy.schedule)
         materialized.add(key)
         added.push(key)
       }
@@ -494,11 +503,11 @@ export class HostLedger {
   }
 
   /** Dispatch one action; returns false when rejected (state untouched on false). */
-  private dispatch(action: calendarAction): boolean {
+  private dispatch(action: calendarAction, options: HostMutationOptions = {}): boolean {
     const now = this.now()
     switch (action.kind) {
       case 'create': {
-        let task = createTask({ ...action.input, schedule: action.schedule }, now, this.uuid())
+        let task = createTask({ ...action.input, schedule: action.schedule }, now, this.uuid(), options.scheduledDepth)
         if (task === undefined) return false
         if (task.schedule !== undefined) {
           const armed = armSchedule(task, now)
@@ -525,7 +534,7 @@ export class HostLedger {
         // Live sync (repeat template → bound copies): content + execution pins
         // propagate; per-instance state (done, executions, block times, unbind)
         // never does. Archived copies are left alone.
-        if (isTemplate(before)) {
+        if (isRepeatTemplate(before)) {
           const sync = templateSyncPatch(action.patch)
           if (Object.keys(sync).length > 0) {
             tasks = tasks.map(t => t.originTaskId === action.id && t.archivedAt === undefined
@@ -562,7 +571,7 @@ export class HostLedger {
       case 'setQuadrant': {
         const before = this.state.tasks.find(t => t.id === action.id)
         let tasks = setQuadrant(this.state.tasks, action.id, action.urgency, action.importance, now)
-        if (isTemplate(before)) {
+        if (isRepeatTemplate(before)) {
           tasks = tasks.map(t => t.originTaskId === action.id && t.archivedAt === undefined
             ? setQuadrant([t], t.id, action.urgency, action.importance, now)[0]
             : t)
@@ -579,7 +588,7 @@ export class HostLedger {
         let tasks = addSubtask(this.state.tasks, action.id, { id: action.subtaskId, title: action.title }, now)
         // Subtask structure syncs from the template to bound copies; done-state
         // stays per-instance (setSubtaskDone never propagates).
-        if (isTemplate(before)) {
+        if (isRepeatTemplate(before)) {
           tasks = tasks.map(t => t.originTaskId === action.id && t.archivedAt === undefined
             ? addSubtask([t], t.id, { id: action.subtaskId, title: action.title }, now)[0]
             : t)
@@ -593,7 +602,7 @@ export class HostLedger {
       case 'removeSubtask': {
         const before = this.state.tasks.find(t => t.id === action.id)
         let tasks = removeSubtask(this.state.tasks, action.id, action.subtaskId, now)
-        if (isTemplate(before)) {
+        if (isRepeatTemplate(before)) {
           tasks = tasks.map(t => t.originTaskId === action.id && t.archivedAt === undefined
             ? removeSubtask([t], t.id, action.subtaskId, now)[0]
             : t)
@@ -606,13 +615,29 @@ export class HostLedger {
         // without its template is meaningless); deleting one copy removes only
         // that copy, and its date stays marked materialized so the sweep never
         // re-creates it. Unbound copies survive a template delete.
+        const removed = removeTaskRecords(this.state.tasks, action.id, true)
+        if (removed.removedIds.length === 0) return false
+        this.state.tasks = removed.tasks
+        deleteSchedulerMirrors(this.state.scheduler.nextRuns, removed.removedIds)
+        return true
+      }
+      case 'deleteInstance': {
+        // A repeat template owns the series, so deleting only its first
+        // occurrence is represented as a Host-owned date tombstone. Copies
+        // remain real tasks and future dates keep materializing normally.
         const target = this.state.tasks.find(t => t.id === action.id)
-        const tasks = target?.originTaskId === undefined
-          ? this.state.tasks.filter(t => t.id !== action.id && t.originTaskId !== action.id)
-          : this.state.tasks.filter(t => t.id !== action.id)
-        if (tasks.length === this.state.tasks.length) return false
-        this.state.tasks = tasks
-        delete this.state.scheduler.nextRuns[action.id]
+        if (target === undefined || !isRepeatMember(target)) return false
+        if (isRepeatTemplate(target)) {
+          this.state.tasks = this.state.tasks.map(t => t.id === action.id
+            ? markRepeatTemplateOccurrence(t, 'deletedDates', now)
+            : t)
+          delete this.state.scheduler.nextRuns[action.id]
+          return true
+        }
+        const removed = removeTaskRecords(this.state.tasks, action.id, false)
+        if (removed.removedIds.length === 0) return false
+        this.state.tasks = removed.tasks
+        deleteSchedulerMirrors(this.state.scheduler.nextRuns, removed.removedIds)
         return true
       }
       case 'archive': {
@@ -636,12 +661,14 @@ export class HostLedger {
         // (unbound copies schedule themselves).
         const scheduleId = target.originTaskId ?? action.id
         const before = this.state.tasks.find(t => t.id === scheduleId)
-        let tasks = setSchedule(this.state.tasks, scheduleId, action.patch, now)
+        let tasks = setSchedule(this.state.tasks, scheduleId, action.patch, now, options.scheduledDepth)
         const task = tasks.find(t => t.id === scheduleId)
         if (task === undefined) return false
         // Clearing the repeat rule ends the series: its bound copies go away.
         if (before !== undefined && before.schedule?.repeat !== undefined && action.patch.repeat === null) {
+          const removedIds = tasks.filter(t => t.originTaskId === scheduleId).map(t => t.id)
           tasks = tasks.filter(t => t.originTaskId !== scheduleId)
+          deleteSchedulerMirrors(this.state.scheduler.nextRuns, removedIds)
         }
         if (task.schedule !== undefined) {
           const active = task.schedule.enabled || task.schedule.repeat !== undefined || task.schedule.dueAt !== undefined
@@ -668,8 +695,9 @@ export class HostLedger {
             if (t.originTaskId !== scheduleId || t.archivedAt !== undefined) return t
             if (triggerAgent) {
               const dueAt = startOfDayMs(t.startAt) + triggerMinutes * 60_000
-              if (dueAt >= now) return { ...t, schedule: { enabled: true, dueAt, nextRunAt: dueAt }, updatedAt: now }
-              return { ...t, schedule: { enabled: true, dueAt, nextRunAt: undefined }, updatedAt: now }
+              const lineage = updated.scheduledDepth !== undefined ? { scheduledDepth: updated.scheduledDepth } : {}
+              if (dueAt >= now) return { ...t, ...lineage, schedule: { enabled: true, dueAt, nextRunAt: dueAt }, updatedAt: now }
+              return { ...t, ...lineage, schedule: { enabled: true, dueAt, nextRunAt: undefined }, updatedAt: now }
             }
             return t.schedule === undefined ? t : { ...t, schedule: undefined, updatedAt: now }
           })
@@ -682,11 +710,19 @@ export class HostLedger {
         return true
       }
       case 'clearInstanceSchedule': {
-        // "Cancel this day only": drop the target task's own schedule WITHOUT
-        // series routing — a repeat copy keeps its place and its binding, only
-        // its trigger one-shot goes away.
+        // "Cancel this day only": do not route through the template. A repeat
+        // copy loses its own trigger one-shot; the template keeps the repeat
+        // rule but records its own date as skipped so normalization cannot
+        // re-arm the first occurrence on the next Host tick.
         const target = this.state.tasks.find(t => t.id === action.id)
         if (target === undefined || target.schedule === undefined) return false
+        if (isRepeatTemplate(target)) {
+          this.state.tasks = this.state.tasks.map(t => t.id === action.id
+            ? markRepeatTemplateOccurrence(t, 'skippedDates', now)
+            : t)
+          delete this.state.scheduler.nextRuns[action.id]
+          return true
+        }
         this.state.tasks = this.state.tasks.map(t => t.id === action.id ? { ...t, schedule: undefined, updatedAt: now } : t)
         delete this.state.scheduler.nextRuns[action.id]
         return true
@@ -757,6 +793,31 @@ function mirrorOf(schedule: NonNullable<TaskRecord['schedule']>): { nextRunAt?: 
   return { nextRunAt: schedule.nextRunAt, lastTriggeredAt: schedule.lastTriggeredAt }
 }
 
+function deleteSchedulerMirrors(
+  nextRuns: PersistedScheduler['nextRuns'],
+  ids: readonly string[],
+): void {
+  for (const id of ids) delete nextRuns[id]
+}
+
+type RepeatOccurrenceMarker = 'skippedDates' | 'deletedDates'
+
+/** Mark one template occurrence without changing the future repeat series. */
+function markRepeatTemplateOccurrence(
+  task: TaskRecord,
+  marker: RepeatOccurrenceMarker,
+  now: number,
+): TaskRecord {
+  const schedule = task.schedule
+  if (schedule?.repeat === undefined) return task
+  const dateKey = dayKey(task.startAt)
+  const dates = [...new Set([...(schedule[marker] ?? []), dateKey])]
+  const nextSchedule = { ...schedule, nextRunAt: undefined, retryCount: undefined }
+  if (marker === 'skippedDates') nextSchedule.skippedDates = dates
+  else nextSchedule.deletedDates = dates
+  return { ...task, schedule: nextSchedule, updatedAt: now }
+}
+
 /** Arm a fresh schedule: one-shots and a repeat template's first occurrence
  * get a next-run instant; later repeat dates are materialized as copies. */
 function armSchedule(task: TaskRecord, now: number): TaskRecord['schedule'] | undefined {
@@ -783,6 +844,8 @@ function repeatTriggerDueAt(task: TaskRecord | undefined): number | undefined {
   const schedule = task?.schedule
   const repeat = schedule?.repeat
   if (task === undefined || schedule?.enabled !== true || repeat?.triggerAgent !== true) return undefined
+  const dateKey = dayKey(task.startAt)
+  if (schedule.skippedDates?.includes(dateKey) || schedule.deletedDates?.includes(dateKey)) return undefined
   return repeatDueAtForStart(repeat, task.startAt)
 }
 
@@ -805,11 +868,16 @@ function oneShotSchedule(dueAt: number): Schedule {
 /** Recompute a repeat template's first occurrence and reset retry state. */
 function repeatTemplateSchedule(current: Schedule, repeat: NonNullable<Schedule['repeat']>, startAt: number, now: number): Schedule {
   const dueAt = current.enabled === true ? repeatDueAtForStart(repeat, startAt) : undefined
+  const dateKey = dayKey(startAt)
+  const skippedDates = current.skippedDates?.filter(key => key !== dateKey)
+  const deletedDates = current.deletedDates?.filter(key => key !== dateKey)
   return {
     ...current,
     nextRunAt: dueAt !== undefined && dueAt > now ? dueAt : undefined,
     lastTriggeredAt: undefined,
     retryCount: undefined,
+    skippedDates: skippedDates !== undefined && skippedDates.length > 0 ? skippedDates : undefined,
+    deletedDates: deletedDates !== undefined && deletedDates.length > 0 ? deletedDates : undefined,
   }
 }
 
@@ -825,10 +893,9 @@ function currentRepeatOccurrenceAt(task: TaskRecord, repeat: NonNullable<Schedul
   return task.schedule?.dueAt ?? repeatDueAtForStart(repeat, task.startAt) ?? task.startAt
 }
 
-/** Whether the most recent execution was a failed scheduled attempt. */
-function endsWithFailedScheduledExecution(task: TaskRecord): boolean {
-  const last = task.executions.at(-1)
-  return last?.triggeredBy === 'schedule' && last.result === 'failed'
+/** Whether this task has already participated in a scheduled occurrence. */
+function hasScheduledExecution(task: TaskRecord): boolean {
+  return task.executions.some(execution => execution.triggeredBy === 'schedule')
 }
 
 /**
@@ -838,8 +905,8 @@ function endsWithFailedScheduledExecution(task: TaskRecord): boolean {
  * time-of-day. Bound copies inherit that rule for the "this copy" operation,
  * then become independent one-shots. Standalone one-shots are intentionally
  * re-armed at the new block start: the action itself is the user's explicit
- * request to create a new scheduled occurrence, including after a capped
- * failed attempt. A move into the past simply has no schedule.
+ * request to create a new scheduled occurrence, including after a completed
+ * or capped failed attempt. A move into the past simply has no schedule.
  */
 function scheduleAfterReschedule(
   before: TaskRecord,
@@ -860,7 +927,7 @@ function scheduleAfterReschedule(
   const oneShotWasArmed = before.schedule?.enabled === true
     && before.schedule.repeat === undefined
     && before.schedule.dueAt !== undefined
-  if (!oneShotWasArmed && !endsWithFailedScheduledExecution(before)) return moved.schedule
+  if (!oneShotWasArmed && !hasScheduledExecution(before)) return moved.schedule
 
   return moved.startAt > now ? oneShotSchedule(moved.startAt) : undefined
 }
@@ -900,11 +967,6 @@ export function actionError(action: calendarAction): string {
   return `unknown or rejected calendar action of kind "${action.kind}"`
 }
 
-/** Whether a task is a repeat template (owns a repeat rule, not itself a copy). */
-function isTemplate(task: TaskRecord | undefined): boolean {
-  return task !== undefined && task.originTaskId === undefined && task.schedule?.repeat !== undefined
-}
-
 /**
  * The fields of an update patch that sync from a repeat template to its bound
  * copies: content + execution pins. Block times, done and the unbind flag stay
@@ -919,4 +981,22 @@ function templateSyncPatch(patch: TaskUpdatePatch): TaskUpdatePatch {
     if (value !== undefined) (out as Record<string, unknown>)[key] = value
   }
   return out
+}
+
+/** Remove one task, or a repeat root plus its bound copies, and report ids. */
+function removeTaskRecords(
+  tasks: readonly TaskRecord[],
+  id: string,
+  cascadeSeries: boolean,
+): { tasks: TaskRecord[]; removedIds: string[] } {
+  const target = tasks.find(task => task.id === id)
+  if (target === undefined) return { tasks: [...tasks], removedIds: [] }
+  const cascade = cascadeSeries && target.originTaskId === undefined
+  const removedIds = tasks
+    .filter(task => task.id === id || (cascade && task.originTaskId === id))
+    .map(task => task.id)
+  return {
+    tasks: tasks.filter(task => !removedIds.includes(task.id)),
+    removedIds,
+  }
 }

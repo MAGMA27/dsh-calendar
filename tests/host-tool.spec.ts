@@ -10,6 +10,8 @@ function mk(options: {
   catalog?: ExecutionCatalog
   now?: number
   activeScheduledSessions?: readonly string[]
+  activeScheduledDepth?: number
+  maxScheduledDepth?: number
   runResult?: unknown
 } = {}) {
   let taskSeq = 0
@@ -20,6 +22,10 @@ function mk(options: {
     run: async id => { runs.push(id); return options.runResult },
     catalog: options.catalog === undefined ? undefined : async () => options.catalog!,
     now: options.now === undefined ? undefined : () => options.now!,
+    getActiveScheduledExecution: sessionId => options.activeScheduledSessions?.includes(sessionId) === true
+      ? { taskId: 'scheduled-parent', executionId: 'scheduled-execution', sessionId, scheduledDepth: options.activeScheduledDepth ?? 0 }
+      : undefined,
+    maxScheduledDepth: () => options.maxScheduledDepth ?? 0,
     hasActiveScheduledExecution: sessionId => options.activeScheduledSessions?.includes(sessionId) === true,
   }) as unknown as { execute: AnyExec }
   return { ledger, tool, runs }
@@ -120,6 +126,37 @@ describe('calendar_task tool', () => {
     expect(r.ok).toBe(false)
     expect(r.error).toContain('cannot arm another auto-run')
     expect(ledger.taskById(id)?.schedule).toBeUndefined()
+  })
+
+  it('allows a scheduled Agent to create a child up to the configured depth and persists its lineage', async () => {
+    const { tool, ledger } = mk({ activeScheduledSessions: ['session-current'], maxScheduledDepth: 1 })
+    const r = await exec(tool, {
+      action: 'create', title: 'nested child', startAt: 2000, endAt: 3000, dueAt: 4000, sessionId: 'current',
+    }, { agent: { id: 'session-current' } })
+    expect(r.ok).toBe(true)
+    const id = (r.task as Record<string, unknown>).id as string
+    expect(ledger.taskById(id)?.scheduledDepth).toBe(1)
+  })
+
+  it('rejects a grandchild once the configured recursion depth is reached', async () => {
+    const { tool, ledger } = mk({ activeScheduledSessions: ['session-current'], activeScheduledDepth: 1, maxScheduledDepth: 1 })
+    const r = await exec(tool, {
+      action: 'create', title: 'grandchild', startAt: 2000, endAt: 3000, dueAt: 4000, sessionId: 'current',
+    }, { agent: { id: 'session-current' } })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('recursion depth 2 exceeds configured maximum 1')
+    expect(ledger.getSnapshot().tasks).toHaveLength(0)
+  })
+
+  it('stamps an auto-run schedule armed on an existing task with the child depth', async () => {
+    const { tool, ledger } = mk({ activeScheduledSessions: ['session-current'], maxScheduledDepth: 1 })
+    const created = await exec(tool, { action: 'create', title: 'plain child' })
+    const id = (created.task as Record<string, unknown>).id as string
+    const r = await exec(tool, {
+      action: 'setSchedule', id, repeat: 'daily', triggerAgent: true,
+    }, { agent: { id: 'session-current' } })
+    expect(r.ok).toBe(true)
+    expect(ledger.taskById(id)?.scheduledDepth).toBe(1)
   })
 
   it('marks a past one-off dueAt failed instead of catching it up', async () => {

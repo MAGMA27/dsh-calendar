@@ -152,10 +152,10 @@ describe('HostExecutionRunner', () => {
     expect(ledger.activeScheduledExecution('new-session')).toBeUndefined()
   })
 
-  it('recomposes a reused session when the task pins an agent preset', async () => {
+  it('recomposes a blank reused session when the task pins an agent preset', async () => {
     const { ledger, id } = mkLedger({ sessionId: 's-pinned', mode: 'custom' })
     const { env, calls, rows, gates } = makeHarness()
-    rows.push({ sessionId: 's-pinned', running: false, updatedAt: 500 })
+    rows.push({ sessionId: 's-pinned', running: false, blank: true, agentPreset: 'standard', updatedAt: 500 })
     const p = mkRunner(ledger, env, gates).run(id)
     await toSettleLoop()
     expect(calls.presetsSelect).toBe(1)
@@ -163,6 +163,32 @@ describe('HostExecutionRunner', () => {
     gates.shift()?.()
     const res = await p
     await res.settleFinished
+  })
+
+  it('skips preset selection when a reused started session already has the requested preset', async () => {
+    const { ledger, id } = mkLedger({ sessionId: 's-pinned', mode: 'custom' })
+    const { env, calls, rows, gates } = makeHarness()
+    rows.push({ sessionId: 's-pinned', running: false, blank: false, agentPreset: 'custom', updatedAt: 500 })
+    const p = mkRunner(ledger, env, gates).run(id)
+    await toSettleLoop()
+    expect(calls.presetsSelect).toBe(0)
+    expect(calls.prompt).toBe(1)
+    rows[0].running = false; rows[0].updatedAt = 3000
+    gates.shift()?.()
+    const res = await p
+    await res.settleFinished
+    expect(ledger.taskById(id)!.executions[0].result).toBe('succeeded')
+  })
+
+  it('rejects a different preset on a reused started session without selecting or prompting', async () => {
+    const { ledger, id } = mkLedger({ sessionId: 's-pinned', mode: 'custom' })
+    const { env, calls, rows } = makeHarness()
+    rows.push({ sessionId: 's-pinned', running: false, blank: false, agentPreset: 'standard', updatedAt: 500 })
+    const result = await mkRunner(ledger, env, []).run(id)
+    expect(result.outcome).toBe('failed')
+    expect(calls.presetsSelect).toBe(0)
+    expect(calls.prompt).toBe(0)
+    expect(ledger.taskById(id)!.executions[0].error).toContain('cannot switch to custom')
   })
 
   it('fails the run when the pinned session is busy', async () => {

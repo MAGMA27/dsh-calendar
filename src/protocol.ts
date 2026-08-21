@@ -102,6 +102,8 @@ export interface RemoveSubtaskAction { kind: 'removeSubtask'; id: string; subtas
 
 /** Delete a task (keeps executions/history out of the view). */
 export interface DeleteTaskAction { kind: 'delete'; id: string }
+/** Delete only the selected repeat occurrence; the series root remains active. */
+export interface DeleteInstanceAction { kind: 'deleteInstance'; id: string }
 /** Archive/restore a settled task. */
 export interface ArchiveTaskAction { kind: 'archive'; id: string }
 export interface RestoreTaskAction { kind: 'restore'; id: string }
@@ -129,9 +131,9 @@ export interface ShiftRepeatTimesAction {
 
 /**
  * Clear ONLY the target task's own schedule (no series routing): used for the
- * "cancel this day only" choice on a repeat copy — the copy's trigger one-shot
- * is removed, it stays on the calendar as a plain task, and the repeat rule
- * (template + sibling copies) is untouched.
+ * "cancel this day only" choice on a repeat member. A copy loses its trigger
+ * one-shot and stays on the calendar as a plain task; a template records its
+ * own date as skipped while retaining the repeat rule for future occurrences.
  */
 export interface ClearInstanceScheduleAction {
   kind: 'clearInstanceSchedule'
@@ -159,6 +161,7 @@ export type calendarAction =
   | SetSubtaskDoneAction
   | RemoveSubtaskAction
   | DeleteTaskAction
+  | DeleteInstanceAction
   | ArchiveTaskAction
   | RestoreTaskAction
   | SetScheduleAction

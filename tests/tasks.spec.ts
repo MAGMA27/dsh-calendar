@@ -4,7 +4,7 @@ import {
   completedSubtaskCount, createTask,
   decideScheduledAttempt, deleteTask, quadrantOf, removeSubtask, restoreTask, scheduleRetryExhausted, setQuadrant, setSchedule,
   setSubtaskDone, setTaskDone, settleExecution, startExecution, subtaskProgress,
-  isTaskOverdue, isTaskVisibleInOverview, taskTriggersAgent, updateTask, SCHEDULE_MAX_ATTEMPTS, type NewTaskInput, type TaskRecord,
+  isTaskOccurrenceVisible, isTaskOverdue, isTaskVisibleInOverview, taskOccurrenceTriggersAgent, taskTriggersAgent, updateTask, SCHEDULE_MAX_ATTEMPTS, type NewTaskInput, type TaskRecord,
 } from '../src/core/tasks.ts'
 
 function baseInput(over: Partial<NewTaskInput> = {}): NewTaskInput {
@@ -203,6 +203,41 @@ describe('taskTriggersAgent (the clock badge)', () => {
   })
   it('is false when the schedule is disabled even if triggerAgent is set', () => {
     expect(taskTriggersAgent(one({ schedule: { enabled: false, repeat: { kind: 'daily', triggerAgent: true } } }))).toBe(false)
+  })
+  it('hides only a skipped template occurrence while keeping future copies scheduled', () => {
+    const start = new Date(2025, 0, 6, 9).getTime()
+    const template = one({
+      startAt: start,
+      endAt: start + 60 * 60_000,
+      schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true, triggerAt: '09:00' } },
+    })
+    expect(taskOccurrenceTriggersAgent(template)).toBe(true)
+    const skippedTemplate = {
+      ...template,
+      schedule: { ...template.schedule!, skippedDates: ['2025-01-06'] },
+    }
+    expect(taskTriggersAgent(skippedTemplate)).toBe(true) // the series remains active
+    expect(taskOccurrenceTriggersAgent(skippedTemplate)).toBe(false) // this date was cancelled
+    const copy = {
+      ...template,
+      id: 'copy',
+      originTaskId: template.id,
+      startAt: start + 24 * 60 * 60_000,
+      endAt: start + 25 * 60 * 60_000,
+      schedule: { enabled: true, dueAt: start + 24 * 60 * 60_000 + 9 * 60 * 60_000 },
+    }
+    expect(taskOccurrenceTriggersAgent(copy)).toBe(true)
+  })
+  it('hides a deleted template occurrence without hiding future copies', () => {
+    const start = new Date(2025, 0, 6, 9).getTime()
+    const template = one({
+      startAt: start,
+      schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } },
+    })
+    const deletedTemplate = { ...template, schedule: { ...template.schedule!, deletedDates: ['2025-01-06'] } }
+    expect(isTaskOccurrenceVisible(deletedTemplate)).toBe(false)
+    const copy = { ...template, id: 'copy', originTaskId: template.id, startAt: start + 24 * 60 * 60_000 }
+    expect(isTaskOccurrenceVisible(copy)).toBe(true)
   })
 })
 

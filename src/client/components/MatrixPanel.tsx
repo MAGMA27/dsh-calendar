@@ -4,7 +4,7 @@
  */
 import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
-import { type Quadrant, type Urgency, type Importance, isTaskOverdue, isTaskVisibleInOverview, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
+import { type Quadrant, type Urgency, type Importance, isTaskOccurrenceVisible, isTaskOverdue, isTaskVisibleInOverview, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
 import { t, type calendarKey } from '../locales.ts'
 import { TaskDate, TaskOverdue, TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
@@ -35,7 +35,7 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
   const snap = controller.getSnapshot()
   const now = Date.now()
   const collapsed = collapseRepeatSeries(
-    snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskVisibleInOverview(task, now)),
+    snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskOccurrenceVisible(task) && isTaskVisibleInOverview(task, now)),
     'oldest',
   )
   const [over, setOver] = useState<Quadrant | undefined>(undefined)

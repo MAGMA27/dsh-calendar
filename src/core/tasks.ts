@@ -9,6 +9,8 @@
  * browser half (the client bundle inlines these files).
  */
 
+import { dayKey } from './calendar.ts'
+
 /** Urgency knob (Eisenhower): how time-critical the task is. */
 export type Urgency = 'high' | 'medium' | 'low'
 /** Importance knob (Eisenhower): how impactful the task is. */
@@ -16,6 +18,8 @@ export type Importance = 'high' | 'medium' | 'low'
 
 /** Maximum Host attempts for one scheduled occurrence, including the first attempt. */
 export const SCHEDULE_MAX_ATTEMPTS = 3
+/** Maximum configured nesting for auto-run schedules created by scheduled Agents. */
+export const MAX_SCHEDULED_RECURSION_DEPTH = 3
 
 /**
  * The derived Eisenhower quadrant. The four-terminal mapping keeps the color
@@ -103,7 +107,10 @@ export interface ExecutionRecord {
  * `nextRunAt`/`lastTriggeredAt` are the scheduler mirror for one-shots and a
  * repeat template's first occurrence;
  * `retryCount` is Host-owned failed setup attempts for the current occurrence;
- * `materialized` is Host-owned bookkeeping of already-copied dates.
+ * `materialized` is Host-owned bookkeeping of already-copied dates;
+ * `skippedDates` records repeat-template dates whose Agent trigger was
+ * cancelled; `deletedDates` records repeat-template occurrences removed from
+ * the calendar while the future series remains active.
  */
 export interface ScheduleRule {
   /** Whether the schedule is armed. */
@@ -120,6 +127,10 @@ export interface ScheduleRule {
   retryCount?: number
   /** Host-owned: YYYY-MM-DD keys already copied as repeat occurrences. */
   materialized?: string[]
+  /** Host-owned: repeat-template dates whose own occurrence was cancelled. */
+  skippedDates?: string[]
+  /** Host-owned: repeat-template occurrence dates removed from the calendar. */
+  deletedDates?: string[]
 }
 
 /** Result of one Host attempt to start a scheduled Agent occurrence. */
@@ -197,10 +208,12 @@ export interface TaskRecord {
   model?: string
   /** Execution target: adapter-owned reasoning effort. */
   reasoningEffort?: string
-  /** Execution target: agent preset; absent → deployment default. */
+  /** Execution target: agent preset; absent → new-session deployment default or reused-session current preset. */
   mode?: string
   /** Execution target: /permission preset; absent → session default. */
   permission?: TaskPermission
+  /** Host-owned auto-run lineage depth; absent means a user-created root (depth 0). */
+  scheduledDepth?: number
   /** For repeat copies: the template task id that spawned this copy. */
   originTaskId?: string
   archivedAt?: number
@@ -272,18 +285,41 @@ export function quadrantOf(urgency: Urgency, importance: Importance): Quadrant {
 }
 
 /**
- * Whether a task will actually run an agent at a due instant. This drives the
- * 🕐 badge (and only that): the clock means "this task auto-triggers an agent".
- * It is true for a one-shot dueAt schedule, or a repeat rule with
- * `triggerAgent` enabled. It is false for a plain task, a repeat template (or
- * copy) whose rule does NOT trigger an agent, and a plain materialized copy —
- * materializing copies onto dates is not an agent trigger.
+ * Whether a task series or one-shot is configured to run an agent at a due
+ * instant. The occurrence-level UI badge additionally accounts for a skipped
+ * template date via `taskOccurrenceTriggersAgent` below.
  */
 export function taskTriggersAgent(task: Pick<TaskRecord, 'schedule'>): boolean {
   const s = task.schedule
   if (s === undefined || s.enabled !== true) return false
   if (s.dueAt !== undefined) return true
   return s.repeat?.triggerAgent === true
+}
+
+/**
+ * Whether this calendar occurrence currently displays an Agent trigger. A
+ * repeat template can keep its series rule while its own date is cancelled;
+ * that date must not retain a misleading clock badge. Materialized copies
+ * keep their own one-shot dueAt and therefore remain scheduled independently.
+ */
+export function taskOccurrenceTriggersAgent(
+  task: Pick<TaskRecord, 'schedule' | 'originTaskId' | 'startAt'>,
+): boolean {
+  if (!isTaskOccurrenceVisible(task) || !taskTriggersAgent(task)) return false
+  const schedule = task.schedule
+  return !(task.originTaskId === undefined
+    && schedule?.repeat !== undefined
+    && schedule.skippedDates?.includes(dayKey(task.startAt)) === true)
+}
+
+/** Whether the task occurrence should be rendered in calendar/list views. */
+export function isTaskOccurrenceVisible(
+  task: Pick<TaskRecord, 'schedule' | 'originTaskId' | 'startAt'>,
+): boolean {
+  const schedule = task.schedule
+  return !(task.originTaskId === undefined
+    && schedule?.repeat !== undefined
+    && schedule.deletedDates?.includes(dayKey(task.startAt)) === true)
 }
 
 /** Whether an unfinished task starts before today's local calendar day. */
@@ -367,11 +403,16 @@ export function hasIncompleteModelPin(
  * targets are normalized (blank → undefined). A requested schedule is armed
  * only when enabled and (globally) valid at schedule-application time.
  */
-export function createTask(input: NewTaskInput, now: number, id: string): TaskRecord | undefined {
+export function createTask(input: NewTaskInput, now: number, id: string, scheduledDepth?: number): TaskRecord | undefined {
   const title = input.title.trim()
   if (title === '' || hasIncompleteModelPin(input.provider, input.model)) return undefined
   const startAt = input.startAt
   const endAt = input.endAt > startAt ? input.endAt : startAt + 60_000
+  const lineageDepth = typeof scheduledDepth === 'number'
+    && Number.isSafeInteger(scheduledDepth)
+    && scheduledDepth > 0
+    ? scheduledDepth
+    : undefined
   const schedule: ScheduleRule | undefined = input.schedule?.enabled === true
     ? { enabled: true, repeat: isRepeatRule(input.schedule.repeat) ? input.schedule.repeat : undefined, dueAt: input.schedule.dueAt }
     : undefined
@@ -396,6 +437,7 @@ export function createTask(input: NewTaskInput, now: number, id: string): TaskRe
     reasoningEffort: normalizeTargetId(input.reasoningEffort),
     mode: normalizeTargetId(input.mode),
     permission: isTaskPermission(input.permission) ? input.permission : undefined,
+    ...(lineageDepth !== undefined ? { scheduledDepth: lineageDepth } : {}),
     createdAt: now,
     updatedAt: now,
   }
@@ -527,7 +569,9 @@ export interface SchedulePatch {
 }
 
 /** Set (merge) a task's schedule rule and persist it. `null` clears a field. */
-export function setSchedule(tasks: readonly TaskRecord[], id: string, patch: SchedulePatch, now: number): TaskRecord[] {
+export function setSchedule(
+  tasks: readonly TaskRecord[], id: string, patch: SchedulePatch, now: number, scheduledDepth?: number,
+): TaskRecord[] {
   return tasks.map(task => {
     if (task.id !== id) return task
     const current = task.schedule ?? { enabled: false }
@@ -544,7 +588,19 @@ export function setSchedule(tasks: readonly TaskRecord[], id: string, patch: Sch
     // Repeating templates keep their materialization bookkeeping; a one-shot
     // roll-forward leaves it untouched.
     if (schedule.repeat !== undefined && current.materialized !== undefined) schedule.materialized = current.materialized
-    return { ...task, schedule, updatedAt: now }
+    if (schedule.repeat !== undefined && current.skippedDates !== undefined) schedule.skippedDates = current.skippedDates
+    if (schedule.repeat !== undefined && current.deletedDates !== undefined) schedule.deletedDates = current.deletedDates
+    const lineage = typeof scheduledDepth === 'number'
+      && Number.isSafeInteger(scheduledDepth)
+      && scheduledDepth > 0
+      ? { scheduledDepth }
+      : {}
+    return {
+      ...task,
+      schedule,
+      ...lineage,
+      updatedAt: now,
+    }
   })
 }
 

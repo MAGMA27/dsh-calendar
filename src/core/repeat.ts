@@ -13,6 +13,29 @@
 import { addDays, dayKey, minutesOfDay } from './calendar.ts'
 import type { RepeatRule, ScheduleRule, TaskRecord } from './tasks.ts'
 
+/** The scope selected for a repeat-series operation. */
+export type RepeatScope = 'instance' | 'series'
+
+/** Whether a task is either a repeat template or one of its materialized copies. */
+export function isRepeatMember(task: Pick<TaskRecord, 'originTaskId' | 'schedule'>): boolean {
+  return task.originTaskId !== undefined || task.schedule?.repeat !== undefined
+}
+
+/** Resolve a repeat member to the series root (or itself when unbound). */
+export function repeatSeriesId(task: Pick<TaskRecord, 'id' | 'originTaskId'>): string {
+  return task.originTaskId ?? task.id
+}
+
+/** Resolve the task id an operation should dispatch for the chosen scope. */
+export function repeatTargetId(task: Pick<TaskRecord, 'id' | 'originTaskId'>, scope: RepeatScope): string {
+  return scope === 'series' ? repeatSeriesId(task) : task.id
+}
+
+/** Whether a task is the repeat template that owns a series rule. */
+export function isRepeatTemplate(task: Pick<TaskRecord, 'originTaskId' | 'schedule'> | undefined): boolean {
+  return task !== undefined && task.originTaskId === undefined && task.schedule?.repeat !== undefined
+}
+
 /** Rolling materialization horizon (days ahead from today). */
 export const REPEAT_HORIZON_DAYS = 60
 
@@ -164,6 +187,7 @@ export function buildRepeatCopy(template: TaskRecord, dateMs: number, now: numbe
     reasoningEffort: template.reasoningEffort,
     mode: template.mode,
     permission: template.permission,
+    ...(template.scheduledDepth !== undefined ? { scheduledDepth: template.scheduledDepth } : {}),
     originTaskId: template.id,
     createdAt: now,
     updatedAt: now,

@@ -3,7 +3,7 @@
  */
 import type { ReactNode } from 'react'
 import type { TaskRecord } from '../../core/tasks.ts'
-import { completedSubtaskCount, isTaskOverdue, taskTriggersAgent } from '../../core/tasks.ts'
+import { completedSubtaskCount, isTaskOverdue, taskOccurrenceTriggersAgent } from '../../core/tasks.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { t } from '../locales.ts'
 import css from '../calendar.module.css'
@@ -29,7 +29,7 @@ export function TaskBadges({ task }: { task: TaskRecord }): ReactNode {
   const subCount = task.subtasks.length
   const subDone = completedSubtaskCount(task)
   const running = task.executions.some(e => e.endedAt === undefined)
-  const scheduled = taskTriggersAgent(task)
+  const scheduled = taskOccurrenceTriggersAgent(task)
   const latest = task.executions[task.executions.length - 1]
   const failed = latest?.result === 'failed'
   const isCopy = task.originTaskId !== undefined

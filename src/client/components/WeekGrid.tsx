@@ -16,6 +16,7 @@ import {
   type DayCell,
 } from '../../core/calendar.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
+import { isTaskOccurrenceVisible } from '../../core/tasks.ts'
 import { TaskBlock, type TaskEditKind } from './TaskBlock.tsx'
 import { t } from '../locales.ts'
 import css from '../calendar.module.css'
@@ -277,7 +278,7 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
         </div>
         {days.map(day => {
           const dayEnd = day.dateMs + DAY_MS
-          const columnTasks = snap.snapshot.tasks.filter(t => !t.archivedAt && blockOnDay(t.startAt, t.endAt, day.dateMs, dayEnd))
+          const columnTasks = snap.snapshot.tasks.filter(t => !t.archivedAt && isTaskOccurrenceVisible(t) && blockOnDay(t.startAt, t.endAt, day.dateMs, dayEnd))
           // side-by-side columns so overlapping tasks don't cover each other
           const layout = layoutDayTasks(columnTasks)
           const colByTask = new Map(layout.map(l => [l.id, l]))
@@ -310,17 +311,20 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
                 const pos = colByTask.get(task.id)
                 const columns = pos?.columnCount ?? 1
                 const column = pos?.column ?? 0
-                // Reserve a little horizontal gap between side-by-side blocks.
-                const widthPct = 100 / columns
+                // Reserve a little horizontal gap only between side-by-side
+                // blocks. The first block must stay at 0% so its left edge
+                // remains aligned with full-width blocks in other time ranges.
                 const gapPct = columns > 1 ? 2 : 0
+                const widthPct = (100 - gapPct * (columns - 1)) / columns
+                const leftPct = column * (widthPct + gapPct)
                 return (
                   <TaskBlock
                     key={task.id}
                     task={task}
                     topPct={topFrac * 100}
                     heightPct={Math.max(durationFrac * 100, 1.6)}
-                    leftPct={Math.max(column * (widthPct) + (gapPct / 2), 0)}
-                    widthPct={Math.max(widthPct - gapPct, 4)}
+                    leftPct={Math.max(leftPct, 0)}
+                    widthPct={Math.max(widthPct, 4)}
                     onSelect={selectTask}
                     onEditStart={onEditStart(task, day)}
                     editing={editing && inColumn}

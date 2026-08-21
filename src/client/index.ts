@@ -11,6 +11,7 @@ import type { ClientContext, ISessions, SessionId } from '@deepseek-ai/dsh-clien
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { calendarClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpcalendarHostTransport } from './host-api.ts'
 import { createCalendarOverlay } from './calendar-overlay.tsx'
@@ -20,6 +21,7 @@ import { closeOnSessionOpen, watchSessionNavigation } from './navigation-watch.t
 import { watchCatalogRefresh } from './catalog-refresh.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
 import { en, zh } from './locales.ts'
+import { CalendarSettingsCard } from './components/CalendarSettingsCard.tsx'
 
 /** Locale namespace this plugin owns. */
 const NS = 'calendar'
@@ -30,10 +32,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-/** Required services: locale for copy, slots for the two registrations, and
- * sessions only for the session jump. All calendar domain state comes from the
- * Host over HTTP. */
-export const inject = ['locale', 'slots', 'sessions']
+/** Required services: locale for copy, slots for the registrations, settings
+ * scope for the calendar preference card, and sessions only for the session
+ * jump. All calendar domain state comes from the Host over HTTP. */
+export const inject = ['locale', 'slots', 'sessions', 'settingsScope']
 
 /** Client plugin body. */
 export function apply(ctx: ClientContext): void {
@@ -117,6 +119,16 @@ export function apply(ctx: ClientContext): void {
     order: 0,
     label: () => '日历',
   } as never, CalendarEntry as never))
+
+  // Settings → Plugins only renders namespaces that also contribute a keyed
+  // browser card. The Host registers the `calendar` namespace; this card is
+  // its client-side counterpart.
+  const settingsScope = ctx.settingsScope.bind({ namespace: NS })
+  ctx.slots.inject('settings.plugin.item' as never, () => ctx.slots.register({
+    name: 'settings.plugin.item',
+    key: NS,
+    inject: () => ({ settingsScope }),
+  } as never, CalendarSettingsCard as never))
 
   ctx.effect(() => () => controller.dispose(), 'dsh-calendar: dispose controller')
 }

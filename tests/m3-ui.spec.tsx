@@ -5,6 +5,8 @@ import { act } from 'react-dom/test-utils'
 import { calendarClientController, initialState } from '../src/client/controller.ts'
 import { MemorycalendarHostTransport } from '../src/client/host-api.ts'
 import { TaskDetailPanel } from '../src/client/components/TaskDetailPanel.tsx'
+import { ScheduleClearConfirm } from '../src/client/components/ScheduleClearConfirm.tsx'
+import { RepeatDeleteConfirm } from '../src/client/components/RepeatDeleteConfirm.tsx'
 import { MatrixPanel } from '../src/client/components/MatrixPanel.tsx'
 import { AgendaPanel } from '../src/client/components/AgendaPanel.tsx'
 import { MonthGrid } from '../src/client/components/MonthGrid.tsx'
@@ -223,6 +225,73 @@ describe('TaskDetailPanel', () => {
     await act(async () => { controller.confirmScheduleClearDay() })
     expect(dispatched.some(a => a.kind === 'clearInstanceSchedule' && a.id === 'c1')).toBe(true)
 
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('offers this-day clearing on a repeat template too', async () => {
+    const template = makeTask({ id: 'tpl', schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } } })
+    const snap: calendarSnapshot = { schemaVersion: 1, revision: 1, tasks: [template], scheduler: { timeZone: 'Asia/Shanghai' } }
+    const { transport, dispatched } = recordTransport(snap)
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={template} onClose={() => {}} />) })
+
+    const clearBtn = [...host.querySelectorAll('button')].find(b => b.textContent === '清除定时' || b.textContent === 'Clear schedule') as HTMLButtonElement | undefined
+    expect(clearBtn).toBeTruthy()
+    await act(async () => { clearBtn!.click() })
+    expect(controller.getSnapshot().pendingScheduleClear).toEqual({ taskId: 'tpl' })
+
+    await act(async () => { controller.confirmScheduleClearDay() })
+    expect(dispatched.some(a => a.kind === 'clearInstanceSchedule' && a.id === 'tpl')).toBe(true)
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('asks for repeat delete scope and dispatches instance vs series targets', async () => {
+    const template = makeTask({ id: 'tpl', title: 'Template', schedule: { enabled: true, repeat: { kind: 'daily' } } })
+    const copy = makeTask({ id: 'copy', title: 'Copy', originTaskId: 'tpl', schedule: { enabled: true, dueAt: 5000 } })
+    const { transport, dispatched } = recordTransport({ schemaVersion: 1, revision: 1, tasks: [template, copy], scheduler: { timeZone: 'Asia/Shanghai' } })
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={copy} onClose={() => {}} />) })
+
+    const deleteBtn = [...host.querySelectorAll('button')].find(b => b.textContent === '删除' || b.textContent === 'Delete') as HTMLButtonElement | undefined
+    expect(deleteBtn).toBeTruthy()
+    await act(async () => { deleteBtn!.click() })
+    expect(controller.getSnapshot().pendingRepeatDelete).toEqual({ taskId: 'copy' })
+
+    const dialog = document.createElement('div'); document.body.appendChild(dialog)
+    const dialogRoot = createRoot(dialog)
+    await act(async () => { dialogRoot.render(<RepeatDeleteConfirm controller={controller} />) })
+    expect(dialog.textContent).toContain('删除这一天')
+    await act(async () => { controller.confirmRepeatDeleteThis() })
+    expect(dispatched.some(a => a.kind === 'deleteInstance' && a.id === 'copy')).toBe(true)
+
+    const p = controller.requestRepeatDelete('copy')
+    await act(async () => { controller.confirmRepeatDeleteAll() })
+    await expect(p).resolves.toBe('all')
+    expect(controller.getSnapshot().pendingRepeatDelete).toBeUndefined()
+
+    await act(async () => { root.unmount(); dialogRoot.unmount(); host.remove(); dialog.remove() })
+  })
+
+  it('shows the this-day option in the clear dialog for a repeat template', async () => {
+    const template = makeTask({ id: 'tpl', title: 'Template', schedule: { enabled: true, repeat: { kind: 'daily' } } })
+    const { transport } = recordTransport(snapshotWith(template))
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const pending = controller.requestScheduleClear(template.id)
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<ScheduleClearConfirm controller={controller} />) })
+
+    expect(host.textContent).toContain('取消这一天')
+    await act(async () => { controller.cancelScheduleClear() })
+    await expect(pending).resolves.toBe('cancel')
     await act(async () => { root.unmount(); host.remove() })
   })
 

@@ -66,6 +66,12 @@ function normalizeSchedule(value: unknown): ScheduleRule | undefined {
   const materialized = Array.isArray(r.materialized)
     ? r.materialized.filter((k): k is string => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k))
     : undefined
+  const skippedDates = Array.isArray(r.skippedDates)
+    ? r.skippedDates.filter((k): k is string => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k))
+    : undefined
+  const deletedDates = Array.isArray(r.deletedDates)
+    ? r.deletedDates.filter((k): k is string => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k))
+    : undefined
   return {
     enabled: r.enabled === true,
     repeat,
@@ -74,6 +80,8 @@ function normalizeSchedule(value: unknown): ScheduleRule | undefined {
     lastTriggeredAt: typeof r.lastTriggeredAt === 'number' ? r.lastTriggeredAt : undefined,
     retryCount: typeof r.retryCount === 'number' && Number.isSafeInteger(r.retryCount) && r.retryCount > 0 ? r.retryCount : undefined,
     materialized: materialized !== undefined && materialized.length > 0 ? materialized : undefined,
+    skippedDates: skippedDates !== undefined && skippedDates.length > 0 ? [...new Set(skippedDates)] : undefined,
+    deletedDates: deletedDates !== undefined && deletedDates.length > 0 ? [...new Set(deletedDates)] : undefined,
   }
 }
 
@@ -108,6 +116,11 @@ function normalizeTargetId(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
+/** Repair the Host-owned recursion lineage; zero is represented by absence. */
+function normalizeScheduledDepth(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined
+}
+
 /**
  * Parse + validate a persisted task array; invalid rows are dropped, and
  * enum/schedule fields are repaired row-by-row instead of dropping the row.
@@ -131,6 +144,7 @@ export function parseTasks(raw: string | null): TaskRecord[] {
       .map(normalizeExecution)
       .filter((e): e is NonNullable<typeof e> => e !== undefined)
     const schedule = normalizeSchedule(row.schedule)
+    const scheduledDepth = normalizeScheduledDepth(row.scheduledDepth)
     tasks.push({
       id: row.id as string,
       title: row.title as string,
@@ -153,6 +167,7 @@ export function parseTasks(raw: string | null): TaskRecord[] {
       reasoningEffort: normalizeTargetId(row.reasoningEffort),
       mode: normalizeTargetId(row.mode),
       permission: isTaskPermission(row.permission) ? row.permission : undefined,
+      ...(scheduledDepth !== undefined ? { scheduledDepth } : {}),
       originTaskId: normalizeTargetId(row.originTaskId),
       archivedAt: typeof row.archivedAt === 'number' ? row.archivedAt : undefined,
       createdAt: row.createdAt as number,

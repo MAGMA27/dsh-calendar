@@ -5,7 +5,7 @@
  */
 import type { calendarClientController } from '../controller.ts'
 import { blockOnDay, monthDays, sameMonth } from '../../core/calendar.ts'
-import { quadrantOf } from '../../core/tasks.ts'
+import { isTaskOccurrenceVisible, quadrantOf } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -49,7 +49,7 @@ export function MonthGrid({ controller }: MonthGridProps) {
       <div className={css.monthGrid}>
         {days.map(day => {
           const dayEnd = day.dateMs + 24 * 60 * 60_000
-          const dayTasks = snap.snapshot.tasks.filter(task => !task.archivedAt && blockOnDay(task.startAt, task.endAt, day.dateMs, dayEnd))
+          const dayTasks = snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskOccurrenceVisible(task) && blockOnDay(task.startAt, task.endAt, day.dateMs, dayEnd))
           const isToday = new Date(day.dateMs).toDateString() === todayKey
           const inMonth = sameMonth(day.dateMs, snap.cursor)
           const isFirstOfMonth = new Date(day.dateMs).getDate() === 1

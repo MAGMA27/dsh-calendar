@@ -19,6 +19,7 @@ import { HostExecutionRunner, type HostExecutionEnv, type RunnerAgentsFace, type
 import { HostScheduleService } from './host-scheduler.ts'
 import { dshHome } from './dsh-home.ts'
 import { buildCatalogFromApi, type CatalogApiFace } from './host-options.ts'
+import { MAX_SCHEDULED_RECURSION_DEPTH } from './core/tasks.ts'
 
 /** Required services: the web server to register the calendar routes on, and
  * the ApiProxy to read the live execution-settings catalog (workspaces,
@@ -35,7 +36,7 @@ export const calendar_SETTINGS_NAMESPACE = settingsNamespace('calendar')
 
 /** Model-facing announcement: the calendar plugin's presence and capabilities. */
 export const calendar_GUIDANCE =
-  'The user has a calendar todo plugin (dsh-calendar) exposed as the calendar_task tool. When the user asks to create or schedule work, use calendar_task rather than shell, source inspection, or the calendar HTTP routes. Call action=options first when you need exact provider/model/session ids or labels; sessionId="current" pins the task to the session of the calling Agent. action=create is atomic: include the task fields and either dueAt for a one-off Agent trigger or repeat for a daily/weekly series. Provider and model must be set together or both left blank; the Host rejects an incomplete pin while saving create/update. A one-off dueAt automatically runs the Agent; when a repeat rule matches the template date, repeat.triggerAgent also arms that template date as the first occurrence, and later matching dates are materialized copies with the same trigger setting. Blank triggerAt means the task block start. If a one-off dueAt or matching repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Failed setup attempts are retried at most three total times, then the current occurrence is stopped; repeat rules materialize only current/future occurrences, and missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todo tasks, but the Host rejects creating or arming another auto-run schedule from that scheduled turn to prevent recursion. Times accept ISO-8601 datetimes with timezone offsets or millisecond epochs. Tasks carry a start/end block, an Eisenhower urgency/importance quadrant, subtasks, pinned execution settings (workspace / session / provider+model / preset / permission), and an optional schedule. The Host is the source of truth and settles execution records; the calendar UI is an eventually consistent observer.'
+  'The user has a calendar todo plugin (dsh-calendar) exposed as the calendar_task tool. When the user asks to create or schedule work, use calendar_task rather than shell, source inspection, or the calendar HTTP routes. Call action=options first when you need exact provider/model/session ids or labels; sessionId="current" pins the task to the session of the calling Agent. action=create is atomic: include the task fields and either dueAt for a one-off Agent trigger or repeat for a daily/weekly series. Provider and model must be set together or both left blank; the Host rejects an incomplete pin while saving create/update. Leave mode blank to use the deployment default for a new session or inherit the current mode of a reused session; an explicit mode is only applied to a new or still-blank session, is skipped when it already matches a started session, and is rejected when it differs. A one-off dueAt automatically runs the Agent; when a repeat rule matches the template date, repeat.triggerAgent also arms that template date as the first occurrence, and later matching dates are materialized copies with the same trigger setting. Blank triggerAt means the task block start. If a one-off dueAt or matching repeat first occurrence has already passed when the Host resumes, it is recorded as failed and not replayed. Failed setup attempts are retried at most three total times, then the current occurrence is stopped; repeat rules materialize only current/future occurrences, and missed occurrences are not replayed. A Host-scheduled Agent may create ordinary todo tasks; creating or arming an auto-run child is allowed only up to the configured maximum recursion depth in Settings → Plugins → calendar (default 0, maximum 3). Times accept ISO-8601 datetimes with timezone offsets or millisecond epochs. Tasks carry a start/end block, an Eisenhower urgency/importance quadrant, subtasks, pinned execution settings (workspace / session / provider+model / preset / permission), and an optional schedule. The Host is the source of truth and settles execution records; the calendar UI is an eventually consistent observer.'
 
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
@@ -43,14 +44,19 @@ export interface Config {
   announceToAgent?: boolean
   /** Master switch for the host half (announcement + scheduler/runner run). */
   enabled?: boolean
+  /** Maximum nested auto-run schedule depth created by a scheduled Agent. */
+  maxScheduledDepth?: number
 }
 
 export const Config: z<Config> = z.object({
   announceToAgent: z.boolean().default(true),
   enabled: z.boolean().default(true),
+  maxScheduledDepth: z.number().step(1).min(0).max(MAX_SCHEDULED_RECURSION_DEPTH).default(0)
+    .description('定时 Agent 创建自动触发任务的最大嵌套深度；0 表示禁止递归，最大允许值为 3。'),
 })
 
 const DEFAULT_ANNOUNCE = true
+const DEFAULT_MAX_SCHEDULED_DEPTH = 0
 
 /** Host plugin body. */
 export function apply(ctx: Context, config?: Config): void {
@@ -86,7 +92,7 @@ export function apply(ctx: Context, config?: Config): void {
     disposeSection = ctx.systemPrompt.section({
       name: 'plugin:calendar',
       order: 160,
-      text: calendar_GUIDANCE,
+      text: `${calendar_GUIDANCE} Current configured maximum scheduled-Agent recursion depth: ${current().maxScheduledDepth ?? DEFAULT_MAX_SCHEDULED_DEPTH}; 0 disables nested auto-run schedule creation.`,
     })
   }
   installSettingsSection(ctx, calendar_SETTINGS_NAMESPACE, Config, config ?? {}, {
@@ -100,7 +106,8 @@ export function apply(ctx: Context, config?: Config): void {
     ledger: service.ledger,
     run: id => runner.run(id),
     catalog: () => buildCatalogFromApi(api),
-    hasActiveScheduledExecution: sessionId => service.ledger.activeScheduledExecution(sessionId) !== undefined,
+    getActiveScheduledExecution: sessionId => service.ledger.activeScheduledExecution(sessionId),
+    maxScheduledDepth: () => current().maxScheduledDepth ?? DEFAULT_MAX_SCHEDULED_DEPTH,
   }))
 
   const disposers = mountcalendarRoutes(ctx.webServer, service.ledger, api, runner)

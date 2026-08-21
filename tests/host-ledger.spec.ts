@@ -90,6 +90,14 @@ describe('HostLedger', () => {
     const reloaded = new HostLedger(persist, () => 0, () => 'task-1')
     expect(reloaded.getSnapshot().tasks.length).toBe(1)
   })
+  it('persists Host-only scheduled lineage across a reload', () => {
+    const persist = new MemoryPersist()
+    const ledger = new HostLedger(persist, () => 0, () => 'task-1')
+    const created = ledger.apply(createEnvelope('lineage'), { scheduledDepth: 2 })
+    if (!created.ok) throw new Error('create failed')
+    const reloaded = new HostLedger(persist, () => 0, () => 'task-1')
+    expect(reloaded.taskById('task-1')?.scheduledDepth).toBe(2)
+  })
   it('exposes a typed snapshot', () => {
     const { ledger } = makeLedger()
     ledger.apply(createEnvelope('r1'))
@@ -148,7 +156,7 @@ describe('HostLedger execution records', () => {
     expect(ledger.openExecution(id, 'ex-schedule', 1000, 'schedule')).toBe(true)
     expect(ledger.attachExecutionSession(id, 'ex-schedule', 'session-scheduled', 1100)).toBe(true)
     expect(ledger.activeScheduledExecution('session-scheduled')).toEqual({
-      taskId: id, executionId: 'ex-schedule', sessionId: 'session-scheduled',
+      taskId: id, executionId: 'ex-schedule', sessionId: 'session-scheduled', scheduledDepth: 0,
     })
     expect(ledger.activeScheduledExecution('other-session')).toBeUndefined()
     expect(ledger.settleExecution(id, 'ex-schedule', 'succeeded', 1200, undefined, 'session-scheduled')).toBe(true)
@@ -301,7 +309,7 @@ describe('HostLedger repeat materialization', () => {
     let n = 0
     // Small horizon so create/setSchedule materialize deterministically in tests.
     const ledger = new HostLedger(persist, () => at(2025, 1, 6, 8), () => `copy-${++n}`, undefined, { repeatHorizonDays: 3 })
-    return { ledger }
+    return { ledger, persist }
   }
 
   function createWithRepeat(ledger: HostLedger, repeat: unknown): string {
@@ -389,9 +397,43 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(2)
   })
 
+  it('deleteInstance removes one bound copy without touching the series', () => {
+    const { ledger, persist } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true })
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
+    expect(ledger.apply({ requestId: 'delete-instance-copy', action: { kind: 'deleteInstance', id: copy.id } }).ok).toBe(true)
+    expect(ledger.taskById(copy.id)).toBeUndefined()
+    expect(persist.doc?.scheduler.nextRuns[copy.id]).toBeUndefined()
+    expect(ledger.taskById(id)!.schedule?.repeat?.kind).toBe('daily')
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(2)
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(false)
+  })
+
+  it('deleteInstance removes the template occurrence but keeps the future series and copy schedules', () => {
+    const { ledger, persist } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true })
+    const beforeCopies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(beforeCopies).toHaveLength(3)
+
+    expect(ledger.apply({ requestId: 'delete-instance-template', action: { kind: 'deleteInstance', id } }).ok).toBe(true)
+    const template = ledger.taskById(id)!
+    expect(template.schedule?.repeat?.triggerAgent).toBe(true)
+    expect(template.schedule?.deletedDates).toEqual(['2025-01-06'])
+    expect(template.schedule?.nextRunAt).toBeUndefined()
+    expect(persist.doc?.scheduler.nextRuns[id]).toBeUndefined()
+    const afterCopies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(afterCopies).toHaveLength(3)
+    expect(afterCopies.every(t => t.schedule?.enabled === true && t.schedule?.nextRunAt === t.schedule?.dueAt)).toBe(true)
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(false)
+
+    const reloaded = new HostLedger(persist, () => at(2025, 1, 6, 8), () => 'reloaded')
+    expect(reloaded.taskById(id)?.schedule?.deletedDates).toEqual(['2025-01-06'])
+    expect(reloaded.getSnapshot().tasks.filter(t => t.originTaskId === id)).toHaveLength(3)
+  })
+
   it('deleting a repeat template cascades to its bound copies (unbound survive)', () => {
-    const { ledger } = makeMaterializingLedger()
-    const id = createWithRepeat(ledger, { kind: 'daily' })
+    const { ledger, persist } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true })
     ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
     const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
     // Unbind one copy (as if the user picked "this copy only").
@@ -403,6 +445,20 @@ describe('HostLedger repeat materialization', () => {
     expect(remaining.filter(t => t.originTaskId === id)).toHaveLength(0) // bound copies gone
     expect(remaining.some(t => t.id === copy.id)).toBe(true) // unbound copy kept
     expect(tasksBefore.length - remaining.length).toBe(3) // template + 2 bound copies removed
+    for (const removed of tasksBefore.filter(t => t.id === id || t.originTaskId === id)) {
+      if (removed.id === copy.id) continue
+      expect(persist.doc?.scheduler.nextRuns[removed.id]).toBeUndefined()
+    }
+    expect(persist.doc?.scheduler.nextRuns[copy.id]).toBeDefined()
+  })
+
+  it('rejects deleteInstance for a standalone task', () => {
+    const { ledger } = makeMaterializingLedger()
+    const created = ledger.apply(createEnvelope('standalone-delete-instance'))
+    if (!created.ok) throw new Error('create failed')
+    const id = created.snapshot.tasks[0].id
+    expect(ledger.apply({ requestId: 'invalid-delete-instance', action: { kind: 'deleteInstance', id } }).ok).toBe(false)
+    expect(ledger.taskById(id)).toBeDefined()
   })
 
   it('shifts the template + all bound copies by the same deltas', () => {
@@ -459,6 +515,36 @@ describe('HostLedger repeat materialization', () => {
     } })
     expect(past.ok).toBe(true)
     expect(ledger.taskById(id)!.schedule).toBeUndefined()
+    expect(ledger.taskById(id)!.executions).toHaveLength(1)
+  })
+
+  it('reschedule arms a fresh one-shot after a scheduled run succeeds', () => {
+    const persist = new MemoryPersist()
+    let now = at(2025, 1, 6, 8)
+    const ledger = new HostLedger(persist, () => now, () => 'reschedule-success')
+    const created = ledger.apply({ requestId: 'one-shot-success', action: {
+      kind: 'create',
+      input: { title: 'One shot', description: '', prompt: '', startAt: at(2025, 1, 6, 9), endAt: at(2025, 1, 6, 10), urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, dueAt: at(2025, 1, 6, 9) },
+    } })
+    if (!created.ok) throw new Error('create failed')
+    const id = created.snapshot.tasks[0].id
+
+    now = at(2025, 1, 6, 9)
+    expect(ledger.openExecution(id, 'success-once', now, 'schedule')).toBe(true)
+    now = at(2025, 1, 6, 9, 1)
+    expect(ledger.settleExecution(id, 'success-once', 'succeeded', now, undefined)).toBe(true)
+    expect(ledger.advanceSchedule(id, undefined, at(2025, 1, 6, 9))).toBe(true)
+    expect(ledger.taskById(id)!.schedule).toBeUndefined()
+
+    now = at(2025, 1, 6, 10)
+    const moved = ledger.apply({ requestId: 'move-after-success', action: {
+      kind: 'reschedule', id, startAt: at(2025, 1, 6, 12), endAt: at(2025, 1, 6, 13),
+    } })
+    expect(moved.ok).toBe(true)
+    expect(ledger.taskById(id)!.schedule).toMatchObject({
+      enabled: true, dueAt: at(2025, 1, 6, 12), nextRunAt: at(2025, 1, 6, 12),
+    })
     expect(ledger.taskById(id)!.executions).toHaveLength(1)
   })
 
@@ -774,5 +860,38 @@ describe('HostLedger repeat materialization', () => {
     expect(after.find(t => t.id === copy.id)!.originTaskId).toBe(id) // still bound
     expect(ledger.taskById(id)!.schedule?.repeat?.triggerAgent).toBe(true) // series intact
     expect(after.filter(t => t.originTaskId === id)).toHaveLength(3) // copy kept on the calendar
+  })
+
+  it('clearInstanceSchedule skips the template date without stopping the series', () => {
+    const { ledger, persist } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily', triggerAgent: true })
+    const template = ledger.taskById(id)!
+    expect(template.schedule?.nextRunAt).toBe(at(2025, 1, 6, 9))
+
+    const r = ledger.apply({ requestId: 'template-day', action: { kind: 'clearInstanceSchedule', id } })
+    expect(r.ok).toBe(true)
+    const after = ledger.taskById(id)!
+    expect(after.schedule?.repeat?.triggerAgent).toBe(true)
+    expect(after.schedule?.skippedDates).toEqual(['2025-01-06'])
+    expect(after.schedule?.nextRunAt).toBeUndefined()
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies).toHaveLength(3)
+    for (const copy of copies) {
+      expect(copy.schedule?.enabled).toBe(true)
+      expect(copy.schedule?.dueAt).toBeDefined()
+      expect(copy.schedule?.nextRunAt).toBe(copy.schedule?.dueAt)
+    }
+
+    // The persisted state must keep both the copies and their trigger
+    // one-shots; a Host restart must not turn the UI and scheduler out of sync.
+    const reloaded = new HostLedger(persist, () => at(2025, 1, 6, 8), () => 'reloaded')
+    const reloadedCopies = reloaded.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(reloadedCopies).toHaveLength(3)
+    expect(reloadedCopies.every(copy => copy.schedule?.enabled === true && copy.schedule?.nextRunAt === copy.schedule?.dueAt)).toBe(true)
+
+    // A later materialization/normalization pass must not re-arm the skipped
+    // template occurrence or create a duplicate same-day record.
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 3)).toBe(false)
+    expect(ledger.taskById(id)!.schedule?.nextRunAt).toBeUndefined()
   })
 })

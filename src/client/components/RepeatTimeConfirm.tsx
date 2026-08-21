@@ -8,40 +8,26 @@
  * holds a pendingRepeatTimeEdit.
  */
 import type { calendarClientController } from '../controller.ts'
+import { isRepeatTemplate } from '../../core/repeat.ts'
 import { t } from '../locales.ts'
-import css from '../calendar.module.css'
+import { RepeatScopeConfirm } from './RepeatScopeConfirm.tsx'
 
 export function RepeatTimeConfirm({ controller }: { controller: calendarClientController }) {
   const snap = controller.getSnapshot()
   const edit = snap.pendingRepeatTimeEdit
   if (edit === undefined) return null
   const task = snap.snapshot.tasks.find(x => x.id === edit.taskId)
-  const isTemplate = task !== undefined && task.originTaskId === undefined && task.schedule?.repeat !== undefined
+  const isTemplate = isRepeatTemplate(task)
 
-  return (
-    <div className={css.modalOverlay} role="dialog" aria-modal="true" aria-label={t('repeatConfirm.title')}>
-      <div className={css.modal}>
-        <h3 className={css.detailTitle}>{t('repeatConfirm.title')}</h3>
-        <p className={css.repeatConfirmText}>{isTemplate ? t('repeatConfirm.bodyTemplate') : t('repeatConfirm.body')}</p>
-        {task !== undefined && <p className={css.repeatConfirmTask}>{task.title}</p>}
-        <div className={css.modalActions}>
-          {isTemplate ? (
-            <button type="button" className={css.btnPrimary} onClick={() => void controller.resolveRepeatTimeEdit('all')}>
-              {t('repeatConfirm.allTemplate')}
-            </button>
-          ) : (
-            <button type="button" className={css.btnPrimary} onClick={() => void controller.resolveRepeatTimeEdit('this')}>
-              {t('repeatConfirm.this')}
-            </button>
-          )}
-          <button type="button" className={css.btnGhost} onClick={() => void controller.resolveRepeatTimeEdit(isTemplate ? 'this' : 'all')}>
-            {isTemplate ? t('repeatConfirm.thisTemplate') : t('repeatConfirm.all')}
-          </button>
-          <button type="button" className={css.btnGhost} onClick={() => controller.cancelRepeatTimeEdit()}>
-            {t('new.cancel')}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
+  return <RepeatScopeConfirm
+    title={t('repeatConfirm.title')}
+    body={isTemplate ? t('repeatConfirm.bodyTemplate') : t('repeatConfirm.body')}
+    task={task}
+    instanceLabel={isTemplate ? t('repeatConfirm.thisTemplate') : t('repeatConfirm.this')}
+    seriesLabel={isTemplate ? t('repeatConfirm.allTemplate') : t('repeatConfirm.all')}
+    primaryScope={isTemplate ? 'series' : 'instance'}
+    onInstance={() => { void controller.resolveRepeatTimeEdit('this') }}
+    onSeries={() => { void controller.resolveRepeatTimeEdit('all') }}
+    onCancel={() => controller.cancelRepeatTimeEdit()}
+  />
 }

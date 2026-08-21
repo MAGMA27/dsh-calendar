@@ -1117,3 +1117,122 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 
 .repeatConfirmText { font-size: 13px; color: var(--dsw-alias-label-secondary); margin: 0; }
 .repeatConfirmTask { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); margin: 0; }
+
+/* --- Settings → Plugins card ----------------------------------------------- */
+
+.settingsCard {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-3);
+  border-radius: 12px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  list-style: none;
+  transition: border-color .16s, background .16s;
+}
+
+.settingsCard:hover { border-color: var(--dsw-alias-label-dimmed); }
+.settingsCardOpen { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-label-dimmed); }
+
+.settingsCardHeader {
+  appearance: none;
+  align-items: center;
+  gap: 12px;
+  display: flex;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.settingsCardHeader:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -2px; }
+
+.settingsCardHeadText {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingsCardTitle { font-size: 15px; font-weight: 600; line-height: 1.4; }
+.settingsCardDescription { color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 1.5; }
+.settingsCardPending {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.settingsCardChevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform .16s;
+}
+
+.settingsCardChevronOpen { transform: rotate(180deg); }
+
+.settingsCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 16px;
+  padding: 12px 0 16px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.settingsField { display: flex; flex-direction: column; gap: 6px; }
+.settingsFieldLabel { color: var(--dsw-alias-label-primary); font-size: 13px; font-weight: 500; line-height: 1.5; }
+.settingsFieldHint { color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 1.5; }
+
+.settingsNumber {
+  width: 100%;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settingsNumber:focus-visible { border-color: var(--dsw-alias-brand-primary); outline: none; }
+.settingsNumber:disabled { color: var(--dsw-alias-label-tertiary); cursor: default; }
+.settingsNumber[aria-invalid='true'] { border-color: var(--dsw-alias-state-error-primary); }
+
+.settingsCardActions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.settingsSave {
+  padding: 5px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-layer-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settingsSave:disabled { opacity: .4; cursor: default; }
+.settingsError { margin: 0; color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 1.5; }
+.settingsSaved { margin: 0; color: var(--dsw-alias-state-success-primary); font-size: 12px; line-height: 1.5; }

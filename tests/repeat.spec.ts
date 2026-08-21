@@ -117,13 +117,15 @@ describe('buildRepeatCopy', () => {
   it('arms a one-shot due schedule on trigger-agent copies (block start default / triggerAt override)', () => {
     const template = mkTask({
       id: 'tpl', title: 'Standup', description: '', prompt: '', startAt: at(2025, 1, 6, 9, 0), endAt: at(2025, 1, 6, 10, 0),
-      urgency: 'high', importance: 'high', schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } },
+      urgency: 'high', importance: 'high', scheduledDepth: 1,
+      schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } },
     })
     const copy = buildRepeatCopy(template, at(2025, 1, 7), 1000, 'c1')
     expect(copy.schedule?.enabled).toBe(true)
     expect(copy.schedule?.dueAt).toBe(at(2025, 1, 7, 9, 0)) // block start
     expect(copy.schedule?.nextRunAt).toBe(at(2025, 1, 7, 9, 0))
     expect(copy.schedule?.repeat).toBeUndefined()
+    expect(copy.scheduledDepth).toBe(1)
 
     const withOverride = mkTask({
       id: 'tpl2', title: 'T', description: '', prompt: '', startAt: at(2025, 1, 6, 9, 0), endAt: at(2025, 1, 6, 10, 0),

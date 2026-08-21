@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from 'react'
 import type { calendarClientController, calendarView } from '../controller.ts'
 import { addDays, addMonths, monthLabel, weekDays, weekRangeLabel } from '../../core/calendar.ts'
+import { isTaskOccurrenceVisible } from '../../core/tasks.ts'
 import { WeekGrid } from './WeekGrid.tsx'
 import { MonthGrid } from './MonthGrid.tsx'
 import { MatrixPanel } from './MatrixPanel.tsx'
@@ -12,6 +13,7 @@ import { CreateTaskModal } from './CreateTaskModal.tsx'
 import { TaskDetailPanel } from './TaskDetailPanel.tsx'
 import { RepeatTimeConfirm } from './RepeatTimeConfirm.tsx'
 import { ScheduleClearConfirm } from './ScheduleClearConfirm.tsx'
+import { RepeatDeleteConfirm } from './RepeatDeleteConfirm.tsx'
 import { t, type calendarKey } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -51,7 +53,9 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
       default: return <WeekGrid controller={controller} />
     }
   })()
-  const selected = snap.selectedTaskId !== undefined ? snap.snapshot.tasks.find(t => t.id === snap.selectedTaskId) : undefined
+  const selected = snap.selectedTaskId !== undefined
+    ? snap.snapshot.tasks.find(t => t.id === snap.selectedTaskId && isTaskOccurrenceVisible(t))
+    : undefined
 
   return (
     <div className={css.calendarViewInner} data-dsh-calendar-view-inner="">
@@ -91,6 +95,7 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
       )}
       {snap.pendingRepeatTimeEdit !== undefined && <RepeatTimeConfirm controller={controller} />}
       {snap.pendingScheduleClear !== undefined && <ScheduleClearConfirm controller={controller} />}
+      {snap.pendingRepeatDelete !== undefined && <RepeatDeleteConfirm controller={controller} />}
     </div>
   )
 }

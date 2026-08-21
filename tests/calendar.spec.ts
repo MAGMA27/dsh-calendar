@@ -162,6 +162,22 @@ describe('layoutDayTasks', () => {
     expect(layout.find(l => l.id === 'b')!.column).not.toBe(layout.find(l => l.id === 'a')!.column)
   })
 
+  it('only narrows the connected overlap group', () => {
+    const layout = layoutDayTasks([
+      { id: 'early', startAt: 1000, endAt: 2000 },
+      { id: 'overlap-a', startAt: 3000, endAt: 5000 },
+      { id: 'overlap-b', startAt: 3500, endAt: 4500 },
+      { id: 'late', startAt: 6000, endAt: 7000 },
+    ])
+
+    expect(layout.find(l => l.id === 'early')!.columnCount).toBe(1)
+    expect(layout.find(l => l.id === 'overlap-a')!.columnCount).toBe(2)
+    expect(layout.find(l => l.id === 'overlap-b')!.columnCount).toBe(2)
+    expect(layout.find(l => l.id === 'late')!.columnCount).toBe(1)
+    expect(layout.find(l => l.id === 'early')!.column).toBe(0)
+    expect(layout.find(l => l.id === 'late')!.column).toBe(0)
+  })
+
   it('preserves columnCount consistent for all blocks', () => {
     const tasks = [
       { id: 'a', startAt: 1000, endAt: 6000 },

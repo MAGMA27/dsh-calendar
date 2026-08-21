@@ -7,7 +7,7 @@ import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
-import { nextRepeatDate } from '../../core/repeat.ts'
+import { isRepeatMember, isRepeatTemplate, nextRepeatDate, repeatTargetId } from '../../core/repeat.ts'
 import { hasIncompleteModelPin, type TaskRecord, type TaskUpdatePatch, type Urgency, type Importance, type RepeatRule } from '../../core/tasks.ts'
 import { ExecutionSettings, type ExecutionSettingsValue } from './ExecutionSettings.tsx'
 import { ScheduleSettings, type ScheduleSettingsValue } from './ScheduleSettings.tsx'
@@ -127,21 +127,22 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
    * "this day vs all" confirmation (a copy may only want to stop one day's
    * auto-run). Returns the user's choice when a confirm was shown. */
   const applySchedulePatch = async (patch: Parameters<calendarClientController['dispatch']>[0]): Promise<'day' | 'all' | 'cancel' | undefined> => {
-    const seriesActive = seriesTask.schedule?.repeat !== undefined
+    const seriesActive = isRepeatTemplate(seriesTask)
     if (!seriesActive || patch.kind !== 'setSchedule' || patch.patch.repeat !== null) {
       await controller.dispatch(patch)
       return undefined
     }
     // Clearing a repeat series must ask: one day only, or the whole series?
     const choice = await controller.requestScheduleClear(task.id)
-    if (choice === 'day' && task.originTaskId !== undefined) {
-      // "This day": a copy that still has its own (trigger) schedule loses it
-      // and stays as a plain task; a plain copy is removed (that day's
-      // occurrence is cancelled and never re-materialized).
-      if (task.schedule?.enabled === true) {
-        await controller.dispatch({ kind: 'clearInstanceSchedule', id: task.id })
-      } else {
+    if (choice === 'day') {
+      // "This day": the template records its date as skipped while retaining
+      // the series; a copy that still has its own (trigger) schedule loses it
+      // and stays as a plain task; a plain copy is removed.
+      if (task.originTaskId === undefined && task.schedule?.repeat === undefined) return choice
+      if (task.originTaskId !== undefined && task.schedule?.enabled !== true) {
         await controller.dispatch({ kind: 'delete', id: task.id })
+      } else {
+        await controller.dispatch({ kind: 'clearInstanceSchedule', id: task.id })
       }
     } else if (choice === 'all') {
       await controller.dispatch({ kind: 'setSchedule', id: task.id, patch: { enabled: false, repeat: null, dueAt: null } })
@@ -171,7 +172,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
       return
     }
     const timeChanged = startMs !== task.startAt || endMs !== task.endAt
-    const repeatTimeChanged = timeChanged && seriesTask.schedule?.repeat !== undefined
+    const repeatTimeChanged = timeChanged && isRepeatTemplate(seriesTask)
     const updatePatch: TaskUpdatePatch = {
       title, description, prompt,
       workspaceId: exec.workspaceId ?? null, sessionId: exec.sessionId ?? null,
@@ -232,6 +233,22 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
     }
   }
 
+  const deleteTask = async (): Promise<void> => {
+    if (!isRepeatMember(task)) {
+      await controller.dispatch({ kind: 'delete', id: task.id })
+      onClose()
+      return
+    }
+    const choice = await controller.requestRepeatDelete(task.id)
+    if (choice === 'cancel') return
+    if (choice === 'this') {
+      await controller.dispatch({ kind: 'deleteInstance', id: task.id })
+    } else {
+      await controller.dispatch({ kind: 'delete', id: repeatTargetId(task, 'series') })
+    }
+    onClose()
+  }
+
   const runNow = async (): Promise<void> => {
     // M4 wires real execution; today the ledger accepts the action. Surface a
     // neutral notice so a manual run never looks silently dropped in M3.
@@ -248,6 +265,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   }
 
   const doneSubtasks = task.subtasks.filter(s => s.done).length
+  const repeatRule = seriesTask.schedule?.repeat
 
   return (
     <aside className={css.detailPanel} data-dsh-calendar-detail="" role="complementary" aria-label={t('detail.title')}>
@@ -342,11 +360,11 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
           <div className={css.scheduleSummary}>{t('detail.scheduleSeriesHint')}</div>
         )}
         <ScheduleSettings value={schedule} onChange={(v) => { setSchedule(v); markDirty() }} />
-        {seriesTask.schedule?.repeat !== undefined && (
+        {repeatRule !== undefined && (
           <div className={css.scheduleSummary}>
-            {repeatSummary(seriesTask.schedule.repeat)}
+            {repeatSummary(repeatRule)}
             {(() => {
-              const next = nextRepeatDate(seriesTask.schedule!.repeat!, Date.now())
+              const next = nextRepeatDate(repeatRule, Date.now())
               return next !== undefined
                 ? <div className={css.scheduleNext}>{t('schedule.next', { date: new Date(next).toLocaleDateString() })}</div>
                 : null
@@ -394,7 +412,7 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
         {task.archivedAt === undefined
           ? <button type="button" className={css.btnGhost} onClick={() => { void controller.dispatch({ kind: 'archive', id: task.id }); onClose() }}>{t('detail.archive')}</button>
           : <button type="button" className={css.btnGhost} onClick={() => void controller.dispatch({ kind: 'restore', id: task.id })}>{t('detail.restore')}</button>}
-        <button type="button" className={css.btnDanger} onClick={() => { void controller.dispatch({ kind: 'delete', id: task.id }); onClose() }}>{t('detail.delete')}</button>
+        <button type="button" className={css.btnDanger} onClick={() => { void deleteTask() }}>{t('detail.delete')}</button>
       </div>
     </aside>
   )

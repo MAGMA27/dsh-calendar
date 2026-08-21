@@ -403,11 +403,13 @@ describe('MatrixPanel', () => {
     expect(text).toContain(todayDone.title)
     expect(text).toContain(overdue.title)
     expect(text).not.toContain(oldDone.title)
+    expect(host.querySelector('[data-dsh-calendar-matrix] button[data-done]')).toBeTruthy()
+    expect(text).toContain('已完成')
 
     await act(async () => { root.unmount(); host.remove() })
   })
 
-  it('shows the date of the oldest unfinished repeat occurrence', async () => {
+  it('shows today’s completed repeat occurrence instead of the next unfinished copy', async () => {
     const day = (offset: number): number => {
       const d = new Date()
       d.setHours(9, 0, 0, 0)
@@ -457,9 +459,11 @@ describe('MatrixPanel', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<MatrixPanel controller={controller} />) })
 
-    expect(host.textContent).toContain(new Date(oldestUnfinished.startAt).toLocaleDateString())
+    expect(host.textContent).toContain(new Date(template.startAt).toLocaleDateString())
+    expect(host.textContent).not.toContain(new Date(oldestUnfinished.startAt).toLocaleDateString())
     expect(host.textContent).not.toContain(new Date(latestUnfinished.startAt).toLocaleDateString())
     expect(host.textContent).not.toContain(new Date(doneCopy.startAt).toLocaleDateString())
+    expect(host.querySelector('[data-dsh-calendar-matrix] button[data-done]')).toBeTruthy()
 
     await act(async () => { root.unmount(); host.remove() })
   })

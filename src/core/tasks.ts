@@ -348,13 +348,21 @@ export function isTaskVisibleInOverview(task: Pick<TaskRecord, 'startAt' | 'done
  * row per materialized date. Each series contributes at most one entry. The
  * default keeps the newest unfinished occurrence; callers such as the matrix
  * can request the oldest unfinished occurrence to surface the earliest pending
- * date. If every member is done, the corresponding newest/oldest member is kept
- * so the task is not lost entirely. Standalone tasks pass through unchanged.
+ * date. A visible occurrence today takes priority over a future unfinished
+ * occurrence, so completing today's repeat does not make the next copy replace
+ * it in the overview. If every member is done, the corresponding newest/oldest
+ * member is kept so the task is not lost entirely. Standalone tasks pass through
+ * unchanged.
  */
-export function collapseRepeatSeries(tasks: readonly TaskRecord[], order: 'newest' | 'oldest' = 'newest'): TaskRecord[] {
+export function collapseRepeatSeries(
+  tasks: readonly TaskRecord[],
+  order: 'newest' | 'oldest' = 'newest',
+  now: number = Date.now(),
+): TaskRecord[] {
   const copies = new Map<string, TaskRecord[]>()
   const templates = new Map<string, TaskRecord>()
   const standalone: TaskRecord[] = []
+  const today = dayKey(now)
   for (const t of tasks) {
     if (t.originTaskId !== undefined) {
       const arr = copies.get(t.originTaskId) ?? []
@@ -374,7 +382,16 @@ export function collapseRepeatSeries(tasks: readonly TaskRecord[], order: 'newes
     if (tpl !== undefined) members.push(tpl)
     if (members.length === 0) continue
     const incomplete = members.filter(m => !m.done)
-    const pool = incomplete.length > 0 ? incomplete : members
+    const todayMembers = members.filter(m => dayKey(m.startAt) === today)
+    const todayIncomplete = todayMembers.filter(m => !m.done)
+    const todayDone = todayMembers.filter(m => m.done)
+    const pool = todayIncomplete.length > 0
+      ? todayIncomplete
+      : todayDone.length > 0
+        ? todayDone
+        : incomplete.length > 0
+          ? incomplete
+          : members
     pool.sort((a, b) => a.startAt - b.startAt)
     out.push(order === 'oldest' ? pool[0] : pool[pool.length - 1])
   }

@@ -475,7 +475,7 @@ describe('HostLedger repeat materialization', () => {
     }
   })
 
-  it('reschedule arms a fresh one-shot after failure and never backfills a past move', () => {
+  it('reschedule does not re-arm a settled one-shot or backfill a past move', () => {
     const persist = new MemoryPersist()
     let now = at(2025, 1, 6, 8)
     let n = 0
@@ -495,20 +495,18 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.advanceSchedule(id, undefined, at(2025, 1, 6, 9))).toBe(true)
     expect(ledger.taskById(id)!.schedule).toBeUndefined()
 
-    // Moving to a new future slot is an explicit new occurrence, even though
-    // the old failed execution happened on the same calendar day.
+    // Moving to a new future slot only moves the calendar block. The failed
+    // one-shot remains settled and does not create an implicit new occurrence.
     now = at(2025, 1, 6, 10)
     const moved = ledger.apply({ requestId: 'move-future', action: {
       kind: 'reschedule', id, startAt: at(2025, 1, 6, 12), endAt: at(2025, 1, 6, 13),
     } })
     expect(moved.ok).toBe(true)
-    expect(ledger.taskById(id)!.schedule).toMatchObject({
-      enabled: true, dueAt: at(2025, 1, 6, 12), nextRunAt: at(2025, 1, 6, 12),
-    })
+    expect(ledger.taskById(id)!.schedule).toBeUndefined()
     expect(ledger.taskById(id)!.executions).toHaveLength(1)
 
-    // Moving that new occurrence into the past cancels its pending slot; it
-    // does not synthesize another failed execution.
+    // Moving the settled task into the past still does not synthesize another
+    // failed execution.
     now = at(2025, 1, 6, 14)
     const past = ledger.apply({ requestId: 'move-past', action: {
       kind: 'reschedule', id, startAt: at(2025, 1, 6, 13), endAt: at(2025, 1, 6, 13, 30),
@@ -518,7 +516,7 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.taskById(id)!.executions).toHaveLength(1)
   })
 
-  it('reschedule arms a fresh one-shot after a scheduled run succeeds', () => {
+  it('reschedule does not re-arm a one-shot after a scheduled run succeeds', () => {
     const persist = new MemoryPersist()
     let now = at(2025, 1, 6, 8)
     const ledger = new HostLedger(persist, () => now, () => 'reschedule-success')
@@ -542,10 +540,31 @@ describe('HostLedger repeat materialization', () => {
       kind: 'reschedule', id, startAt: at(2025, 1, 6, 12), endAt: at(2025, 1, 6, 13),
     } })
     expect(moved.ok).toBe(true)
-    expect(ledger.taskById(id)!.schedule).toMatchObject({
-      enabled: true, dueAt: at(2025, 1, 6, 12), nextRunAt: at(2025, 1, 6, 12),
-    })
+    expect(ledger.taskById(id)!.schedule).toBeUndefined()
     expect(ledger.taskById(id)!.executions).toHaveLength(1)
+  })
+
+  it('keeps an armed one-shot dueAt absolute when its block is moved', () => {
+    const persist = new MemoryPersist()
+    let now = at(2025, 1, 6, 8)
+    const ledger = new HostLedger(persist, () => now, () => 'reschedule-pending')
+    const created = ledger.apply({ requestId: 'one-shot-pending', action: {
+      kind: 'create',
+      input: { title: 'One shot', description: '', prompt: '', startAt: at(2025, 1, 6, 9), endAt: at(2025, 1, 6, 10), urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, dueAt: at(2025, 1, 6, 9) },
+    } })
+    if (!created.ok) throw new Error('create failed')
+    const id = created.snapshot.tasks[0].id
+
+    now = at(2025, 1, 6, 8, 30)
+    const moved = ledger.apply({ requestId: 'move-pending', action: {
+      kind: 'reschedule', id, startAt: at(2025, 1, 6, 12), endAt: at(2025, 1, 6, 13),
+    } })
+    expect(moved.ok).toBe(true)
+    expect(ledger.taskById(id)!.schedule).toMatchObject({
+      enabled: true, dueAt: at(2025, 1, 6, 9), nextRunAt: at(2025, 1, 6, 9),
+    })
+    expect(persist.doc?.scheduler.nextRuns[id]).toMatchObject({ nextRunAt: at(2025, 1, 6, 9) })
   })
 
   it('keeps a repeat triggerAt independent from the moved block time', () => {

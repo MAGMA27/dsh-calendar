@@ -66,10 +66,11 @@ export interface UpdateTaskAction {
 }
 
 /**
- * Move one calendar occurrence and explicitly re-arm its next scheduled run.
- * This is separate from a generic field update so a stale failed execution
- * cannot accidentally become a new trigger just because another editor wrote
- * the task's block time. `unbind` is used for the "this copy only" choice.
+ * Move one calendar occurrence. Repeat schedules are recalculated by the Host;
+ * a standalone one-shot keeps its existing absolute dueAt and a settled one-
+ * shot is never implicitly armed again. This is separate from a generic field
+ * update so schedule semantics stay Host-owned. `unbind` is used for the
+ * "this copy only" choice.
  */
 export interface RescheduleTaskAction {
   kind: 'reschedule'

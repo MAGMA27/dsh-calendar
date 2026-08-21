@@ -36,6 +36,7 @@ export function AgendaPanel({ controller }: AgendaPanelProps) {
   const collapsed = collapseRepeatSeries(
     snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskOccurrenceVisible(task) && isTaskVisibleInOverview(task, now)),
     'oldest',
+    now,
   )
   const groups: Array<{ key: Bucket; label: string; tasks: TaskRecord[] }> = [
     { key: 'overdue', label: t('agenda.overdue'), tasks: [] },

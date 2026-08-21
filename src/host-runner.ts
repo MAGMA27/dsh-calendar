@@ -58,8 +58,15 @@ export interface RunnerCommandExecution {
 
 /** The narrow commands face (structural slice of the CommandRuntime). */
 export interface RunnerCommandsFace {
-  /** Execute a slash-command line on a session's live agent; undefined = unknown command. */
-  execute(agent: unknown, line: string, signal: AbortSignal): Promise<RunnerCommandExecution | undefined>
+  /**
+   * DSH rc.6/rc.7 use `(agent, line, signal)`; rc.8 inserts an image list
+   * before the signal. The runner selects by the runtime function arity.
+   */
+  execute(
+    ...args:
+      | [agent: unknown, line: string, signal: AbortSignal]
+      | [agent: unknown, line: string, images: readonly unknown[], signal: AbortSignal]
+  ): Promise<RunnerCommandExecution | undefined>
 }
 
 /** The narrow agents face (structural slice of the agents registry). */
@@ -306,7 +313,15 @@ export class HostExecutionRunner {
       if (commands === undefined) throw new Error('this deployment does not support slash commands (cannot apply permission preset)')
       const agent = this.env.agents?.get?.(sessionId)
       if (agent === undefined) throw new Error(`cannot apply permission preset: session ${sessionId} has no live agent`)
-      const execution = await commands.execute(agent, `/permission ${task.permission}`, new AbortController().signal)
+      // Scheduled runs have no browser request to provide a cancellation
+      // signal. Own one here. rc.8 also requires an empty image list before
+      // the signal; passing the signal in the third position makes it the
+      // image argument and leaves CommandRuntime's signal undefined.
+      const commandSignal = new AbortController().signal
+      const commandLine = `/permission ${task.permission}`
+      const execution = commands.execute.length >= 4
+        ? await commands.execute(agent, commandLine, [], commandSignal)
+        : await commands.execute(agent, commandLine, commandSignal)
       if (execution === undefined) throw new Error(`permission command not found: /permission ${task.permission}`)
       if (execution.result.kind === 'error') {
         const text = execution.result.text ?? ''

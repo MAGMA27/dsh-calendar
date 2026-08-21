@@ -37,6 +37,7 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
   const collapsed = collapseRepeatSeries(
     snap.snapshot.tasks.filter(task => !task.archivedAt && isTaskOccurrenceVisible(task) && isTaskVisibleInOverview(task, now)),
     'oldest',
+    now,
   )
   const [over, setOver] = useState<Quadrant | undefined>(undefined)
 
@@ -71,6 +72,7 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
                 return (
                   <button type="button" key={task.id} draggable className={css.matrixItem + ' ' + acc}
                     data-overdue={overdue || undefined}
+                    data-done={task.done || undefined}
                     onDragStart={e => e.dataTransfer.setData(DRAG_KIND, task.id)}
                     onClick={() => controller.selectTask(task.id)}>
                     <span className={css.matrixItemTitle} data-done={task.done || undefined}>{task.title}</span>
@@ -79,6 +81,7 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
                       <TaskTime task={task} />
                       <TaskOverdue task={task} now={now} />
                       <TaskBadges task={task} />
+                      {task.done && <span className={css.matrixItemStatus} data-done="">✓ {t('agenda.done')}</span>}
                     </span>
                     <SubtaskTrack task={task} />
                   </button>

@@ -34,10 +34,23 @@ function makeHarness(opts: {
   commandOk?: boolean
   commandFound?: boolean
   hasAgent?: boolean
+  commandApi?: 'legacy' | 'images'
 } = {}) {
   const calls = { create: 0, selectModel: 0, prompt: 0, rename: 0, presetsSelect: 0, list: 0, commands: 0 }
+  const commandSignals: AbortSignal[] = []
   const rows: RunnerSessionRow[] = opts.rows ?? []
   const gates: SleepGate[] = []
+  const respondToCommand = (signal: AbortSignal) => {
+    calls.commands++
+    commandSignals.push(signal)
+    if ((opts.commandFound ?? true) === false) return undefined
+    return { result: (opts.commandOk ?? true)
+      ? { kind: 'success' as const, text: 'preset workspace-write' }
+      : { kind: 'error' as const, text: 'unknown preset "yolo"' } }
+  }
+  const executeCommand = opts.commandApi === 'legacy'
+    ? async (_agent: unknown, _line: string, signal: AbortSignal) => respondToCommand(signal)
+    : async (_agent: unknown, _line: string, _images: readonly unknown[], signal: AbortSignal) => respondToCommand(signal)
   const env: HostExecutionEnv = {
     workspace: { list: async () => ({ result: { ok: true, value: { items: [{ workspaceId: 'w1' }] } } }) },
     sessions: {
@@ -66,18 +79,10 @@ function makeHarness(opts: {
       },
     },
     agentPresets: { select: async () => { calls.presetsSelect++; return { result: { ok: opts.presetOk ?? true } } } },
-    commands: {
-      execute: async () => {
-        calls.commands++
-        if ((opts.commandFound ?? true) === false) return undefined
-        return { result: (opts.commandOk ?? true)
-          ? { kind: 'success' as const, text: 'preset workspace-write' }
-          : { kind: 'error' as const, text: 'unknown preset "yolo"' } }
-      },
-    },
+    commands: { execute: executeCommand },
     agents: { get: () => ((opts.hasAgent ?? true) ? {} : undefined) },
   }
-  return { env, calls, rows, gates }
+  return { env, calls, commandSignals, rows, gates }
 }
 
 function mkRunner(ledger: HostLedger, env: HostExecutionEnv, gates: SleepGate[], nowRef: { value: number } = { value: 1000 }) {
@@ -220,11 +225,29 @@ describe('HostExecutionRunner', () => {
 
   it('applies the permission preset via the /permission command, never as a queued prompt', async () => {
     const { ledger, id } = mkLedger({ permission: 'workspace-write' })
-    const { env, calls, gates, rows } = makeHarness()
+    const { env, calls, commandSignals, gates, rows } = makeHarness()
     const p = mkRunner(ledger, env, gates).run(id)
     await toSettleLoop()
     expect(calls.commands).toBe(1)
+    expect(commandSignals).toHaveLength(1)
+    expect(commandSignals[0]).toBeInstanceOf(AbortSignal)
+    expect(commandSignals[0]?.aborted).toBe(false)
     expect(calls.prompt).toBe(1) // only the real task prompt; the command line never reached the model
+    rows[0].running = false
+    rows[0].updatedAt = 3000
+    gates.shift()?.()
+    const res = await p
+    await res.settleFinished
+    expect(ledger.taskById(id)!.executions[0].result).toBe('succeeded')
+  })
+
+  it('supports the legacy three-argument command runtime', async () => {
+    const { ledger, id } = mkLedger({ permission: 'workspace-write' })
+    const { env, calls, commandSignals, gates, rows } = makeHarness({ commandApi: 'legacy' })
+    const p = mkRunner(ledger, env, gates).run(id)
+    await toSettleLoop()
+    expect(calls.commands).toBe(1)
+    expect(commandSignals[0]).toBeInstanceOf(AbortSignal)
     rows[0].running = false
     rows[0].updatedAt = 3000
     gates.shift()?.()

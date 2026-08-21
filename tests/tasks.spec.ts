@@ -307,4 +307,18 @@ describe('collapseRepeatSeries (list views)', () => {
     const out = collapseRepeatSeries([tpl, older, newer], 'oldest')
     expect(out.map(x => x.id)).toEqual(['older'])
   })
+
+  it('prefers today’s completed occurrence over a future unfinished copy', () => {
+    const now = new Date(2026, 7, 20, 12, 0).getTime()
+    const today = new Date(2026, 7, 20, 9, 0).getTime()
+    const tomorrow = new Date(2026, 7, 21, 9, 0).getTime()
+    const tpl: TaskRecord = {
+      ...mkCopy('tpl', '', today, true),
+      originTaskId: undefined,
+      schedule: { enabled: true, repeat: { kind: 'daily' } },
+    }
+    const future = mkCopy('future', 'tpl', tomorrow, false)
+    const out = collapseRepeatSeries([tpl, future], 'oldest', now)
+    expect(out.map(x => x.id)).toEqual(['tpl'])
+  })
 })

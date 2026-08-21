@@ -561,7 +561,7 @@ export class HostLedger {
         let tasks = updateTask(this.state.tasks, action.id, patch, now)
         const moved = tasks.find(t => t.id === action.id)
         if (moved === undefined) return false
-        const schedule = scheduleAfterReschedule(before, moved, template, now)
+        const schedule = scheduleAfterReschedule(moved, template, now)
         tasks = tasks.map(t => t.id === action.id ? { ...t, schedule, updatedAt: now } : t)
         this.state.tasks = tasks
         if (schedule === undefined) delete this.state.scheduler.nextRuns[action.id]
@@ -860,7 +860,7 @@ function repeatDueAtForStart(repeat: NonNullable<TaskRecord['schedule']>['repeat
 
 type Schedule = NonNullable<TaskRecord['schedule']>
 
-/** A fresh one-shot for an explicit user reschedule. */
+/** A fresh one-shot for a materialized or unbound repeat occurrence. */
 function oneShotSchedule(dueAt: number): Schedule {
   return { enabled: true, dueAt, nextRunAt: dueAt }
 }
@@ -893,23 +893,17 @@ function currentRepeatOccurrenceAt(task: TaskRecord, repeat: NonNullable<Schedul
   return task.schedule?.dueAt ?? repeatDueAtForStart(repeat, task.startAt) ?? task.startAt
 }
 
-/** Whether this task has already participated in a scheduled occurrence. */
-function hasScheduledExecution(task: TaskRecord): boolean {
-  return task.executions.some(execution => execution.triggeredBy === 'schedule')
-}
-
 /**
  * Decide the schedule after a user explicitly moves one occurrence.
  *
  * Repeat templates keep their repeat rule and use the rule's fixed trigger
  * time-of-day. Bound copies inherit that rule for the "this copy" operation,
- * then become independent one-shots. Standalone one-shots are intentionally
- * re-armed at the new block start: the action itself is the user's explicit
- * request to create a new scheduled occurrence, including after a completed
- * or capped failed attempt. A move into the past simply has no schedule.
+ * then become independent one-shots. Standalone one-shots keep their existing
+ * absolute dueAt while they are still armed; moving a settled one-shot never
+ * creates a new trigger. A move into the past only changes the calendar block
+ * and never synthesizes a missed execution.
  */
 function scheduleAfterReschedule(
-  before: TaskRecord,
   moved: TaskRecord,
   template: TaskRecord | undefined,
   now: number,
@@ -924,12 +918,7 @@ function scheduleAfterReschedule(
     return repeatCopySchedule(inheritedRepeat, moved.startAt, now)
   }
 
-  const oneShotWasArmed = before.schedule?.enabled === true
-    && before.schedule.repeat === undefined
-    && before.schedule.dueAt !== undefined
-  if (!oneShotWasArmed && !hasScheduledExecution(before)) return moved.schedule
-
-  return moved.startAt > now ? oneShotSchedule(moved.startAt) : undefined
+  return moved.schedule
 }
 
 function hasScheduledOccurrence(task: TaskRecord, dueAt: number): boolean {

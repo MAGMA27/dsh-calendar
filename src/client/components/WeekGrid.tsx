@@ -326,6 +326,7 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
                     leftPct={Math.max(leftPct, 0)}
                     widthPct={Math.max(widthPct, 4)}
                     onSelect={selectTask}
+                    onToggleDone={(id, done) => { void controller.dispatch({ kind: 'setDone', id, done }) }}
                     onEditStart={onEditStart(task, day)}
                     editing={editing && inColumn}
                   />

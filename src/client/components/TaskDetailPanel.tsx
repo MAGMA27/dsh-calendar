@@ -4,6 +4,7 @@
  * from here.
  */
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import { hhmm } from '../../core/calendar.ts'
 import { randomId } from '../../protocol.ts'
@@ -100,6 +101,28 @@ function durationMinutes(task: TaskRecord): number {
   return Number(snapDurationMinutes(String(Math.round((task.endAt - task.startAt) / 900_000) * MIN_DURATION_MINUTES)))
 }
 
+type DetailSectionKey = 'content' | 'time' | 'subtasks' | 'schedule' | 'execution' | 'executions'
+
+function DetailDisclosure(props: {
+  section: DetailSectionKey
+  title: string
+  meta?: string
+  open: boolean
+  onToggle: (open: boolean) => void
+  children: ReactNode
+}): JSX.Element {
+  return (
+    <details className={css.detailDisclosure} data-dsh-calendar-disclosure={props.section}
+      open={props.open} onToggle={event => props.onToggle(event.currentTarget.open)}>
+      <summary className={css.detailDisclosureSummary}>
+        <span className={css.detailDisclosureTitle}>{props.title}</span>
+        {props.meta !== undefined && <span className={css.detailDisclosureMeta}>{props.meta}</span>}
+      </summary>
+      <div className={css.detailDisclosureBody}>{props.children}</div>
+    </details>
+  )
+}
+
 export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: TaskDetailPanelProps) {
   // A copy's schedule IS the series' schedule: initialize and display from the
   // template so copies read consistently with the original. Ledger routes
@@ -120,6 +143,14 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
   const [dirty, setDirty] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [sectionOpen, setSectionOpen] = useState<Record<DetailSectionKey, boolean>>(() => ({
+    content: true,
+    time: true,
+    subtasks: task.subtasks.length > 0,
+    schedule: seriesTask.schedule?.enabled === true,
+    execution: false,
+    executions: task.executions.length > 0,
+  }))
 
   const markDirty = (): void => setDirty(true)
 
@@ -266,6 +297,17 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
 
   const doneSubtasks = task.subtasks.filter(s => s.done).length
   const repeatRule = seriesTask.schedule?.repeat
+  const scheduleMeta = repeatRule !== undefined
+    ? repeatSummary(repeatRule)
+    : schedule.dueAt.trim() !== ''
+      ? `${t('detail.dueAt')} · ${new Date(schedule.dueAt).toLocaleString()}`
+      : t('schedule.none')
+  const executionMeta = exec.provider !== undefined && exec.model !== undefined
+    ? `${exec.provider} / ${exec.model}`
+    : t('exec.leaveBlank')
+  const updateSectionOpen = (section: DetailSectionKey, open: boolean): void => {
+    setSectionOpen(previous => ({ ...previous, [section]: open }))
+  }
 
   return (
     <aside className={css.detailPanel} data-dsh-calendar-detail="" role="complementary" aria-label={t('detail.title')}>
@@ -274,145 +316,179 @@ export function TaskDetailPanel({ controller, task, onClose, onOpenSession }: Ta
         <button type="button" className={css.btnGhost} onClick={onClose}>{t('detail.close')}</button>
       </div>
 
-      {task.originTaskId !== undefined && (
-        <div className={css.copyNote}>
-          <span>↻ {t('detail.repeatCopy')}</span>
-          <button type="button" className={css.execSession} onClick={() => controller.selectTask(task.originTaskId)}>
-            {t('detail.openTemplate')}
+      <div className={css.detailBody} data-dsh-calendar-detail-body="">
+        {task.originTaskId !== undefined && (
+          <div className={css.copyNote}>
+            <span>↻ {t('detail.repeatCopy')}</span>
+            <button type="button" className={css.execSession} onClick={() => controller.selectTask(task.originTaskId)}>
+              {t('detail.openTemplate')}
+            </button>
+          </div>
+        )}
+
+        <div className={css.detailIdentity}>
+          <div className={css.detailTitleRow}>
+            <input className={`${css.input} ${css.detailTitleInput}`} value={title} placeholder={t('new.titlePlaceholder')}
+              onChange={e => { setTitle(e.target.value); markDirty() }} />
+            <button type="button" className={`${css.btnGhost} ${css.detailDoneButton}`} onClick={() => void controller.dispatch({ kind: 'setDone', id: task.id, done: !task.done })}>
+              {task.done ? t('detail.notDone') : t('detail.doneToggle')}
+            </button>
+          </div>
+          <div className={css.detailMetaGrid}>
+            <label className={css.detailMetaField}>
+              <span className={css.detailFieldLabel}>{t('detail.urgency')}</span>
+              <select className={css.select} value={task.urgency} onChange={e => void controller.dispatch({ kind: 'setQuadrant', id: task.id, urgency: e.target.value as Urgency, importance: task.importance })}>
+                {(['high', 'medium', 'low'] as const).map(u => <option key={u} value={u}>{t(`urgency.${u}` as calendarKey)}</option>)}
+              </select>
+            </label>
+            <label className={css.detailMetaField}>
+              <span className={css.detailFieldLabel}>{t('detail.importance')}</span>
+              <select className={css.select} value={task.importance} onChange={e => void controller.dispatch({ kind: 'setQuadrant', id: task.id, urgency: task.urgency, importance: e.target.value as Importance })}>
+                {(['high', 'medium', 'low'] as const).map(i => <option key={i} value={i}>{t(`importance.${i}` as calendarKey)}</option>)}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <DetailDisclosure section="content" title={t('detail.content')} open={sectionOpen.content}
+          onToggle={open => updateSectionOpen('content', open)}>
+          <div className={css.detailSection}>
+            <label className={css.detailField} htmlFor="dsh-calendar-task-description">
+              <span className={css.detailFieldLabel}>{t('detail.description')}</span>
+              <input id="dsh-calendar-task-description" className={css.input} value={description} placeholder={t('detail.descriptionPlaceholder')}
+                onChange={e => { setDescription(e.target.value); markDirty() }} />
+            </label>
+            <label className={css.detailField} htmlFor="dsh-calendar-task-prompt">
+              <span className={css.detailFieldLabel}>{t('detail.prompt')}</span>
+              <textarea id="dsh-calendar-task-prompt" className={css.textarea} value={prompt} placeholder={t('detail.promptPlaceholder')}
+                onChange={e => { setPrompt(e.target.value); markDirty() }} />
+            </label>
+          </div>
+        </DetailDisclosure>
+
+        <DetailDisclosure section="time" title={t('detail.timeRange')}
+          meta={`${new Date(task.startAt).toLocaleDateString()} · ${hhmm(task.startAt)}–${hhmm(task.endAt)}`}
+          open={sectionOpen.time} onToggle={open => updateSectionOpen('time', open)}>
+          <div className={css.detailSection}>
+            <div className={css.detailFieldGrid}>
+              <label className={css.detailField} htmlFor="dsh-calendar-task-start-date">
+                <span className={css.detailFieldLabel}>{t('detail.startAt')}</span>
+                <input id="dsh-calendar-task-start-date" className={css.input} type="date" value={startDate}
+                  onChange={e => { setStartDate(e.target.value); markDirty() }} />
+              </label>
+              <label className={css.detailField} htmlFor="dsh-calendar-task-start-time">
+                <span className={css.detailFieldLabel}>{t('schedule.triggerAt')}</span>
+                <select id="dsh-calendar-task-start-time" className={css.select} value={startTime}
+                  onChange={e => { setStartTime(e.target.value); markDirty() }}>
+                  {QUARTER_HOUR_OPTIONS.map(time => <option key={time} value={time}>{time}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className={css.detailField} htmlFor="dsh-calendar-task-duration">
+              <span className={css.detailFieldLabel}>{t('detail.duration')}</span>
+              <input id="dsh-calendar-task-duration" className={css.input} type="number" min={MIN_DURATION_MINUTES} max={MAX_DURATION_MINUTES} step={MIN_DURATION_MINUTES} value={duration}
+                onChange={e => { setDuration(e.target.value); markDirty() }}
+                onBlur={() => {
+                  const snapped = snapDurationMinutes(duration)
+                  if (snapped !== duration) { setDuration(snapped); markDirty() }
+                }} />
+            </label>
+          </div>
+        </DetailDisclosure>
+
+        <DetailDisclosure section="subtasks" title={t('detail.subtasks')} meta={`${doneSubtasks}/${task.subtasks.length}`}
+          open={sectionOpen.subtasks} onToggle={open => updateSectionOpen('subtasks', open)}>
+          <div className={css.subtaskList}>
+            {task.subtasks.map(s => (
+              <div key={s.id} className={css.subtaskRow}>
+                <input type="checkbox" checked={s.done}
+                  onChange={e => void controller.dispatch({ kind: 'setSubtaskDone', id: task.id, subtaskId: s.id, done: e.target.checked })} />
+                <span className={s.done ? css.subtaskDone : css.subtaskText}>{s.title}</span>
+                <button type="button" className={css.subtaskRemove} onClick={() => void controller.dispatch({ kind: 'removeSubtask', id: task.id, subtaskId: s.id })} aria-label="remove">×</button>
+              </div>
+            ))}
+            <div className={css.detailInlineRow}>
+              <input className={css.input} value={subtaskInput} placeholder={t('detail.subtasksPlaceholder')}
+                onChange={e => setSubtaskInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void addSubtask() } }} />
+              <button type="button" className={css.btnGhost} onClick={() => void addSubtask()}>{t('detail.addSubtask')}</button>
+            </div>
+          </div>
+        </DetailDisclosure>
+
+        <DetailDisclosure section="schedule" title={t('detail.schedule')} meta={scheduleMeta}
+          open={sectionOpen.schedule} onToggle={open => updateSectionOpen('schedule', open)}>
+          <div className={css.detailSection}>
+            {task.originTaskId !== undefined && (
+              <div className={css.scheduleSummary}>{t('detail.scheduleSeriesHint')}</div>
+            )}
+            <ScheduleSettings value={schedule} onChange={(v) => { setSchedule(v); markDirty() }} />
+            {repeatRule !== undefined && (
+              <div className={css.scheduleSummary}>
+                {repeatSummary(repeatRule)}
+                {(() => {
+                  const next = nextRepeatDate(repeatRule, Date.now())
+                  return next !== undefined
+                    ? <div className={css.scheduleNext}>{t('schedule.next', { date: new Date(next).toLocaleDateString() })}</div>
+                    : null
+                })()}
+              </div>
+            )}
+            {seriesTask.schedule?.nextRunAt !== undefined && (
+              <div className={css.scheduleNext}>{new Date(seriesTask.schedule.nextRunAt).toLocaleString()}</div>
+            )}
+            {(seriesTask.schedule?.enabled === true) && (
+              <button type="button" className={css.btnGhost} onClick={clearSchedule}>{t('detail.clearSchedule')}</button>
+            )}
+          </div>
+        </DetailDisclosure>
+
+        <DetailDisclosure section="execution" title={t('exec.title')} meta={executionMeta}
+          open={sectionOpen.execution} onToggle={open => updateSectionOpen('execution', open)}>
+          <ExecutionSettings showTitle={false} value={exec} catalog={controller.getSnapshot().catalog}
+            onChange={(p) => { setExec({ ...exec, ...p }); markDirty() }} />
+        </DetailDisclosure>
+
+        <DetailDisclosure section="executions" title={t('detail.executions')} meta={String(task.executions.length)}
+          open={sectionOpen.executions} onToggle={open => updateSectionOpen('executions', open)}>
+          {task.executions.length === 0
+            ? <p className={css.agendaEmpty}>{t('detail.executionsEmpty')}</p>
+            : <div className={css.execRecords} data-dsh-calendar-execution-records="">
+                <ul className={css.execList}>{task.executions.slice().reverse().map(e => (
+                  <li key={e.id} className={css.execRow}>
+                    <div className={css.execMain}>
+                      <span className={css.execTime}>{new Date(e.startedAt).toLocaleString()}</span>
+                      {e.error !== undefined && <span className={css.execError} title={e.error}>{t('detail.executionError', { error: e.error })}</span>}
+                    </div>
+                    <span className={css.execResult} data-result={e.result ?? 'running'}>{e.result ?? 'running'}</span>
+                    {e.sessionId !== undefined && e.sessionId !== '' && (
+                      <button type="button" className={css.execSession} data-dsh-calendar-exec-session=""
+                        onClick={() => onOpenSession?.(e.sessionId!)}>
+                        {t('detail.openSession')}
+                      </button>
+                    )}
+                  </li>
+                ))}</ul>
+              </div>}
+        </DetailDisclosure>
+      </div>
+
+      <div className={css.detailFooter} data-dsh-calendar-detail-footer="">
+        {(error !== null || message !== null) && (
+          <div className={css.detailFeedback}>
+            {error !== null && <div className={css.modalError}>{error}</div>}
+            {message !== null && <div className={css.savedNote}>{message}</div>}
+          </div>
+        )}
+        <div className={css.detailActions}>
+          <button type="button" className={css.btnGhost} onClick={() => void runNow()}>{t('detail.runNow')}</button>
+          {task.archivedAt === undefined
+            ? <button type="button" className={css.btnGhost} onClick={() => { void controller.dispatch({ kind: 'archive', id: task.id }); onClose() }}>{t('detail.archive')}</button>
+            : <button type="button" className={css.btnGhost} onClick={() => void controller.dispatch({ kind: 'restore', id: task.id })}>{t('detail.restore')}</button>}
+          <button type="button" className={css.btnDanger} onClick={() => { void deleteTask() }}>{t('detail.delete')}</button>
+          <button type="button" className={`${css.btnPrimary} ${css.detailSaveButton}`} onClick={() => { void save(); dismissMsg(setMessage) }}>
+            {t('detail.save')}
           </button>
         </div>
-      )}
-
-      <div className={css.formRow}>
-        <input className={css.input} value={title} placeholder={t('new.titlePlaceholder')}
-          onChange={e => { setTitle(e.target.value); markDirty() }} />
-        <button type="button" className={css.btnGhost} onClick={() => void controller.dispatch({ kind: 'setDone', id: task.id, done: !task.done })}>
-          {task.done ? t('detail.notDone') : t('detail.doneToggle')}
-        </button>
-      </div>
-
-      <div className={css.formRow}>
-        <label className={css.formLabel}>{t('detail.urgency')}</label>
-        <select className={css.select} value={task.urgency} onChange={e => void controller.dispatch({ kind: 'setQuadrant', id: task.id, urgency: e.target.value as Urgency, importance: task.importance })}>
-          {(['high', 'medium', 'low'] as const).map(u => <option key={u} value={u}>{t(`urgency.${u}` as calendarKey)}</option>)}
-        </select>
-        <label className={css.formLabel}>{t('detail.importance')}</label>
-        <select className={css.select} value={task.importance} onChange={e => void controller.dispatch({ kind: 'setQuadrant', id: task.id, urgency: task.urgency, importance: e.target.value as Importance })}>
-          {(['high', 'medium', 'low'] as const).map(i => <option key={i} value={i}>{t(`importance.${i}` as calendarKey)}</option>)}
-        </select>
-      </div>
-
-      <div className={css.formRow}>
-        <label className={css.formLabel}>{t('detail.description')}</label>
-        <input className={css.input} value={description} placeholder={t('detail.descriptionPlaceholder')}
-          onChange={e => { setDescription(e.target.value); markDirty() }} />
-      </div>
-      <div className={css.formRow}>
-        <label className={css.formLabel}>{t('detail.prompt')}</label>
-        <textarea className={css.textarea} value={prompt} placeholder={t('detail.promptPlaceholder')}
-          onChange={e => { setPrompt(e.target.value); markDirty() }} />
-      </div>
-
-      <div className={css.detailSection}>
-        <h4 className={css.execTitle}>{t('detail.timeRange')}</h4>
-        <div className={css.formRow}>
-          <label className={css.formLabel} htmlFor="dsh-calendar-task-start-date">{t('detail.startAt')}</label>
-          <input id="dsh-calendar-task-start-date" className={css.input} type="date" value={startDate}
-            onChange={e => { setStartDate(e.target.value); markDirty() }} />
-          <select id="dsh-calendar-task-start-time" className={css.select} value={startTime}
-            onChange={e => { setStartTime(e.target.value); markDirty() }}>
-            {QUARTER_HOUR_OPTIONS.map(time => <option key={time} value={time}>{time}</option>)}
-          </select>
-        </div>
-        <div className={css.formRow}>
-          <label className={css.formLabel} htmlFor="dsh-calendar-task-duration">{t('detail.duration')}</label>
-          <input id="dsh-calendar-task-duration" className={css.input} type="number" min={MIN_DURATION_MINUTES} max={MAX_DURATION_MINUTES} step={MIN_DURATION_MINUTES} value={duration}
-            onChange={e => { setDuration(e.target.value); markDirty() }}
-            onBlur={() => {
-              const snapped = snapDurationMinutes(duration)
-              if (snapped !== duration) { setDuration(snapped); markDirty() }
-            }} />
-        </div>
-      </div>
-
-      <div className={css.detailSection}>
-        <h4 className={css.execTitle}>{t('detail.subtasks')} <span className={css.subtaskCount}>{doneSubtasks}/{task.subtasks.length}</span></h4>
-        <div className={css.subtaskList}>
-          {task.subtasks.map(s => (
-            <div key={s.id} className={css.subtaskRow}>
-              <input type="checkbox" checked={s.done}
-                onChange={e => void controller.dispatch({ kind: 'setSubtaskDone', id: task.id, subtaskId: s.id, done: e.target.checked })} />
-              <span className={s.done ? css.subtaskDone : css.subtaskText}>{s.title}</span>
-              <button type="button" className={css.subtaskRemove} onClick={() => void controller.dispatch({ kind: 'removeSubtask', id: task.id, subtaskId: s.id })} aria-label="remove">×</button>
-            </div>
-          ))}
-          <div className={css.formRow}>
-            <input className={css.input} value={subtaskInput} placeholder={t('detail.subtasksPlaceholder')}
-              onChange={e => setSubtaskInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void addSubtask() } }} />
-            <button type="button" className={css.btnGhost} onClick={() => void addSubtask()}>{t('detail.addSubtask')}</button>
-          </div>
-        </div>
-      </div>
-
-      <div className={css.detailSection}>
-        <h4 className={css.execTitle}>{t('detail.schedule')}</h4>
-        {task.originTaskId !== undefined && (
-          <div className={css.scheduleSummary}>{t('detail.scheduleSeriesHint')}</div>
-        )}
-        <ScheduleSettings value={schedule} onChange={(v) => { setSchedule(v); markDirty() }} />
-        {repeatRule !== undefined && (
-          <div className={css.scheduleSummary}>
-            {repeatSummary(repeatRule)}
-            {(() => {
-              const next = nextRepeatDate(repeatRule, Date.now())
-              return next !== undefined
-                ? <div className={css.scheduleNext}>{t('schedule.next', { date: new Date(next).toLocaleDateString() })}</div>
-                : null
-            })()}
-          </div>
-        )}
-        {seriesTask.schedule?.nextRunAt !== undefined && (
-          <div className={css.scheduleNext}>{new Date(seriesTask.schedule.nextRunAt).toLocaleString()}</div>
-        )}
-        {(seriesTask.schedule?.enabled === true) && (
-          <button type="button" className={css.btnGhost} onClick={clearSchedule}>{t('detail.clearSchedule')}</button>
-        )}
-      </div>
-
-      <div className={css.detailSection}>
-        <ExecutionSettings value={exec} catalog={controller.getSnapshot().catalog} onChange={(p) => { setExec({ ...exec, ...p }); markDirty() }} />
-      </div>
-
-      <div className={css.detailSection}>
-        <h4 className={css.execTitle}>{t('detail.executions')}</h4>
-        {task.executions.length === 0
-          ? <p className={css.agendaEmpty}>{t('detail.executionsEmpty')}</p>
-          : <ul className={css.execList}>{task.executions.slice().reverse().map(e => (
-            <li key={e.id} className={css.execRow}>
-              <span className={css.execTime}>{new Date(e.startedAt).toLocaleString()}</span>
-              <span className={css.execResult} data-result={e.result ?? 'running'}>{e.result ?? 'running'}</span>
-              {e.sessionId !== undefined && e.sessionId !== '' && (
-                <button type="button" className={css.execSession} data-dsh-calendar-exec-session=""
-                  onClick={() => onOpenSession?.(e.sessionId!)}>
-                  {t('detail.openSession')}
-                </button>
-              )}
-            </li>
-          ))}</ul>}
-      </div>
-
-      {error !== null && <div className={css.modalError}>{error}</div>}
-      {message !== null && <div className={css.savedNote}>{message}</div>}
-
-      <div className={css.detailActions}>
-        <button type="button" className={css.btnGhost} onClick={() => void runNow()}>{t('detail.runNow')}</button>
-        <button type="button" className={css.btnPrimary} onClick={() => { void save(); dismissMsg(setMessage) }}>
-          {t('detail.save')}
-        </button>
-        {task.archivedAt === undefined
-          ? <button type="button" className={css.btnGhost} onClick={() => { void controller.dispatch({ kind: 'archive', id: task.id }); onClose() }}>{t('detail.archive')}</button>
-          : <button type="button" className={css.btnGhost} onClick={() => void controller.dispatch({ kind: 'restore', id: task.id })}>{t('detail.restore')}</button>}
-        <button type="button" className={css.btnDanger} onClick={() => { void deleteTask() }}>{t('detail.delete')}</button>
       </div>
     </aside>
   )

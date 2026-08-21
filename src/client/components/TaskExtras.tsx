@@ -50,6 +50,23 @@ export function TaskBadges({ task }: { task: TaskRecord }): ReactNode {
   return <>{chips}</>
 }
 
+/** A shared one-click completion control for task cards and time blocks. */
+export function TaskDoneCheckbox({ task, onToggle, compact = false }: {
+  task: Pick<TaskRecord, 'done'>
+  onToggle: (done: boolean) => void
+  compact?: boolean
+}): JSX.Element {
+  const label = task.done ? t('detail.notDone') : t('detail.doneToggle')
+  const stop = (e: React.SyntheticEvent<HTMLElement>): void => { e.stopPropagation() }
+  return (
+    <span className={`${css.doneCheckbox} ${compact ? css.doneCheckboxCompact : ''}`} data-dsh-calendar-done-toggle=""
+      onPointerDown={stop} onClick={stop} onKeyDown={stop}>
+      <input type="checkbox" checked={task.done} aria-label={label}
+        onChange={e => { e.stopPropagation(); onToggle(e.currentTarget.checked) }} />
+    </span>
+  )
+}
+
 /** A slim subtask progress track; renders nothing without subtasks. */
 export function SubtaskTrack({ task }: { task: TaskRecord }): ReactNode {
   const total = task.subtasks.length

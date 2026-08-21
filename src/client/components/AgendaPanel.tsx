@@ -6,7 +6,7 @@ import type { calendarClientController } from '../controller.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { isTaskOccurrenceVisible, isTaskOverdue, isTaskVisibleInOverview, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
-import { TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
+import { TaskDoneCheckbox, TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
 
 interface AgendaPanelProps {
@@ -65,18 +65,25 @@ export function AgendaPanel({ controller }: AgendaPanelProps) {
             : g.tasks.map(task => {
               const acc = ACCENT[quadrantOf(task.urgency, task.importance)]
               return (
-                <button type="button" key={task.id} className={css.agendaItem + ' ' + acc}
+                <div key={task.id} role="button" tabIndex={0} className={css.agendaItem + ' ' + acc}
                   data-overdue={g.key === 'overdue' ? 'true' : undefined}
                   data-done={task.done || undefined}
-                  onClick={() => controller.selectTask(task.id)}>
+                  onClick={() => controller.selectTask(task.id)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); controller.selectTask(task.id) }
+                  }}
+                  aria-label={task.title}>
                   <span className={css.agendaItemHead}>
                     <TaskTime task={task} />
                     <span className={css.agendaBadges}><TaskBadges task={task} /></span>
                   </span>
-                  <span className={css.agendaText} data-done={task.done || undefined}>{task.title}</span>
+                  <span className={css.agendaTextRow}>
+                    <TaskDoneCheckbox task={task} onToggle={done => { void controller.dispatch({ kind: 'setDone', id: task.id, done }) }} />
+                    <span className={css.agendaText} data-done={task.done || undefined}>{task.title}</span>
+                  </span>
                   {task.description !== '' && <span className={css.agendaDesc}>{task.description}</span>}
                   <SubtaskTrack task={task} />
-                </button>
+                </div>
               )
             })}
         </section>

@@ -25,6 +25,8 @@ interface ExecutionSettingsProps {
   value: ExecutionSettingsValue
   catalog?: ExecutionCatalog
   onChange: (patch: Partial<ExecutionSettingsValue>) => void
+  /** Hide the heading when the caller already provides a disclosure title. */
+  showTitle?: boolean
 }
 
 function blankToUndefined(s: string): string | undefined {
@@ -97,7 +99,7 @@ function GroupedSessionSelect(props: {
   )
 }
 
-export function ExecutionSettings({ value, catalog, onChange }: ExecutionSettingsProps) {
+export function ExecutionSettings({ value, catalog, onChange, showTitle = true }: ExecutionSettingsProps) {
   const hasWorkspaces = catalog !== undefined && catalog.workspaces.length > 0
   const hasSessions = catalog !== undefined && catalog.sessions.length > 0
   const hasGroupedSessions = catalog !== undefined && catalog.projects.length > 0
@@ -117,7 +119,7 @@ export function ExecutionSettings({ value, catalog, onChange }: ExecutionSetting
 
   return (
     <div className={css.execSettings} data-dsh-calendar-exec="">
-      <h4 className={css.execTitle}>{t('exec.title')}</h4>
+      {showTitle && <h4 className={css.execTitle}>{t('exec.title')}</h4>}
 
       {hasWorkspaces
         ? <OptionSelect label={t('exec.workspace')} value={value.workspaceId} options={catalog!.workspaces}
@@ -153,7 +155,7 @@ export function ExecutionSettings({ value, catalog, onChange }: ExecutionSetting
 
       <div className={css.formRow}>
         <label className={css.formLabel}>{t('exec.permission')}</label>
-        <select className={css.select} value={value.permission ?? ''}
+        <select className={css.select} data-dsh-calendar-exec-permission="" value={value.permission ?? ''}
           onChange={e => onChange({ permission: e.target.value === '' ? undefined : e.target.value as TaskPermission })}>
           <option value="">{t('exec.leaveBlank')}</option>
           {TASK_PERMISSIONS.map(p => <option key={p} value={p}>{p}</option>)}

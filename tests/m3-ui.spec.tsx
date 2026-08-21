@@ -11,6 +11,7 @@ import { MatrixPanel } from '../src/client/components/MatrixPanel.tsx'
 import { AgendaPanel } from '../src/client/components/AgendaPanel.tsx'
 import { MonthGrid } from '../src/client/components/MonthGrid.tsx'
 import { TaskBlock } from '../src/client/components/TaskBlock.tsx'
+import { WeekGrid } from '../src/client/components/WeekGrid.tsx'
 import { ExecutionSettings, type ExecutionSettingsValue } from '../src/client/components/ExecutionSettings.tsx'
 import type { calendarAction, calendarSnapshot } from '../src/protocol.ts'
 import type { TaskRecord } from '../src/core/tasks.ts'
@@ -62,6 +63,40 @@ describe('TaskDetailPanel', () => {
     // Archive button is present (task not archived).
     const archiveBtn = [...host.querySelectorAll('button')].find(b => b.textContent === '归档' || b.textContent === 'Archive')
     expect(archiveBtn).toBeTruthy()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('keeps detail actions visible while execution records stay collapsible and bounded', async () => {
+    const executions: TaskRecord['executions'] = Array.from({ length: 20 }, (_, i) => ({
+      id: `run-${i}`,
+      startedAt: i + 1,
+      result: i === 0 ? 'failed' : 'succeeded',
+      error: i === 0 ? 'timeout' : undefined,
+    }))
+    const task = makeTask({ executions })
+    const { transport } = recordTransport(snapshotWith(task))
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<TaskDetailPanel controller={controller} task={task} onClose={() => {}} />) })
+
+    const detail = host.querySelector('[data-dsh-calendar-detail]')
+    expect(detail?.querySelector('[data-dsh-calendar-detail-body]')).toBeTruthy()
+    const footer = detail?.querySelector('[data-dsh-calendar-detail-footer]')
+    expect(footer).toBeTruthy()
+    expect(footer?.textContent).toContain('保存')
+    expect(footer?.querySelector('[data-dsh-calendar-detail-body]')).toBeNull()
+
+    const executionsDisclosure = host.querySelector('details[data-dsh-calendar-disclosure="executions"]') as HTMLDetailsElement | null
+    expect(executionsDisclosure?.open).toBe(true)
+    expect(executionsDisclosure?.querySelector('[data-dsh-calendar-execution-records]')).toBeTruthy()
+    expect(host.textContent).toContain('执行失败：timeout')
+    const summary = executionsDisclosure?.querySelector('summary') as HTMLElement | null
+    expect(summary).toBeTruthy()
+    await act(async () => { summary?.click() })
+    expect(executionsDisclosure?.open).toBe(false)
 
     await act(async () => { root.unmount(); host.remove() })
   })
@@ -176,8 +211,13 @@ describe('TaskDetailPanel', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<TaskDetailPanel controller={controller} task={task} onClose={() => {}} />) })
     // Execution settings selects should expose the pinned permission.
-    const permSelect = [...host.querySelectorAll('select')].find(s => (s as HTMLSelectElement).value === 'workspace-write') as HTMLSelectElement | undefined
+    const executionDisclosure = host.querySelector('details[data-dsh-calendar-disclosure="execution"]') as HTMLDetailsElement | null
+    expect(executionDisclosure?.open).toBe(false)
+    await act(async () => { (executionDisclosure?.querySelector('summary') as HTMLElement).click() })
+    expect(executionDisclosure?.open).toBe(true)
+    const permSelect = executionDisclosure?.querySelector('[data-dsh-calendar-exec-permission]') as HTMLSelectElement | null
     expect(permSelect).toBeTruthy()
+    expect(permSelect?.value).toBe('workspace-write')
     await act(async () => { root.unmount(); host.remove() })
   })
 
@@ -376,6 +416,36 @@ describe('Calendar completion styling', () => {
 
     await act(async () => { root.unmount(); host.remove() })
   })
+
+  it('renders all month-day tasks and lets a crowded cell scroll internally', async () => {
+    const start = new Date(2026, 7, 20, 9, 0).getTime()
+    const tasks: TaskRecord[] = Array.from({ length: 7 }, (_, i) => makeTask({
+      id: `month-task-${i}`,
+      title: `Month task ${i}`,
+      startAt: start + i * 900_000,
+      endAt: start + (i + 1) * 900_000,
+    }))
+    const snap: calendarSnapshot = {
+      schemaVersion: 1,
+      revision: 1,
+      tasks,
+      scheduler: { timeZone: 'Asia/Shanghai' },
+    }
+    const controller = new calendarClientController(new MemorycalendarHostTransport(snap), initialState(start, 0))
+    await controller.start()
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<MonthGrid controller={controller} />) })
+
+    const crowdedCell = [...host.querySelectorAll('[data-dsh-calendar-month] button')]
+      .find(cell => cell.querySelector('[data-dsh-calendar-month-chip]')?.textContent === 'Month task 0')
+    expect(crowdedCell).toBeTruthy()
+    expect(crowdedCell?.querySelectorAll('[data-dsh-calendar-month-chip]')).toHaveLength(7)
+    expect(crowdedCell?.querySelector('.monthMore')).toBeNull()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
 })
 
 describe('MatrixPanel', () => {
@@ -403,7 +473,7 @@ describe('MatrixPanel', () => {
     expect(text).toContain(todayDone.title)
     expect(text).toContain(overdue.title)
     expect(text).not.toContain(oldDone.title)
-    expect(host.querySelector('[data-dsh-calendar-matrix] button[data-done]')).toBeTruthy()
+    expect(host.querySelector('[data-dsh-calendar-matrix] [data-done]')).toBeTruthy()
     expect(text).toContain('已完成')
 
     await act(async () => { root.unmount(); host.remove() })
@@ -463,7 +533,7 @@ describe('MatrixPanel', () => {
     expect(host.textContent).not.toContain(new Date(oldestUnfinished.startAt).toLocaleDateString())
     expect(host.textContent).not.toContain(new Date(latestUnfinished.startAt).toLocaleDateString())
     expect(host.textContent).not.toContain(new Date(doneCopy.startAt).toLocaleDateString())
-    expect(host.querySelector('[data-dsh-calendar-matrix] button[data-done]')).toBeTruthy()
+    expect(host.querySelector('[data-dsh-calendar-matrix] [data-done]')).toBeTruthy()
 
     await act(async () => { root.unmount(); host.remove() })
   })
@@ -483,7 +553,7 @@ describe('MatrixPanel', () => {
     const root = createRoot(host)
     await act(async () => { root.render(<MatrixPanel controller={controller} />) })
 
-    const item = host.querySelector('[data-dsh-calendar-matrix] button[data-overdue]')
+    const item = host.querySelector('[data-dsh-calendar-matrix] [data-overdue]')
     expect(item).toBeTruthy()
     expect(item?.textContent).toContain('已过期')
 
@@ -557,6 +627,63 @@ describe('AgendaPanel', () => {
 
     expect(host.querySelector('[data-group="today"]')?.textContent).toContain('Daily review')
     expect(host.querySelector('[data-group="upcoming"]')?.textContent).not.toContain('Daily review')
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+})
+
+describe('Direct task completion controls', () => {
+  it('completes a week task from its inline checkbox without selecting it', async () => {
+    const start = new Date(2026, 7, 20, 9, 0).getTime()
+    const task = makeTask({ id: 'week-done', title: 'Week task', startAt: start, endAt: start + 60 * 60_000 })
+    const { transport, dispatched } = recordTransport(snapshotWith(task))
+    const controller = new calendarClientController(transport, initialState(start, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<WeekGrid controller={controller} />) })
+
+    const checkbox = host.querySelector('[data-dsh-calendar-week] [data-dsh-calendar-done-toggle] input') as HTMLInputElement | null
+    expect(checkbox).toBeTruthy()
+    await act(async () => { checkbox?.click() })
+    expect(dispatched).toContainEqual({ kind: 'setDone', id: 'week-done', done: true })
+    expect(controller.getSnapshot().selectedTaskId).toBeUndefined()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('completes a matrix task from its inline checkbox without selecting it', async () => {
+    const task = makeTask({ id: 'matrix-done', title: 'Matrix task' })
+    const { transport, dispatched } = recordTransport(snapshotWith(task))
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<MatrixPanel controller={controller} />) })
+
+    const checkbox = host.querySelector('[data-dsh-calendar-matrix] [data-dsh-calendar-done-toggle] input') as HTMLInputElement | null
+    expect(checkbox).toBeTruthy()
+    await act(async () => { checkbox?.click() })
+    expect(dispatched).toContainEqual({ kind: 'setDone', id: 'matrix-done', done: true })
+    expect(controller.getSnapshot().selectedTaskId).toBeUndefined()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('completes an agenda task from its inline checkbox without selecting it', async () => {
+    const task = makeTask({ id: 'agenda-done', title: 'Agenda task' })
+    const { transport, dispatched } = recordTransport(snapshotWith(task))
+    const controller = new calendarClientController(transport, initialState(0, 0))
+    await controller.start()
+    const host = document.createElement('div'); document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => { root.render(<AgendaPanel controller={controller} />) })
+
+    const checkbox = host.querySelector('[data-dsh-calendar-agenda] [data-dsh-calendar-done-toggle] input') as HTMLInputElement | null
+    expect(checkbox).toBeTruthy()
+    await act(async () => { checkbox?.click() })
+    expect(dispatched).toContainEqual({ kind: 'setDone', id: 'agenda-done', done: true })
+    expect(controller.getSnapshot().selectedTaskId).toBeUndefined()
 
     await act(async () => { root.unmount(); host.remove() })
   })

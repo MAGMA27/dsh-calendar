@@ -4,6 +4,7 @@
 import type { TaskRecord } from '../../core/tasks.ts'
 import { quadrantOf, completedSubtaskCount, taskOccurrenceTriggersAgent } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
+import { TaskDoneCheckbox } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
 
 export type TaskEditKind = 'move' | 'resize-start' | 'resize-end'
@@ -15,6 +16,8 @@ export interface TaskBlockProps {
   leftPct: number
   widthPct: number
   onSelect: (id: string) => void
+  /** Toggle completion without opening the detail panel. */
+  onToggleDone?: (id: string, done: boolean) => void
   /** Begin a drag edit; the grid owns pointer capture + time math. */
   onEditStart?: (e: React.PointerEvent<HTMLElement>, kind: TaskEditKind) => void
   /** True while this task is being dragged/resized (raise z-index). */
@@ -34,7 +37,7 @@ function fmtTime(ms: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect, onEditStart, editing }: TaskBlockProps) {
+export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect, onToggleDone, onEditStart, editing }: TaskBlockProps) {
   const q = quadrantOf(task.urgency, task.importance)
   const subCount = task.subtasks.length
   const subDone = completedSubtaskCount(task)
@@ -59,17 +62,22 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
   }
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={`${css.taskBlock} ${ACCENT[q]} ${editing ? css.taskBlockEditing : ''}`}
       data-dsh-calendar-block=""
       data-done={task.done || undefined}
       style={{ top: `${topPct}%`, height: `${heightPct}%`, left: `${leftPct}%`, width: `${widthPct}%` }}
       onClick={() => onSelect(task.id)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(task.id) }
+      }}
       onPointerDown={editable ? startMove : undefined}
       aria-label={task.title}
     >
       <span className={css.taskBlockHeader}>
+        {onToggleDone !== undefined && <TaskDoneCheckbox task={task} compact onToggle={done => onToggleDone(task.id, done)} />}
         <span className={css.taskBlockTitle} data-done={task.done || undefined}>{task.title}</span>
         <span className={css.taskBlockTime}>{fmtTime(task.startAt)}–{fmtTime(task.endAt)}</span>
       </span>
@@ -91,6 +99,6 @@ export function TaskBlock({ task, topPct, heightPct, leftPct, widthPct, onSelect
           <span className={css.resizeHandleBottom} onPointerDown={startEdge('resize-end')} aria-hidden="true" />
         </>
       )}
-    </button>
+    </div>
   )
 }

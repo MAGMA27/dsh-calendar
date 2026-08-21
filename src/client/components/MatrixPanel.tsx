@@ -6,7 +6,7 @@ import { useState } from 'react'
 import type { calendarClientController } from '../controller.ts'
 import { type Quadrant, type Urgency, type Importance, isTaskOccurrenceVisible, isTaskOverdue, isTaskVisibleInOverview, quadrantOf, collapseRepeatSeries } from '../../core/tasks.ts'
 import { t, type calendarKey } from '../locales.ts'
-import { TaskDate, TaskOverdue, TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
+import { TaskDate, TaskDoneCheckbox, TaskOverdue, TaskTime, TaskBadges, SubtaskTrack } from './TaskExtras.tsx'
 import css from '../calendar.module.css'
 
 const QUADRANTS: Array<{ q: Quadrant; urgency: 'high' | 'low'; importance: 'high' | 'low' }> = [
@@ -70,12 +70,19 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
                 const acc = ACCENT[quadrantOf(task.urgency, task.importance)]
                 const overdue = isTaskOverdue(task, now)
                 return (
-                  <button type="button" key={task.id} draggable className={css.matrixItem + ' ' + acc}
+                  <div key={task.id} role="button" tabIndex={0} draggable className={css.matrixItem + ' ' + acc}
                     data-overdue={overdue || undefined}
                     data-done={task.done || undefined}
                     onDragStart={e => e.dataTransfer.setData(DRAG_KIND, task.id)}
-                    onClick={() => controller.selectTask(task.id)}>
-                    <span className={css.matrixItemTitle} data-done={task.done || undefined}>{task.title}</span>
+                    onClick={() => controller.selectTask(task.id)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); controller.selectTask(task.id) }
+                    }}
+                    aria-label={task.title}>
+                    <span className={css.matrixItemTitleRow}>
+                      <TaskDoneCheckbox task={task} onToggle={done => { void controller.dispatch({ kind: 'setDone', id: task.id, done }) }} />
+                      <span className={css.matrixItemTitle} data-done={task.done || undefined}>{task.title}</span>
+                    </span>
                     <span className={css.matrixItemMeta}>
                       <TaskDate task={task} />
                       <TaskTime task={task} />
@@ -84,7 +91,7 @@ export function MatrixPanel({ controller }: MatrixPanelProps) {
                       {task.done && <span className={css.matrixItemStatus} data-done="">✓ {t('agenda.done')}</span>}
                     </span>
                     <SubtaskTrack task={task} />
-                  </button>
+                  </div>
                 )
               })}
             </div>

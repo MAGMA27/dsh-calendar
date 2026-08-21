@@ -67,12 +67,11 @@ export function MonthGrid({ controller }: MonthGridProps) {
                 <span className={css.monthCellDay}>{new Date(day.dateMs).getDate()}</span>
               </span>
               <span className={css.monthChips}>
-                {dayTasks.slice(0, 4).map(task => (
-                  <span key={task.id} className={`${css.taskChip} ${ACCENT[quadrantOf(task.urgency, task.importance)]}`} data-done={task.done || undefined}>
+                {dayTasks.map(task => (
+                  <span key={task.id} className={`${css.taskChip} ${ACCENT[quadrantOf(task.urgency, task.importance)]}`} data-dsh-calendar-month-chip="" data-done={task.done || undefined}>
                     {task.title}
                   </span>
                 ))}
-                {dayTasks.length > 4 && <span className={css.monthMore}>+{dayTasks.length - 4}</span>}
               </span>
             </button>
           )

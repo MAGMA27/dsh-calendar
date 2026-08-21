@@ -14,7 +14,7 @@ import { TaskDetailPanel } from './TaskDetailPanel.tsx'
 import { RepeatTimeConfirm } from './RepeatTimeConfirm.tsx'
 import { ScheduleClearConfirm } from './ScheduleClearConfirm.tsx'
 import { RepeatDeleteConfirm } from './RepeatDeleteConfirm.tsx'
-import { t, type calendarKey } from '../locales.ts'
+import { locale, t, type calendarKey } from '../locales.ts'
 import css from '../calendar.module.css'
 
 const VIEWS: Array<{ view: calendarView; key: calendarKey }> = [
@@ -26,13 +26,6 @@ const VIEWS: Array<{ view: calendarView; key: calendarKey }> = [
 
 /** Whole-hour minutes-of-day options for the visible-day-window pickers. */
 const HOUR_OPTIONS = Array.from({ length: 25 }, (_, h) => h * 60)
-
-/** The document language (drives date labels); falls back to zh. */
-function locale(): string {
-  return typeof document !== 'undefined' && document.documentElement.lang
-    ? document.documentElement.lang
-    : 'zh'
-}
 
 interface CalendarViewProps {
   controller: calendarClientController

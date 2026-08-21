@@ -6,7 +6,7 @@
 import type { calendarClientController } from '../controller.ts'
 import { blockOnDay, monthDays, sameMonth } from '../../core/calendar.ts'
 import { isTaskOccurrenceVisible, quadrantOf } from '../../core/tasks.ts'
-import { t } from '../locales.ts'
+import { locale, t } from '../locales.ts'
 import css from '../calendar.module.css'
 
 const ACCENT: Record<string, string> = {
@@ -21,8 +21,8 @@ interface MonthGridProps {
 }
 
 /** The 7 weekday headers, Monday-first or Sunday-first per weekStart. */
-function weekdayLabels(weekStart: 0 | 1): string[] {
-  const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
+function weekdayLabels(weekStart: 0 | 1, localeName: string): string[] {
+  const fmt = new Intl.DateTimeFormat(localeName, { weekday: 'short' })
   const d = new Date(2026, 0, 4 + (weekStart === 0 ? 1 : 0))
   const labels: string[] = []
   for (let i = 0; i < 7; i++) {
@@ -32,15 +32,16 @@ function weekdayLabels(weekStart: 0 | 1): string[] {
 }
 
 /** Short month name (e.g. "9月" / "Sep") for the 1st-of-month cells. */
-function monthShortLabel(dateMs: number): string {
-  return new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(dateMs))
+function monthShortLabel(dateMs: number, localeName: string): string {
+  return new Intl.DateTimeFormat(localeName, { month: 'short' }).format(new Date(dateMs))
 }
 
 export function MonthGrid({ controller }: MonthGridProps) {
   const snap = controller.getSnapshot()
   const days = monthDays(snap.cursor, snap.weekStart)
   const todayKey = new Date().toDateString()
-  const weekdays = weekdayLabels(snap.weekStart)
+  const localeName = locale()
+  const weekdays = weekdayLabels(snap.weekStart, localeName)
   return (
     <div className={css.monthWrap} data-dsh-calendar-month="">
       <div className={css.monthWeekHeader} aria-hidden="true">
@@ -63,7 +64,7 @@ export function MonthGrid({ controller }: MonthGridProps) {
               onClick={() => { controller.setCursor(day.dateMs); controller.setView('week') }}
             >
               <span className={css.monthCellDateRow}>
-                {isFirstOfMonth && <span className={css.monthCellMonthLabel}>{monthShortLabel(day.dateMs)}</span>}
+                {isFirstOfMonth && <span className={css.monthCellMonthLabel}>{monthShortLabel(day.dateMs, localeName)}</span>}
                 <span className={css.monthCellDay}>{new Date(day.dateMs).getDate()}</span>
               </span>
               <span className={css.monthChips}>

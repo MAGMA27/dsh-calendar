@@ -311,9 +311,15 @@ export const en: Record<keyof typeof zh, string> = {
 /** The dictionary key union. */
 export type calendarKey = keyof typeof zh
 
+/** The document language used by both translations and date formatting. */
+export function locale(): string {
+  const lang = typeof document !== 'undefined' ? document.documentElement.lang : ''
+  return lang === '' ? 'zh' : lang
+}
+
 /** Active dictionary, picked by the document language at call time. */
 export function dictionary(): Record<calendarKey, string> {
-  const lang = typeof document !== 'undefined' ? document.documentElement.lang : 'zh'
+  const lang = locale()
   return lang.toLowerCase().startsWith('en') ? en : zh
 }
 

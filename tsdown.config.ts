@@ -10,7 +10,7 @@
  */
 import { clientBundle } from './build/tsdown.client.ts'
 
-export default clientBundle('dsh-calendar', ['src/index.ts', 'src/invariant.ts'], {
+export default clientBundle('@magma27/dsh-calendar', ['src/index.ts', 'src/invariant.ts'], {
   libExternal: [
     // Host-half services resolve at runtime from the dsh profile tree (never
     // from this repo's install), so they must stay external like @deepseek-ai/cordis.

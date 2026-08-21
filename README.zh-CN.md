@@ -129,4 +129,4 @@ tests/          core、Host、client 测试
 
 ## 许可证
 
-MIT © 2026 MAGMA27，详见 [LICENSE](LICENSE)。
+Apache-2.0 © 2026 MAGMA27，详见 [LICENSE](LICENSE)。

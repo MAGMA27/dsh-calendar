@@ -2,6 +2,26 @@
   "name": "@magma27/dsh-calendar",
   "description": "Calendar todo plugin for the dsh web GUI: a sidebar entry plus a week/month calendar where you drag-select time ranges to create tasks, with Eisenhower urgency/importance quadrants, subtasks, pinned execution session + LLM provider, and host-authoritative scheduling — constrained daily/weekly repeats copied onto their dates (optional holiday skip) plus one-off auto runs through real dsh sessions. Host-authoritative ledger + scheduler; browser is a same-origin async view. Mounted via dsh plugin, no dsh source changes.",
   "version": "0.1.1",
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-web",
+    "deepseek-harness",
+    "calendar",
+    "calendar-task",
+    "todo",
+    "task-manager",
+    "ai-agent",
+    "agent-scheduling",
+    "scheduled-agent",
+    "task-scheduler",
+    "llm",
+    "automation",
+    "eisenhower-matrix",
+    "recurring-tasks"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MAGMA27/dsh-calendar.git"
@@ -97,5 +117,5 @@
       "esbuild"
     ]
   },
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

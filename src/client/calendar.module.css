@@ -313,10 +313,12 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   padding: 8px 4px;
   font-size: 12px;
   color: var(--dsw-alias-label-secondary);
+  background-color: var(--dsw-alias-bg-base);
   border-right: 1px solid var(--dsw-alias-border-l2);
 }
 
 .weekHeaderCell[data-today] { color: var(--dsw-alias-label-primary); font-weight: 600; }
+.weekHeaderCell[data-weekend] { background-color: var(--dsw-alias-bg-layer-2); }
 
 .weekHeaderDay { font-size: 13px; font-weight: 600; text-transform: uppercase; }
 .weekHeaderDate {
@@ -486,6 +488,17 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   line-height: 18px;
 }
 
+.taskBlockHeaderCompact { gap: 3px; }
+.taskBlockHeaderCompact .taskBlockTime { font-size: 9px; }
+.taskBlockSignalSlot {
+  display: inline-flex;
+  flex: none;
+  height: 18px;
+  align-items: center;
+  gap: 2px;
+  overflow: visible;
+}
+
 .taskBlockTitle {
   flex: 1 1 auto;
   min-width: 0;
@@ -532,6 +545,17 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   background: var(--dsw-alias-state-business-tertiary);
   border-radius: 4px;
   padding: 1px 4px;
+}
+
+.taskBadgeCompact {
+  display: inline-flex;
+  min-width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2px;
+  font-size: 9px;
+  line-height: 1;
 }
 
 .taskBadgeOverdue {
@@ -882,6 +906,53 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   gap: 4px;
   flex-wrap: wrap;
 }
+
+.taskBlockBody {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  padding-top: 4px;
+}
+
+.taskBlockDescription {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.taskBlockSubtasks {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.taskBlockSubtask {
+  display: flex;
+  min-width: 0;
+  min-height: 18px;
+  align-items: center;
+  gap: 4px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.taskBlockSubtaskToggle { width: 16px; height: 16px; }
+.taskBlockSubtaskToggle input { width: 12px; height: 12px; }
+.taskBlockSubtaskText, .taskBlockSubtaskDone { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.taskBlockSubtaskDone { color: var(--dsw-alias-label-tertiary); text-decoration: line-through; }
+.taskBlockSubtaskMarker { width: 14px; color: var(--dsw-alias-label-tertiary); text-align: center; }
+.taskBlockMore { color: var(--dsw-alias-label-tertiary); font-size: 10px; }
 
 .matrixItem[data-done] .taskDate,
 .matrixItem[data-done] .taskTime {

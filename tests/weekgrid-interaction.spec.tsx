@@ -269,6 +269,7 @@ describe('WeekGrid header', () => {
     const header = host.querySelector('[data-dsh-calendar-week-header]')
     expect(header).toBeTruthy()
     expect(header!.querySelectorAll('[class*=weekHeaderCell]').length).toBe(7)
+    expect(header!.querySelector('[class*=weekHeaderCell][data-weekend]')).toBeTruthy()
 
     const blocks = [...host.querySelectorAll('[data-dsh-calendar-block]')] as HTMLElement[]
     expect(blocks.length).toBe(2)

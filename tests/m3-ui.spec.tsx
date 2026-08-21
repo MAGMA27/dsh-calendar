@@ -554,6 +554,93 @@ describe('Calendar completion styling', () => {
     await act(async () => { root.unmount(); host.remove() })
   })
 
+  it('keeps short-task status metadata inside the first row', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const start = new Date(2026, 7, 20, 9, 0).getTime()
+    await act(async () => {
+      root.render(
+        <TaskBlock
+          task={makeTask({ startAt: start, endAt: start + 30 * 60_000, originTaskId: 'template' })}
+          topPct={10}
+          heightPct={3}
+          leftPct={10}
+          widthPct={80}
+          onSelect={() => {}}
+        />,
+      )
+    })
+
+    const headerChildren = Array.from(host.querySelector('[class*=taskBlockHeader]')?.children ?? [])
+    const titleIndex = headerChildren.findIndex(node => node.matches('[class*=taskBlockTitle]'))
+    const signalIndex = headerChildren.findIndex(node => node.matches('[class*=taskBlockSignalSlot]'))
+    expect(signalIndex).toBeGreaterThan(titleIndex)
+    expect(host.querySelector('[class*=taskBlockHeader] [class*=taskBadgeCompact]')).toBeTruthy()
+    expect(host.querySelector('[class*=taskBlockMeta]')).toBeNull()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('does not reserve marker space for a plain short task', async () => {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    const start = new Date(2026, 7, 20, 9, 0).getTime()
+    await act(async () => {
+      root.render(
+        <TaskBlock
+          task={makeTask({ startAt: start, endAt: start + 30 * 60_000 })}
+          topPct={10}
+          heightPct={3}
+          leftPct={10}
+          widthPct={80}
+          onSelect={() => {}}
+        />,
+      )
+    })
+
+    expect(host.querySelector('[class*=taskBlockSignalSlot]')).toBeNull()
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
+  it('uses a spacious week block to show and toggle subtasks', async () => {
+    const task = makeTask({
+      startAt: new Date(2026, 7, 20, 9, 0).getTime(),
+      endAt: new Date(2026, 7, 20, 11, 0).getTime(),
+      originTaskId: 'template',
+      subtasks: [{ id: 's1', title: 'First step', done: false }, { id: 's2', title: 'Second step', done: true }],
+    })
+    const toggled: Array<{ id: string; done: boolean }> = []
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    await act(async () => {
+      root.render(
+        <TaskBlock
+          task={task}
+          topPct={10}
+          heightPct={12}
+          leftPct={10}
+          widthPct={80}
+          onSelect={() => {}}
+          onToggleSubtask={(_, id, done) => toggled.push({ id, done })}
+        />,
+      )
+    })
+
+    expect(host.querySelector('[data-dsh-calendar-task-body]')).toBeTruthy()
+    expect(host.querySelector('[class*=taskBlockSignalSlot] [class*=taskBadgeCompact]')).toBeTruthy()
+    expect(host.querySelector('[class*=taskBlockMeta]')?.textContent).not.toContain('↻')
+    expect(host.querySelectorAll('[data-dsh-calendar-task-body] input[type="checkbox"]')).toHaveLength(2)
+    const first = host.querySelector('[data-dsh-calendar-task-body] input[type="checkbox"]') as HTMLInputElement
+    await act(async () => { first.click() })
+    expect(toggled).toEqual([{ id: 's1', done: true }])
+
+    await act(async () => { root.unmount(); host.remove() })
+  })
+
   it('renders all month-day tasks and lets a crowded cell scroll internally', async () => {
     const start = new Date(2026, 7, 20, 9, 0).getTime()
     const tasks: TaskRecord[] = Array.from({ length: 7 }, (_, i) => makeTask({

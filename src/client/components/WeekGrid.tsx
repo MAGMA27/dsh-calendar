@@ -255,8 +255,9 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
         <div className={css.weekHeaderCorner} />
         {days.map(day => {
           const isToday = day.key === todayKey
+          const isWeekend = day.weekday === 0 || day.weekday === 6
           return (
-            <div key={day.key} className={css.weekHeaderCell} data-today={isToday || undefined}>
+            <div key={day.key} className={css.weekHeaderCell} data-today={isToday || undefined} data-weekend={isWeekend || undefined}>
               <span className={css.weekHeaderDay}>{dayShortLabel(day.weekday)}</span>
               <span className={css.weekHeaderDate}>{day.dateMs === undefined ? '' : new Date(day.dateMs).getDate()}</span>
             </div>
@@ -327,6 +328,7 @@ export function WeekGrid({ controller, snapMinutes = DEFAULT_SNAP_MINUTES }: Wee
                     widthPct={Math.max(widthPct, 4)}
                     onSelect={selectTask}
                     onToggleDone={(id, done) => { void controller.dispatch({ kind: 'setDone', id, done }) }}
+                    onToggleSubtask={(taskId, subtaskId, done) => { void controller.dispatch({ kind: 'setSubtaskDone', id: taskId, subtaskId, done }) }}
                     onEditStart={onEditStart(task, day)}
                     editing={editing && inColumn}
                   />

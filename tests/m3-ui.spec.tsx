@@ -154,6 +154,8 @@ describe('TaskDetailPanel', () => {
     expect(startTimeSelect).toBeTruthy()
     expect(durationInput).toBeTruthy()
     expect(startDateInput.type).toBe('date')
+    expect(host.querySelector('[data-dsh-calendar-detail]')?.textContent).not.toContain('触发时间')
+    expect(startTimeSelect.getAttribute('aria-label')).toBe('开始时间')
     expect(startTimeSelect.options).toHaveLength(96)
     expect([...startTimeSelect.options].some(option => option.value === '09:10')).toBe(false)
     expect(durationInput.step).toBe('15')

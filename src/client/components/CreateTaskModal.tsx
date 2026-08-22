@@ -168,9 +168,8 @@ export function CreateTaskModal({ controller, onClose }: CreateTaskModalProps) {
                   <input id="dsh-calendar-new-task-start-date" className={css.input} type="date" value={startDate}
                     onChange={e => { setStartDate(e.target.value); setError(null) }} />
                 </label>
-                <label className={css.detailField} htmlFor="dsh-calendar-new-task-start-time">
-                  <span className={css.detailFieldLabel}>{t('schedule.triggerAt')}</span>
-                  <select id="dsh-calendar-new-task-start-time" className={css.select} value={startTime}
+                <label className={`${css.detailField} ${css.detailFieldNoLabel}`} htmlFor="dsh-calendar-new-task-start-time">
+                  <select id="dsh-calendar-new-task-start-time" className={css.select} aria-label={t('detail.startAt')} value={startTime}
                     onChange={e => { setStartTime(e.target.value); setError(null) }}>
                     {QUARTER_HOUR_OPTIONS.map(time => <option key={time} value={time}>{time}</option>)}
                   </select>

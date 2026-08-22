@@ -1165,6 +1165,7 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 .detailMetaGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .detailMetaField, .detailField { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
 .detailFieldLabel { font-size: 11px; font-weight: 600; color: var(--dsw-alias-label-tertiary); }
+.detailFieldNoLabel { justify-content: flex-end; }
 .detailMetaField .select, .detailField .input, .detailField .select, .detailField .textarea { width: 100%; box-sizing: border-box; }
 .detailFieldGrid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .9fr); gap: 8px; }
 .detailInlineRow { display: flex; align-items: center; gap: 8px; }

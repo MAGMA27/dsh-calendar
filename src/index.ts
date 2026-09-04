@@ -7,32 +7,31 @@
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: pulls the service Context augmentations.
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import type {} from '@deepseek-ai/dsh-host-apiproxy'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
-import z from 'schemastery'
+import type {} from '@deepseek-ai/dsh-settings'
+import z from '@deepseek-ai/schemastery'
 import { defineCalendarTool } from './host-tool.ts'
 import { calendarHostService } from './host-service.ts'
 import { mountcalendarRoutes } from './host-routes.ts'
 import { acquireLedgerLock } from './host-ledger.ts'
-import { HostExecutionRunner, type HostExecutionEnv, type RunnerAgentsFace, type RunnerCommandsFace } from './host-runner.ts'
+import { HostExecutionRunner } from './host-runner.ts'
 import { HostScheduleService } from './host-scheduler.ts'
 import { dshHome } from './dsh-home.ts'
-import { buildCatalogFromApi, type CatalogApiFace } from './host-options.ts'
+import { buildCatalogFromApi } from './host-options.ts'
+import { catalogApiFromRuntime, calendarRuntimeFromContext, executionEnvFromRuntime } from './host-runtime.ts'
 import { MAX_SCHEDULED_RECURSION_DEPTH } from './core/tasks.ts'
 
-/** Required services: the web server to register the calendar routes on, and
- * the ApiProxy to read the live execution-settings catalog (workspaces,
- * sessions, LLM providers/models). The settings surface is attached through
- * installSettingsSection (its own settings inject), the SystemPrompt
- * announcement is gated on it, and the `tools` registry serves the
+/** Required services: the web server, current Session/Workspace services used
+ * for the live execution-settings catalog and runner, and the shared
+ * system-prompt/tools/settings registries. The SystemPrompt announcement is
+ * gated on the settings service, and the `tools` registry serves the
  * model-callable calendar tool (M7). */
-export const inject = ['webServer', 'apiProxy', 'systemPrompt', 'tools']
+export const inject = ['webServer', 'sessionController', 'workspaceRegistry', 'systemPrompt', 'tools', 'settings']
 
 /** Settings namespace of the calendar's announcement capability (the web
  * settings surface edits it; the browser half never depends on this Host
  * package and spells its own copy). */
-export const calendar_SETTINGS_NAMESPACE = settingsNamespace('calendar')
+export const calendar_SETTINGS_NAMESPACE = 'calendar' as const
 
 /** Model-facing announcement: the calendar plugin's presence and capabilities. */
 export const calendar_GUIDANCE =
@@ -63,18 +62,11 @@ export function apply(ctx: Context, config?: Config): void {
   const releaseLock = acquireLedgerLock(dshHome())
 
   const service = new calendarHostService()
-  const api = ctx.apiProxy as unknown as CatalogApiFace
-  // The real-execution runner drives dsh sessions through the same ApiProxy
-  // (sessions.create/selectModel/prompt, workspace.list, agentPresets.select).
-  // Permission pins need the host slash-command registry + agents registry;
-  // both are optional (ctx.get, not inject) so a deployment without them
-  // degrades the permission pin to a clear failure instead of blocking apply.
-  const env: HostExecutionEnv = { ...(ctx.apiProxy as unknown as HostExecutionEnv) }
-  const commands = ctx.get('commands')
-  const agents = ctx.get('agents')
-  if (commands !== undefined) env.commands = commands as unknown as RunnerCommandsFace
-  if (agents !== undefined) env.agents = agents as unknown as RunnerAgentsFace
-  const runner = new HostExecutionRunner(service.ledger, env)
+  // DSH 0.1.2 removed the old `apiProxy` service. Keep the adapter at the
+  // Host boundary so the runner/catalog remain plain and easy to test.
+  const runtime = calendarRuntimeFromContext(ctx)
+  const api = catalogApiFromRuntime(runtime)
+  const runner = new HostExecutionRunner(service.ledger, executionEnvFromRuntime(runtime))
   // Host scheduler: fires due one-shot tasks through the runner, materializes
   // repeat copies, and reconciles executions left running across a restart.
   const scheduler = new HostScheduleService(service.ledger, runner)
@@ -95,8 +87,8 @@ export function apply(ctx: Context, config?: Config): void {
       text: `${calendar_GUIDANCE} Current configured maximum scheduled-Agent recursion depth: ${current().maxScheduledDepth ?? DEFAULT_MAX_SCHEDULED_DEPTH}; 0 disables nested auto-run schedule creation.`,
     })
   }
-  installSettingsSection(ctx, calendar_SETTINGS_NAMESPACE, Config, config ?? {}, {
-    setSource: source => { current = source },
+  ctx.settings.installSection(ctx, calendar_SETTINGS_NAMESPACE, Config, config ?? {}, {
+    setSource: (source: () => Config) => { current = source },
     onChange: sync,
   })
   sync()

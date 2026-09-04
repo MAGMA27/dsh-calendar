@@ -2,7 +2,7 @@
 import { act } from 'react-dom/test-utils'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { CalendarSettingsCard, type CalendarSettingsValue } from '../src/client/components/CalendarSettingsCard.tsx'
 
 interface Write {
@@ -28,6 +28,7 @@ function makeScope(initialDepth = 0): { scope: SettingsScope<CalendarSettingsVal
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
+    mutate: async () => undefined,
     set: async (field, value) => {
       writes.push({ field, value })
       if (field !== 'maxScheduledDepth' || typeof value !== 'number') throw new Error('unexpected write')

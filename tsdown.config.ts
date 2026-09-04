@@ -14,9 +14,13 @@ export default clientBundle('@magma27/dsh-calendar', ['src/index.ts', 'src/invar
   libExternal: [
     // Host-half services resolve at runtime from the dsh profile tree (never
     // from this repo's install), so they must stay external like @deepseek-ai/cordis.
-    '@deepseek-ai/dsh-host-apiproxy',
+    '@deepseek-ai/dsh-api-session-controller',
+    '@deepseek-ai/dsh-agent',
+    '@deepseek-ai/dsh-agent-presets',
+    '@deepseek-ai/dsh-commands',
     '@deepseek-ai/dsh-host-webserver',
     '@deepseek-ai/dsh-settings',
     '@deepseek-ai/dsh-system-prompt',
+    '@deepseek-ai/dsh-workspace',
   ],
 })

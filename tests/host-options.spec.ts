@@ -59,7 +59,7 @@ describe('buildCatalogFromApi', () => {
     expect(cat.projects[0].sessions[1].label).toBe('p')
   })
 
-  it('degrades to empty catalog when the ApiProxy is absent', async () => {
+  it('degrades to empty catalog when the catalog adapter is absent', async () => {
     const cat = await buildCatalogFromApi({})
     expect(cat.workspaces).toEqual([])
     expect(cat.providers).toEqual([])

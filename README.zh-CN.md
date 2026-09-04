@@ -11,6 +11,11 @@
   <p><a href="README.md">English</a></p>
 </div>
 
+> [!NOTE]
+> 当前源码适配 DSH `0.1.2-rc.1`。该版本已移除旧的 `apiProxy`；插件在 Host 边界统一适配新的 `sessionController`、`workspaceRegistry`、`agentPresets` 和 `commands` 服务。
+
+> **更新记录——2026-09-04：** 补充 DSH `0.1.2-rc.1` 的 Host 服务适配迁移说明，并同步更新安装、构建与运行边界。
+
 `dsh-calendar` 是 DSH Web 的日历与 Agent 任务插件。你可以用它管理待办、安排时间、设置一次性或重复的 Agent 任务，也可以让 Agent 通过 `calendar_task` 创建和管理任务；还可以基于日历任务和执行记录，让 Agent 帮你复盘工作安排与完成情况。
 
 ## 预览

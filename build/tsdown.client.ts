@@ -14,7 +14,6 @@
  */
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { basename, dirname, isAbsolute, relative, resolve as resolvePath, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
@@ -35,7 +34,7 @@ const CSS_VIRTUAL_SUFFIX = '.mjs'
  * Everything else under @deepseek-ai/* is either a module-table entry
  * (external) or a leak the purity gate rejects.
  */
-export const INLINE_SAFE = /^@deepseek-ai\/dsh-(host-apiproxy|session|llm|tools|brand)(\/|$)/
+export const INLINE_SAFE = /^@deepseek-ai\/dsh-(session|llm|tools|brand)(\/|$)/
 
 /** Generated descriptor/codec contribution with no shared runtime identity. */
 const GENERATED_REMOTE = /^@deepseek-ai\/dsh-[a-z0-9]+(?:-[a-z0-9]+)*\/remote$/
@@ -47,16 +46,11 @@ const GENERATED_REMOTE = /^@deepseek-ai\/dsh-[a-z0-9]+(?:-[a-z0-9]+)*\/remote$/
 const SKIP_WORKSPACE_BUILD: UserConfig = { entry: '' }
 
 /**
- * Documented TEMPORARY exemption, not a platform module (hence not in
- * web-platform.ts): the snapshot-store engine (`createSnapshotStore` etc.)
- * lives in runtime pending its promotion-time rehoming. At runtime the lazy
- * CJS table answers the require natively: runtime is an immediately-tier row,
- * its factory is registered before any dependent bundle materializes.
+ * The current web shell exposes the client store in its static module table,
+ * so it is listed in `web-platform.ts` with the other shared identities.
  */
-const RUNTIME_STORE_EXEMPTION = '@deepseek-ai/dsh-client-runtime/client'
-
-/** Externals resolved from the loader module table: platform seeds + runtime exemption. */
-export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES, RUNTIME_STORE_EXEMPTION]
+/** Externals resolved from the loader module table. */
+export const CLIENT_EXTERNALS: readonly string[] = [...PLATFORM_MODULES]
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -112,7 +106,6 @@ export function clientBundle(
  * upstream preset to keep the file faithful and reusable.
  */
 export function mobileBundle(id: string, entry: string): UserConfig {
-  const mobileRequire = createRequire(import.meta.url)
   return {
     name: `${id}/mobile`,
     entry: { mobile: entry },
@@ -130,18 +123,6 @@ export function mobileBundle(id: string, entry: string): UserConfig {
       'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
       'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
     },
-    plugins: [{
-      name: 'dsh-mobile-value-resolution',
-      resolveId(source: string) {
-        const match = /^@deepseek-ai\/dsh-host-apiproxy\/api(?:\/.*)?$/.exec(source)
-        if (match === null) return null
-        try {
-          return mobileRequire.resolve(source)
-        } catch {
-          return null
-        }
-      },
-    }],
     outputOptions: {
       entryFileNames: 'mobile.js',
     },

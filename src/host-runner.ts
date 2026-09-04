@@ -10,10 +10,10 @@
  * session's turn completes.
  *
  * It is host-authoritative and deliberately framework-free: every runtime
- * face is a narrow structural slice of the ApiProxy session/workspace/presets
- * contracts (the same `{ rpcId, payload }` / `{ result }` envelope the catalog
- * builder already uses), so tests drive it with plain fakes and the Host
- * wires the real `ctx.apiProxy` in.
+ * face is a narrow structural slice of the session-controller/workspace
+ * adapter (the same `{ rpcId, payload }` / `{ result }` envelope used by the
+ * runner tests), so tests drive it with plain fakes while the Host translates
+ * the current DSH services at the boundary.
  *
  * Fail-closed: any pin that cannot be applied exactly as the task declares
  * fails the run without sending the prompt — running under different settings
@@ -32,7 +32,7 @@ export interface RunnerSessionRow {
   updatedAt?: number
 }
 
-/** The narrow sessions face (a structural slice of the ApiProxy). */
+/** The narrow sessions face exposed by the Host runtime adapter. */
 export interface RunnerSessionsFace {
   list(request: { rpcId: unknown; payload: Record<string, unknown> }): Promise<{ result?: { ok?: boolean; value?: { items?: RunnerSessionRow[] } } }>
   create(request: { rpcId: unknown; payload: { workspaceId?: string; sessionId?: string; agentPreset?: string } }): Promise<{ result?: { ok?: boolean; value?: { sessionId?: unknown; agentPreset?: string } } }>
@@ -41,12 +41,12 @@ export interface RunnerSessionsFace {
   prompt(request: { rpcId: unknown; payload: { sessionId: unknown; mode: 'queue'; content: { type: 'text'; text: string }[] } }): Promise<{ result?: { ok?: boolean } }>
 }
 
-/** The narrow workspaces face (structural slice of the ApiProxy). */
+/** The narrow workspaces face exposed by the Host runtime adapter. */
 export interface RunnerWorkspaceFace {
   list(request: { rpcId: unknown; payload: Record<string, unknown> }): Promise<{ result?: { ok?: boolean; value?: { items?: { workspaceId?: unknown }[] } } }>
 }
 
-/** The narrow agent-presets face (structural slice of the ApiProxy). */
+/** The narrow agent-presets face exposed by the Host runtime adapter. */
 export interface RunnerPresetsFace {
   select(request: { rpcId: unknown; payload: { sessionId: unknown; agentPreset: string } }): Promise<{ result?: { ok?: boolean } }>
 }
@@ -59,8 +59,9 @@ export interface RunnerCommandExecution {
 /** The narrow commands face (structural slice of the CommandRuntime). */
 export interface RunnerCommandsFace {
   /**
-   * DSH rc.6/rc.7 use `(agent, line, signal)`; rc.8 inserts an image list
-   * before the signal. The runner selects by the runtime function arity.
+   * Older DSH releases use `(agent, line, signal)`; current releases insert
+   * an image list before the signal. The runner selects by runtime function
+   * arity so the test face remains compatible with both.
    */
   execute(
     ...args:
@@ -71,15 +72,18 @@ export interface RunnerCommandsFace {
 
 /** The narrow agents face (structural slice of the agents registry). */
 export interface RunnerAgentsFace {
-  get(sessionId: string): unknown
+  /** Fast path for an already-live Agent. */
+  get?(sessionId: string): unknown
+  /** Resolve or resume a cold Session through the current controller. */
+  resolve?(sessionId: string): Promise<unknown | undefined>
 }
 
 /** Everything the runner needs from the runtime. */
 export interface HostExecutionEnv {
   sessions: RunnerSessionsFace
   workspace?: RunnerWorkspaceFace
-  // NOTE: the in-process ApiProxy domain object is `agentPresets` (plural),
-  // even though the wire method path is `agentPreset.select` (singular).
+  // The adapter keeps this face separate because the current AgentPresets
+  // service selects against a live Agent rather than a session id.
   agentPresets?: RunnerPresetsFace
   /** The host slash-command registry; absent → permission pins are refused. */
   commands?: RunnerCommandsFace
@@ -306,17 +310,16 @@ export class HostExecutionRunner {
     }
     // Permission preset via the `/permission` slash command executed on the
     // session's live agent. A queued prompt would send the line to the MODEL
-    // as ordinary text (the ApiProxy prompt path does not route slash
+    // as ordinary text (the session-controller prompt path does not route slash
     // commands), so the command registry is the only correct channel.
     if (task.permission !== undefined) {
       const commands = this.env.commands
       if (commands === undefined) throw new Error('this deployment does not support slash commands (cannot apply permission preset)')
-      const agent = this.env.agents?.get?.(sessionId)
+      const agent = await this.resolveAgent(sessionId)
       if (agent === undefined) throw new Error(`cannot apply permission preset: session ${sessionId} has no live agent`)
       // Scheduled runs have no browser request to provide a cancellation
-      // signal. Own one here. rc.8 also requires an empty image list before
-      // the signal; passing the signal in the third position makes it the
-      // image argument and leaves CommandRuntime's signal undefined.
+      // signal. Own one here. Current DSH requires an empty image list before
+      // the signal; the arity branch above keeps older runtimes working too.
       const commandSignal = new AbortController().signal
       const commandLine = `/permission ${task.permission}`
       const execution = commands.execute.length >= 4
@@ -330,6 +333,13 @@ export class HostExecutionRunner {
     }
     // Cosmetic rename; failures do not fail the run.
     await this.env.sessions.rename(req({ sessionId, title: task.title })).catch(() => { /* rename is cosmetic */ })
+  }
+
+  /** Resolve a live agent, resuming a cold session only when the adapter offers it. */
+  private async resolveAgent(sessionId: string): Promise<unknown | undefined> {
+    const direct = this.env.agents?.get?.(sessionId)
+    if (direct !== undefined) return direct
+    return await this.env.agents?.resolve?.(sessionId)
   }
 
   /** Send the task prompt (prompt text else title) through sessions.prompt. */

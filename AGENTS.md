@@ -3,7 +3,7 @@
 ## 项目概览 (Project Overview)
 一个可热插拔的 DeepSeek Harness (DSH) Web GUI 客户端插件：侧边栏「日历」入口，点击后中间列切换为日历视图；支持周视图时间网格**拖选时间段**建任务、**艾森豪威尔紧急/重要矩阵**、**子任务**、任务可**钉住执行会话与 LLM provider**、**Host 定时调度**（受限每日/每周重复物化副本 + 一次性到时自动执行）。采用 **Host 权威架构**：任务账本、定时调度、执行结算全部在 DSH Host 进程内，浏览器只是同源异步视图。
 
-- 核心技术：TypeScript + React 18 + CSS Modules；Cordis 4 / DSH rc.6 SDK；tsdown（官方 client bundle 预设，产物为 `window.__ModuleLoader__.load({id, factory})`）；vitest + jsdom。
+- 核心技术：TypeScript + React 18 + CSS Modules；Cordis 4 / DSH 0.1.2-rc.1 SDK；tsdown（官方 client bundle 预设，产物为 `window.__ModuleLoader__.load({id, factory})`）；vitest + jsdom。
 - 运行形态：DSH profile-bundle 双面插件（`package.json` 声明 `dsh.bundle.patch` + `dsh.client`）。
 
 ## 构建与测试命令 (Build & Test Commands)
@@ -52,7 +52,7 @@
 
 ## 测试指南 (Testing Instructions)
 - 纯函数测试优先（core 四模块：calendar / schedule / tasks / store）
-- Host 测试用 fake ApiProxy（host-runner / host-ledger / host-service）
+- Host 测试用 fake runtime adapter（host-runner / host-ledger / host-service）；真实 DSH 服务在 `src/host-runtime.ts` 集中适配
 - Client 测试用 jsdom（transport / apply-guard / DOM 挂载）
 - 真实组合：`dsh plugin --profile <scratch> add link:<本目录>` → `dsh --profile <scratch> --dump-config` 断言出现 `ui-calendar` 层
 - 验证基线：`pnpm typecheck && pnpm build && pnpm test`

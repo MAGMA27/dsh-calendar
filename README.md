@@ -17,8 +17,6 @@
 > [!NOTE]
 > The current source targets DSH `0.1.2-rc.1`. This release no longer provides the legacy `apiProxy`; the plugin adapts the current Host services (`sessionController`, `workspaceRegistry`, `agentPresets`, `commands`) at its Host boundary.
 
-> **Update log — 2026-09-04:** Documented the DSH `0.1.2-rc.1` Host-service adapter migration and refreshed the related install, build, and runtime notes.
-
 `dsh-calendar` is a DSH Web calendar and Agent task plugin. Use it to plan todos, arrange time, schedule one-off or recurring Agent runs, and let Agents create and manage tasks through `calendar_task`. Agents can also review your calendar tasks and execution history to help reflect on your plans and progress.
 
 ## Preview
@@ -116,6 +114,7 @@ dsh web
 - A blank `triggerAt` follows the task block start; an explicit absolute trigger time remains decoupled from later block moves.
 - On Host recovery, missed one-off due times are marked failed and not replayed. Missed repeat dates are not materialized for catch-up execution.
 - Scheduled execution consumes real LLM API quota. The Host rejects incomplete provider/model pins and child auto-run schedules beyond the configured recursion depth.
+- The Host ledger lock records its owner; after an abnormal shutdown, a lock whose PID is no longer alive is reclaimed on the next startup, while live or unverifiable locks remain fail-closed.
 - The default ledger path is `$DSH_HOME/calendar/ledger-v1.json`. Keep local ledgers, logs, and profile directories out of Git.
 
 ## Development
@@ -134,6 +133,13 @@ src/host-*.ts   Host ledger, routes, scheduler, and runner
 src/client/     calendar views, forms, and Host transport
 tests/          core, Host, and client tests
 ~~~
+
+## Update log
+
+| Date | Summary |
+| --- | --- |
+| 2026-09-17 | Added stale ledger-lock recovery after abnormal shutdown, with live-owner checks and legacy lock compatibility. |
+| 2026-09-04 | Documented the DSH `0.1.2-rc.1` Host-service adapter migration and refreshed the related install, build, and runtime notes. |
 
 ## License
 

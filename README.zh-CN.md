@@ -14,8 +14,6 @@
 > [!NOTE]
 > 当前源码适配 DSH `0.1.2-rc.1`。该版本已移除旧的 `apiProxy`；插件在 Host 边界统一适配新的 `sessionController`、`workspaceRegistry`、`agentPresets` 和 `commands` 服务。
 
-> **更新记录——2026-09-04：** 补充 DSH `0.1.2-rc.1` 的 Host 服务适配迁移说明，并同步更新安装、构建与运行边界。
-
 `dsh-calendar` 是 DSH Web 的日历与 Agent 任务插件。你可以用它管理待办、安排时间、设置一次性或重复的 Agent 任务，也可以让 Agent 通过 `calendar_task` 创建和管理任务；还可以基于日历任务和执行记录，让 Agent 帮你复盘工作安排与完成情况。
 
 ## 预览
@@ -113,6 +111,7 @@ dsh web
 - 空白 `triggerAt` 使用任务块开始时间；已设定的绝对触发时间与任务块移动解耦。
 - Host 恢复时会把错过的到期任务标记为失败，不会追赶执行；重复规则也不会补跑错过的日期。
 - 定时执行会真实消耗 LLM API 额度。Host 会拒绝不完整的 provider/model 绑定和超出递归深度的自动触发子任务。
+- Host 账本锁会记录持有进程；异常退出后，若下次启动确认锁中的 PID 已不存在，会自动回收残留锁；仍存活或无法确认的锁则继续拒绝启动。
 - 任务账本默认位于 `$DSH_HOME/calendar/ledger-v1.json`。不要把本地账本、日志或 profile 目录提交到 Git。
 
 ## 开发命令
@@ -131,6 +130,13 @@ src/host-*.ts   Host 账本、路由、调度器和执行器
 src/client/     日历视图、表单和 Host transport
 tests/          core、Host、client 测试
 ~~~
+
+## 更新记录
+
+| 日期 | 内容 |
+| --- | --- |
+| 2026-09-17 | 增加异常退出后的账本残留锁自动恢复、存活进程检查和旧版锁格式兼容。 |
+| 2026-09-04 | 补充 DSH `0.1.2-rc.1` 的 Host 服务适配迁移说明，并同步更新安装、构建与运行边界。 |
 
 ## 许可证
 

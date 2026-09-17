@@ -136,22 +136,130 @@ export class NoopLedgerPersist implements HostLedgerPersist {
   save(): void {}
 }
 
-/** The ledger lock: an exclusive file so two Host processes never write together. */
+interface LedgerLockRecord {
+  pid: number
+  token: string
+  acquiredAt: string
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code
+}
+
+function parseLedgerLock(raw: string): LedgerLockRecord | undefined {
+  const text = raw.trim()
+  if (text === '') return undefined
+
+  try {
+    const value: unknown = JSON.parse(text)
+    if (typeof value === 'number') {
+      return Number.isInteger(value) && value > 0
+        ? { pid: value, token: '', acquiredAt: '' }
+        : undefined
+    }
+    if (typeof value !== 'object' || value === null) return undefined
+    if (!('pid' in value) || !('token' in value) || !('acquiredAt' in value)) return undefined
+    const pid = value.pid
+    const token = value.token
+    const acquiredAt = value.acquiredAt
+    if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return undefined
+    if (typeof token !== 'string' || token === '') return undefined
+    if (typeof acquiredAt !== 'string' || acquiredAt === '') return undefined
+    return { pid, token, acquiredAt }
+  } catch {
+    // Older plugin versions wrote the PID as plain text. Keep those locks
+    // readable so a reboot does not require a manual cleanup after upgrade.
+    const pid = Number(text)
+    if (!Number.isInteger(pid) || pid <= 0) return undefined
+    return { pid, token: '', acquiredAt: '' }
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    // EPERM means the process exists but this process cannot inspect it.
+    return hasErrorCode(error, 'EPERM')
+  }
+}
+
+function readLedgerLock(lockPath: string): LedgerLockRecord | undefined {
+  return parseLedgerLock(readFileSync(lockPath, 'utf8'))
+}
+
+function ledgerLockError(): Error {
+  return new Error('calendar ledger is locked by another dsh process')
+}
+
+/**
+ * The ledger lock: an exclusive file so two Host processes never write
+ * together. A dead owner is treated as a stale lock and recovered on startup;
+ * a live or unverifiable owner still fails closed.
+ */
 export function acquireLedgerLock(home: string): () => void {
   const dir = calendarDir(home)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   const lockPath = join(dir, 'ledger-v1.lock')
-  let fd: number | undefined
-  try {
-    fd = openSync(lockPath, 'wx')
-    writeFileSync(fd, String(process.pid))
-  } catch {
-    // Another process holds the lock; fail closed (second Host refuses to run).
-    throw new Error('calendar ledger is locked by another dsh process')
+  const record: LedgerLockRecord = {
+    pid: process.pid,
+    token: randomId(),
+    acquiredAt: new Date().toISOString(),
   }
-  return () => {
-    try { if (fd !== undefined) closeSync(fd) } catch { /* ignore */ }
+  let fd: number | undefined
+
+  while (fd === undefined) {
+    try {
+      fd = openSync(lockPath, 'wx')
+    } catch (error) {
+      if (!hasErrorCode(error, 'EEXIST')) throw error
+
+      let existing: LedgerLockRecord | undefined
+      try {
+        existing = readLedgerLock(lockPath)
+      } catch (readError) {
+        if (hasErrorCode(readError, 'ENOENT')) continue
+        throw ledgerLockError()
+      }
+      if (existing === undefined || isProcessAlive(existing.pid)) throw ledgerLockError()
+
+      try {
+        unlinkSync(lockPath)
+      } catch (unlinkError) {
+        // Another process may have won the race to replace the stale lock.
+        if (hasErrorCode(unlinkError, 'ENOENT')) continue
+        throw ledgerLockError()
+      }
+    }
+  }
+
+  try {
+    writeFileSync(fd, JSON.stringify(record))
+    fsyncSync(fd)
+  } catch (error) {
+    try { closeSync(fd) } catch { /* ignore */ }
     try { unlinkSync(lockPath) } catch { /* ignore */ }
+    throw error
+  }
+
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+
+    let ownsLock = false
+    try {
+      const current = readLedgerLock(lockPath)
+      ownsLock = current?.pid === record.pid && current.token === record.token
+    } catch {
+      // If the lock has already disappeared or is no longer ours, do not
+      // remove a replacement lock belonging to another Host.
+    }
+    try { closeSync(fd!) } catch { /* ignore */ }
+    if (ownsLock) {
+      try { unlinkSync(lockPath) } catch { /* ignore */ }
+    }
   }
 }
 

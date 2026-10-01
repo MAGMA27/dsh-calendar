@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { t } from '../locales.ts'
 import css from '../calendar.module.css'
 
@@ -10,7 +10,7 @@ export interface CalendarSettingsValue {
 }
 
 export interface CalendarSettingsCardProps {
-  settingsScope: SettingsScope<CalendarSettingsValue>
+  configForm: ConfigForm<CalendarSettingsValue>
 }
 
 interface Draft {
@@ -29,11 +29,11 @@ function parseDepth(value: string): number | undefined {
 }
 
 /** The calendar-owned card rendered by Settings → Plugins. */
-export function CalendarSettingsCard({ settingsScope }: CalendarSettingsCardProps): JSX.Element | null {
+export function CalendarSettingsCard({ configForm }: CalendarSettingsCardProps): JSX.Element | null {
   const snapshot = useSyncExternalStore(
-    listener => settingsScope.subscribe(listener),
-    () => settingsScope.getSnapshot(),
-    () => settingsScope.getSnapshot(),
+    listener => configForm.subscribe(listener),
+    () => configForm.getSnapshot(),
+    () => configForm.getSnapshot(),
   )
   const [draft, setDraft] = useState<Draft | undefined>(undefined)
   const [dirty, setDirty] = useState(false)
@@ -69,7 +69,9 @@ export function CalendarSettingsCard({ settingsScope }: CalendarSettingsCardProp
     setError(undefined)
     try {
       const liveDepth = snapshot.value?.maxScheduledDepth ?? 0
-      if (depth !== liveDepth) await settingsScope.set('maxScheduledDepth', depth)
+      if (depth !== liveDepth && !await configForm.set('maxScheduledDepth', depth)) {
+        throw new Error('settings write rejected')
+      }
       setDirty(false)
       setSaved(true)
     } catch {

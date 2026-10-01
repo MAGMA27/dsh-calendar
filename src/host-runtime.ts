@@ -1,5 +1,5 @@
 /**
- * Boundary adapter for the DSH 0.1.2 Host services.
+ * Boundary adapter for the DSH 0.2 Host services.
  *
  * The calendar domain and runner keep a deliberately small, test-friendly
  * `{ rpcId, payload }` face. DSH no longer exposes the old `apiProxy`; the
@@ -10,7 +10,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
-import type {} from '@deepseek-ai/dsh-agent-presets'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-workspace'

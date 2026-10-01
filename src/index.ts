@@ -4,7 +4,7 @@
  * first repeat occurrence + one-shot runs), the real-execution runner (M4) and the SystemPrompt
  * announcement (M6) build on this service.
  */
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 // Type-only: pulls the service Context augmentations.
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -28,10 +28,8 @@ import { MAX_SCHEDULED_RECURSION_DEPTH } from './core/tasks.ts'
  * model-callable calendar tool (M7). */
 export const inject = ['webServer', 'sessionController', 'workspaceRegistry', 'systemPrompt', 'tools', 'settings']
 
-/** Settings namespace of the calendar's announcement capability (the web
- * settings surface edits it; the browser half never depends on this Host
- * package and spells its own copy). */
-export const calendar_SETTINGS_NAMESPACE = 'calendar' as const
+/** Settings entry id from cordis.patch.yml; DSH 0.2 settings key by profile entry id. */
+export const calendar_SETTINGS_NAMESPACE = 'ui-calendar' as const
 
 /** Model-facing announcement: the calendar plugin's presence and capabilities. */
 export const calendar_GUIDANCE =
@@ -44,13 +42,14 @@ export interface Config {
   /** Master switch for the host half (announcement + scheduler/runner run). */
   enabled?: boolean
   /** Maximum nested auto-run schedule depth created by a scheduled Agent. */
-  maxScheduledDepth?: number
+  maxScheduledDepth?: Volatile<number>
 }
 
-export const Config: z<Config> = z.object({
+export const Config = z.object({
   announceToAgent: z.boolean().default(true),
   enabled: z.boolean().default(true),
   maxScheduledDepth: z.number().step(1).min(0).max(MAX_SCHEDULED_RECURSION_DEPTH).default(0)
+    .volatile()
     .description('定时 Agent 创建自动触发任务的最大嵌套深度；0 表示禁止递归，最大允许值为 3。'),
 })
 
@@ -60,9 +59,10 @@ const DEFAULT_MAX_SCHEDULED_DEPTH = 0
 /** Host plugin body. */
 export function apply(ctx: Context, config?: Config): void {
   const releaseLock = acquireLedgerLock(dshHome())
+  ctx.effect(() => releaseLock, 'dsh-calendar: ledger lock')
 
   const service = new calendarHostService()
-  // DSH 0.1.2 removed the old `apiProxy` service. Keep the adapter at the
+  // DSH 0.2 removed the old `apiProxy` service. Keep the adapter at the
   // Host boundary so the runner/catalog remain plain and easy to test.
   const runtime = calendarRuntimeFromContext(ctx)
   const api = catalogApiFromRuntime(runtime)
@@ -75,22 +75,25 @@ export function apply(ctx: Context, config?: Config): void {
   // Settings card + SystemPrompt announcement, gated on the `calendar`
   // settings namespace (editable in the web settings Plugins section). The
   // section re-registers on settings change (live, no restart).
-  let current: () => Config = () => config ?? {}
+  const current = (): { announceToAgent: boolean; enabled: boolean; maxScheduledDepth: number } => ({
+    announceToAgent: config?.announceToAgent ?? DEFAULT_ANNOUNCE,
+    enabled: config?.enabled ?? true,
+    maxScheduledDepth: config?.maxScheduledDepth?.get() ?? DEFAULT_MAX_SCHEDULED_DEPTH,
+  })
   let disposeSection: (() => void) | undefined
   const sync = (): void => {
     if (disposeSection !== undefined) { disposeSection(); disposeSection = undefined }
-    if ((current().enabled ?? true) === false) return
-    if ((current().announceToAgent ?? DEFAULT_ANNOUNCE) === false) return
+    if (!current().enabled || !current().announceToAgent) return
     disposeSection = ctx.systemPrompt.section({
       name: 'plugin:calendar',
       order: 160,
-      text: `${calendar_GUIDANCE} Current configured maximum scheduled-Agent recursion depth: ${current().maxScheduledDepth ?? DEFAULT_MAX_SCHEDULED_DEPTH}; 0 disables nested auto-run schedule creation.`,
+      text: `${calendar_GUIDANCE} Current configured maximum scheduled-Agent recursion depth: ${current().maxScheduledDepth}; 0 disables nested auto-run schedule creation.`,
     })
   }
-  ctx.settings.installSection(ctx, calendar_SETTINGS_NAMESPACE, Config, config ?? {}, {
-    setSource: (source: () => Config) => { current = source },
-    onChange: sync,
+  ctx.on('settings/document-updated', namespace => {
+    if (namespace === calendar_SETTINGS_NAMESPACE) sync()
   })
+  ctx.effect(() => ctx.settings.configure({ auto: false }, ctx.fiber), 'dsh-calendar: custom settings card')
   sync()
 
   // M7: expose the calendar as a real, model-callable tool on the same ledger.
@@ -99,7 +102,7 @@ export function apply(ctx: Context, config?: Config): void {
     run: id => runner.run(id),
     catalog: () => buildCatalogFromApi(api),
     getActiveScheduledExecution: sessionId => service.ledger.activeScheduledExecution(sessionId),
-    maxScheduledDepth: () => current().maxScheduledDepth ?? DEFAULT_MAX_SCHEDULED_DEPTH,
+    maxScheduledDepth: () => current().maxScheduledDepth,
   }))
 
   const disposers = mountcalendarRoutes(ctx.webServer, service.ledger, api, runner)
@@ -111,7 +114,6 @@ export function apply(ctx: Context, config?: Config): void {
       disposeTool()
       for (const dispose of disposers.splice(0)) dispose()
       service.dispose()
-      releaseLock()
     }
   }, 'dsh-calendar: host dispose')
 }

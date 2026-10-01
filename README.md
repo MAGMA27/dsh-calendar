@@ -15,7 +15,7 @@
 > `dsh-calendar` is a DSH Web plugin, not a standalone calendar app. Install it into a DSH profile so the Host can own the task ledger, schedule Agents, and settle execution records.
 
 > [!NOTE]
-> The current source targets DSH `0.1.2-rc.1`. This release no longer provides the legacy `apiProxy`; the plugin adapts the current Host services (`sessionController`, `workspaceRegistry`, `agentPresets`, `commands`) at its Host boundary.
+> The current source targets DSH `0.2.0-rc.2`, including its settings forms and UI workspace navigation APIs.
 
 `dsh-calendar` is a DSH Web calendar and Agent task plugin. Use it to plan todos, arrange time, schedule one-off or recurring Agent runs, and let Agents create and manage tasks through `calendar_task`. Agents can also review your calendar tasks and execution history to help reflect on your plans and progress.
 
@@ -138,6 +138,7 @@ tests/          core, Host, and client tests
 
 | Date | Summary |
 | --- | --- |
+| 2026-10-01 | Aligned SDK dependencies with DSH `0.2.0-rc.2`; migrated settings and session navigation to its current APIs. |
 | 2026-09-17 | Added stale ledger-lock recovery after abnormal shutdown, with live-owner checks and legacy lock compatibility. |
 | 2026-09-04 | Documented the DSH `0.1.2-rc.1` Host-service adapter migration and refreshed the related install, build, and runtime notes. |
 

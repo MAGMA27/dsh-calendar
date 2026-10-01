@@ -1,144 +1,53 @@
-/**
- * watchSessionNavigation: while the calendar is open, switching the current
- * session closes the calendar; the baseline re-seeds on each open so opening
- * over the current session does not instantly close it.
- */
 import { describe, expect, it, vi } from 'vitest'
-import {
-  closeOnSessionOpen,
-  watchSessionNavigation,
-  type SessionNavigationList,
-} from '../src/client/navigation-watch.ts'
+import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
+import { closeOnSessionNavigation } from '../src/client/navigation-watch.ts'
 
-/** Minimal observable list fake driven by an explicit `current` value. */
-function listFake(current: string | undefined): {
-  list: SessionNavigationList
-  setCurrent(v: string | undefined): void
-} {
-  let value = current
-  const listeners = new Set<() => void>()
+type Navigation = Pick<UiWorkspace, 'openSession' | 'openWorkspace' | 'startSession'>
+
+function makeNavigation(calls: string[]): Navigation {
   return {
-    list: {
-      getSnapshot: () => ({ current: value }),
-      subscribe: (fn) => {
-        listeners.add(fn)
-        return () => { listeners.delete(fn) }
-      },
-    },
-    setCurrent(v) {
-      value = v
-      for (const fn of [...listeners]) fn()
-    },
+    openSession: target => { calls.push(`session:${String(target)}`) },
+    openWorkspace: async workspaceId => { calls.push(`workspace:${String(workspaceId)}`) },
+    startSession: workspaceId => { calls.push(`start:${String(workspaceId)}`) },
   }
 }
 
-/** Build an open-flag fake plus the watch result for the common shape. */
-function harness(initialCurrent: string | undefined) {
-  const { list, setCurrent } = listFake(initialCurrent)
-  let open = false
-  const openListeners = new Set<() => void>()
-  const setOpen = vi.fn((v: boolean) => {
-    open = v
-    for (const fn of [...openListeners]) fn()
-  })
-  const dispose = watchSessionNavigation({
-    isOpen: () => open,
-    setOpen,
-    subscribeOpen: (fn) => {
-      openListeners.add(fn)
-      return () => { openListeners.delete(fn) }
-    },
-    list,
-  })
-  return { list, setCurrent, open: () => open, setOpen, dispose }
-}
+describe('closeOnSessionNavigation', () => {
+  it('closes before opening a session, including the already-current one', () => {
+    const calls: string[] = []
+    const workspace = makeNavigation(calls)
+    const dispose = closeOnSessionNavigation(workspace, () => { calls.push('close') })
 
-describe('watchSessionNavigation', () => {
-  it('closes the calendar when the current session changes while open', () => {
-    const h = harness('session-a')
-    h.setOpen(true) // open calendar over session-a (baseline = session-a)
-    expect(h.open()).toBe(true)
-    h.setCurrent('session-b') // click a different session in the sidebar
-    expect(h.open()).toBe(false)
-    expect(h.setOpen).toHaveBeenCalledWith(false)
-  })
+    workspace.openSession('session-a' as Parameters<Navigation['openSession']>[0])
 
-  it('does not close on a session change while the calendar is closed', () => {
-    const h = harness('session-a')
-    h.setCurrent('session-b')
-    expect(h.open()).toBe(false)
-    expect(h.setOpen).not.toHaveBeenCalled()
-  })
-
-  it('does not close when the current session stays the same', () => {
-    const h = harness('session-a')
-    h.setOpen(true)
-    expect(h.open()).toBe(true)
-    h.setCurrent('session-a') // same session re-selected
-    expect(h.open()).toBe(true)
-    expect(h.setOpen).not.toHaveBeenCalledWith(false)
-  })
-
-  it('re-seeds the baseline each open so a pre-existing current is not "new"', () => {
-    const h = harness('session-a')
-    h.setOpen(true) // baseline = session-a
-    h.setOpen(false) // calendar closed
-    // While closed, current changes...
-    h.setCurrent('session-b')
-    // ...then the calendar opens over session-b: baseline = session-b, no close.
-    h.setOpen(true)
-    expect(h.open()).toBe(true)
-    h.setCurrent('session-b')
-    expect(h.open()).toBe(true)
-  })
-
-  it('closes when a new session starts (current transitions through undefined)', () => {
-    const h = harness(undefined)
-    h.setOpen(true) // no-session state; baseline = undefined
-    h.setCurrent('brand-new') // start a new session
-    expect(h.open()).toBe(false)
-  })
-
-  it('disposer removes both subscriptions', () => {
-    const h = harness('session-a')
-    h.setOpen(true)
-    h.dispose()
-    h.setCurrent('session-b')
-    expect(h.open()).toBe(true) // no longer watching
-  })
-})
-
-describe('closeOnSessionOpen', () => {
-  it('closes the calendar and opens the session on any open, including the current one', () => {
-    const original = vi.fn()
-    const sessions = { open: original }
-    const close = vi.fn()
-    const dispose = closeOnSessionOpen(sessions, close)
-    sessions.open('session-a') // the already-current session
-    expect(close).toHaveBeenCalledTimes(1)
-    expect(original).toHaveBeenCalledWith('session-a')
+    expect(calls).toEqual(['close', 'session:session-a'])
     dispose()
   })
 
-  it('restores the original method on dispose', () => {
-    const original = vi.fn()
-    const sessions = { open: original }
-    const close = vi.fn()
-    const dispose = closeOnSessionOpen(sessions, close)
+  it('closes on workspace and new-session navigation', async () => {
+    const calls: string[] = []
+    const workspace = makeNavigation(calls)
+    const dispose = closeOnSessionNavigation(workspace, () => { calls.push('close') })
+
+    await workspace.openWorkspace('workspace-a' as Parameters<Navigation['openWorkspace']>[0])
+    workspace.startSession('workspace-a' as Parameters<Navigation['startSession']>[0])
+
+    expect(calls).toEqual(['close', 'workspace:workspace-a', 'close', 'start:workspace-a'])
     dispose()
-    sessions.open('session-b')
+  })
+
+  it('restores the original navigation methods on dispose', () => {
+    const calls: string[] = []
+    const workspace = makeNavigation(calls)
+    const original = workspace.openSession
+    const close = vi.fn()
+    const dispose = closeOnSessionNavigation(workspace, close)
+    dispose()
+
+    workspace.openSession('session-b' as Parameters<Navigation['openSession']>[0])
+
+    expect(workspace.openSession).toBe(original)
     expect(close).not.toHaveBeenCalled()
-    expect(original).toHaveBeenCalledWith('session-b')
-  })
-
-  it('chains through the original implementation after closing', () => {
-    const seen: string[] = []
-    const sessions = { open: (id: string) => { seen.push(id) } }
-    const close = vi.fn()
-    const dispose = closeOnSessionOpen(sessions, close)
-    sessions.open('session-c')
-    dispose()
-    expect(close).toHaveBeenCalledTimes(1)
-    expect(seen).toEqual(['session-c'])
+    expect(calls).toEqual(['session:session-b'])
   })
 })

@@ -2,7 +2,7 @@
 import { act } from 'react-dom/test-utils'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { CalendarSettingsCard, type CalendarSettingsValue } from '../src/client/components/CalendarSettingsCard.tsx'
 
 interface Write {
@@ -10,8 +10,8 @@ interface Write {
   value: unknown
 }
 
-function makeScope(initialDepth = 0): { scope: SettingsScope<CalendarSettingsValue>; writes: Write[] } {
-  let current: SettingsScopeSnapshot<CalendarSettingsValue> = {
+function makeConfigForm(initialDepth = 0): { configForm: ConfigForm<CalendarSettingsValue>; writes: Write[] } {
+  let current: ConfigFormSnapshot<CalendarSettingsValue> = {
     status: 'ready',
     value: { maxScheduledDepth: initialDepth },
     base: undefined,
@@ -22,34 +22,35 @@ function makeScope(initialDepth = 0): { scope: SettingsScope<CalendarSettingsVal
   }
   const listeners = new Set<() => void>()
   const writes: Write[] = []
-  const scope: SettingsScope<CalendarSettingsValue> = {
+  const configForm: ConfigForm<CalendarSettingsValue> = {
     getSnapshot: () => current,
     subscribe: listener => {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
-    mutate: async () => undefined,
+    mutate: async () => false,
     set: async (field, value) => {
       writes.push({ field, value })
       if (field !== 'maxScheduledDepth' || typeof value !== 'number') throw new Error('unexpected write')
       current = { ...current, value: { maxScheduledDepth: value }, revision: (current.revision ?? 0) + 1 }
       for (const listener of listeners) listener()
+      return true
     },
     unset: async field => {
       throw new Error(`unexpected clear: ${field}`)
     },
   }
-  return { scope, writes }
+  return { configForm, writes }
 }
 
 describe('CalendarSettingsCard', () => {
   it('renders in the plugin settings slot and persists the recursion depth', async () => {
-    const { scope, writes } = makeScope()
+    const { configForm, writes } = makeConfigForm()
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
 
-    await act(async () => { root.render(<CalendarSettingsCard settingsScope={scope} />) })
+    await act(async () => { root.render(<CalendarSettingsCard configForm={configForm} />) })
     expect(host.textContent).toContain('日历')
     expect(host.textContent).not.toContain('最大递归深度')
     const header = host.querySelector('button[aria-expanded="false"]') as HTMLButtonElement

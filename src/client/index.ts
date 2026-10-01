@@ -15,30 +15,30 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { calendarClientController, initialState } from './controller.ts'
 import { HTTP_PREFIX_DEFAULT, HttpcalendarHostTransport } from './host-api.ts'
 import { createCalendarOverlay } from './calendar-overlay.tsx'
 import { CalendarEntry } from './calendar-entry.tsx'
 import { isCalendarOpen, setCalendarOpen, subscribeCalendarOpen } from './root-open.ts'
-import { closeOnSessionOpen, watchSessionNavigation } from './navigation-watch.ts'
+import { closeOnSessionNavigation } from './navigation-watch.ts'
 import { watchCatalogRefresh } from './catalog-refresh.ts'
 import { claimApply, releaseApply } from './apply-guard.ts'
-import { en, zh } from './locales.ts'
-import { CalendarSettingsCard } from './components/CalendarSettingsCard.tsx'
+import { en, t, zh, type calendarKey } from './locales.ts'
+import { CalendarSettingsCard, type CalendarSettingsValue } from './components/CalendarSettingsCard.tsx'
 
 /** Locale namespace this plugin owns. */
 const NS = 'calendar'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    'calendar': Record<string, string>
+    'calendar': calendarKey
   }
 }
 
-/** Required services: locale for copy, slots for the registrations, settings
- * scope for the calendar preference card, and sessions only for the session
- * jump. All calendar domain state comes from the Host over HTTP. */
-export const inject = ['locale', 'slots', 'sessions', 'settingsScope']
+/** Required services: locale, slots, the shared config-form store, and sessions
+ * only for navigation. Calendar domain state comes from the Host over HTTP. */
+export const inject = ['locale', 'slots', 'sessions', 'configForms', 'uiWorkspace']
 
 /** Client plugin body. */
 export function apply(ctx: ClientContext): void {
@@ -61,25 +61,11 @@ export function apply(ctx: ClientContext): void {
   // so both the navigation watcher and the session jump share the same handle.
   const sessions = (ctx as unknown as { sessions: ISessions }).sessions
 
-  // Navigation watcher: while the calendar overlay is open, switching the
-  // current session — clicking a session in the sidebar workspace browser, or
-  // starting a new session — closes the calendar so the conversation shows
-  // through (see navigation-watch.ts for the exact baseline rules).
-  ctx.effect(() => watchSessionNavigation({
-    isOpen: isCalendarOpen,
-    setOpen: setCalendarOpen,
-    subscribeOpen: subscribeCalendarOpen,
-    list: sessions.list,
-  }), 'dsh-calendar: watch session navigation')
-
-  // Clicking the ALREADY-current session changes no `list.current`, so the
-  // list watcher cannot see that gesture; every explicit session-open flows
-  // through `sessions.open`, so wrapping it closes the calendar on any open
-  // (including the current session). Restored on dispose.
-  ctx.effect(() => closeOnSessionOpen(
-    sessions,
+  // DSH 0.2 keeps session selection in the UI workspace navigation service.
+  ctx.effect(() => closeOnSessionNavigation(
+    ctx.uiWorkspace,
     () => setCalendarOpen(false),
-  ), 'dsh-calendar: close calendar on any session open')
+  ), 'dsh-calendar: close calendar on session navigation')
 
   // The catalog is fetched once at boot; sessions created afterwards (or cold
   // sessions attached from disk) must still appear in the task-detail session
@@ -96,11 +82,10 @@ export function apply(ctx: ClientContext): void {
   // leave-the-calendar action, so the calendar overlay is closed first; the
   // session then opens below the now-visible conversation surface.
   const openSession = (sessionId: string): void => {
-    setCalendarOpen(false)
     try {
       // Execution-record ids are plain strings; the branded SessionId is a
       // structural subtype, so the cast is a pure narrowing.
-      sessions.open(sessionId as SessionId)
+      ctx.uiWorkspace.openSession(sessionId as SessionId)
     } catch {
       // The session may not be listed yet; ignore. The calendar is already
       // closed: the click was an explicit leave intent.
@@ -123,14 +108,15 @@ export function apply(ctx: ClientContext): void {
     label: () => '日历',
   } as never, CalendarEntry as never))
 
-  // Settings → Plugins only renders namespaces that also contribute a keyed
-  // browser card. The Host registers the `calendar` namespace; this card is
-  // its client-side counterpart.
-  const settingsScope = ctx.settingsScope.bind({ namespace: NS })
-  ctx.slots.inject('settings.plugin.item' as never, () => ctx.slots.register({
-    name: 'settings.plugin.item',
-    key: NS,
-    inject: () => ({ settingsScope }),
+  // DSH 0.2 settings are keyed by the profile entry id from cordis.patch.yml.
+  const configForm = ctx.configForms.get<CalendarSettingsValue>('ui-calendar')
+  ctx.slots.inject('settings.plugins.tab' as never, () => ctx.slots.register({
+    name: 'settings.plugins.tab',
+    id: 'ui-calendar',
+    order: 0,
+    label: () => t('settings.title'),
+    locale: NS,
+    inject: () => ({ configForm }),
   } as never, CalendarSettingsCard as never))
 
   ctx.effect(() => () => controller.dispose(), 'dsh-calendar: dispose controller')

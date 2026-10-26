@@ -17,3 +17,10 @@ describe('center-column takeover CSS', () => {
     expect(css).toContain('.entryLabel')
   })
 })
+
+describe('create task modal layout CSS', () => {
+  it('keeps the header and detail sections from shrinking inside the scroll area', () => {
+    expect(css).toMatch(/\.createModal\s*>\s*\.detailHeader\s*\{\s*flex-shrink:\s*0;/)
+    expect(css).toMatch(/\.createModal\s*>\s*\.detailBody\s*>\s*\*\s*\{\s*flex-shrink:\s*0;/)
+  })
+})

@@ -138,6 +138,7 @@ tests/          core, Host, and client tests
 
 | Date | Summary |
 | --- | --- |
+| 2026-10-26 | Fixed create-task modal clipping at short viewport heights; the header and actions stay visible while details scroll. |
 | 2026-10-26 | Repeat-time edits now set one dragged block for the selected and later occurrences while preserving earlier history and recurrence dates. |
 | 2026-10-26 | Absolute repeat-time updates use a distinct action kind; failed actions retain the calendar and show a localized error. |
 | 2026-10-01 | Aligned SDK dependencies with DSH `0.2.0-rc.2`; migrated settings and session navigation to its current APIs. |

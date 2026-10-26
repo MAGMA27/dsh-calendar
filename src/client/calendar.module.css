@@ -1364,6 +1364,9 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   box-shadow: 0 8px 30px var(--dsw-alias-bg-mask-2);
 }
 
+.createModal > .detailHeader { flex-shrink: 0; }
+.createModal > .detailBody > * { flex-shrink: 0; }
+
 .formRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .formLabel { font-size: 12px; color: var(--dsw-alias-label-secondary); flex: none; }

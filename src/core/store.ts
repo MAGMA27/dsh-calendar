@@ -7,7 +7,7 @@
  */
 import {
   isImportance, isTaskPermission, isUrgency,
-  type ExecutionRecord, type RepeatRule, type ScheduleRule, type TaskRecord,
+  type ExecutionRecord, type RepeatRule, type RepeatTimeOverride, type ScheduleRule, type TaskRecord,
 } from './tasks.ts'
 
 /** Structural row check. The task's schedule is repaired separately. */
@@ -72,6 +72,18 @@ function normalizeSchedule(value: unknown): ScheduleRule | undefined {
   const deletedDates = Array.isArray(r.deletedDates)
     ? r.deletedDates.filter((k): k is string => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k))
     : undefined
+  const timeOverrides = repeat !== undefined && Array.isArray(r.timeOverrides)
+    ? r.timeOverrides.flatMap((value): RepeatTimeOverride[] => {
+      if (typeof value !== 'object' || value === null) return []
+      const override = value as Record<string, unknown>
+      return typeof override.fromAt === 'number' && Number.isFinite(override.fromAt)
+        && typeof override.startMinutes === 'number' && Number.isInteger(override.startMinutes) && override.startMinutes >= 0 && override.startMinutes < 1440
+        && typeof override.durationMinutes === 'number' && Number.isFinite(override.durationMinutes) && override.durationMinutes > 0
+        && typeof override.dayOffset === 'number' && Number.isSafeInteger(override.dayOffset)
+        ? [{ fromAt: override.fromAt, startMinutes: override.startMinutes, durationMinutes: override.durationMinutes, dayOffset: override.dayOffset }]
+        : []
+    }).sort((a, b) => a.fromAt - b.fromAt)
+    : undefined
   return {
     enabled: r.enabled === true,
     repeat,
@@ -82,6 +94,7 @@ function normalizeSchedule(value: unknown): ScheduleRule | undefined {
     materialized: materialized !== undefined && materialized.length > 0 ? materialized : undefined,
     skippedDates: skippedDates !== undefined && skippedDates.length > 0 ? [...new Set(skippedDates)] : undefined,
     deletedDates: deletedDates !== undefined && deletedDates.length > 0 ? [...new Set(deletedDates)] : undefined,
+    timeOverrides: timeOverrides !== undefined && timeOverrides.length > 0 ? timeOverrides : undefined,
   }
 }
 
@@ -145,6 +158,9 @@ export function parseTasks(raw: string | null): TaskRecord[] {
       .filter((e): e is NonNullable<typeof e> => e !== undefined)
     const schedule = normalizeSchedule(row.schedule)
     const scheduledDepth = normalizeScheduledDepth(row.scheduledDepth)
+    const occurrenceDate = typeof row.occurrenceDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.occurrenceDate)
+      ? row.occurrenceDate
+      : undefined
     tasks.push({
       id: row.id as string,
       title: row.title as string,
@@ -169,6 +185,7 @@ export function parseTasks(raw: string | null): TaskRecord[] {
       permission: isTaskPermission(row.permission) ? row.permission : undefined,
       ...(scheduledDepth !== undefined ? { scheduledDepth } : {}),
       originTaskId: normalizeTargetId(row.originTaskId),
+      occurrenceDate,
       archivedAt: typeof row.archivedAt === 'number' ? row.archivedAt : undefined,
       createdAt: row.createdAt as number,
       updatedAt: row.updatedAt as number,

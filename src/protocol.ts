@@ -118,16 +118,14 @@ export interface SetScheduleAction {
 
 /**
  * Apply the same time change to every bound copy of a repeat template (and the
- * template itself): shift each task's startAt/endAt by the deltas. The browser
- * sends this only after the user picks "change all" in the repeat-time
- * confirmation; `id` is the copy that was edited (its originTaskId resolves
- * the template + sibling copies).
+ * template itself): apply the dragged block to this occurrence and later copies.
+ * The Host uses the target's pre-edit startAt as the cutoff.
  */
 export interface ShiftRepeatTimesAction {
   kind: 'shiftRepeatTimes'
   id: string
-  startDelta: number
-  endDelta: number
+  startAt: number
+  endAt: number
 }
 
 /**

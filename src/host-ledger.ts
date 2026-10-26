@@ -21,7 +21,7 @@ import {
   removeSubtask, restoreTask, setNextRun, setQuadrant, setSchedule, setSubtaskDone,
   setTaskDone, settleExecution, startExecution, updateTask, scheduleRetryExhausted, type ExecutionTrigger, type TaskRecord, type TaskUpdatePatch,
 } from './core/tasks.ts'
-import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isRepeatMember, isRepeatTemplate, isValidRepeat, matchesRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, startOfDayMs } from './core/repeat.ts'
+import { REPEAT_HORIZON_DAYS, alignSeries, buildRepeatCopy, isRepeatMember, isRepeatTemplate, isValidRepeat, matchesRepeat, parseTriggerTime, pruneOrphanCopies, repeatDatesBetween, repeatOccurrenceDate, startOfDayMs } from './core/repeat.ts'
 import { addDays, dayKey, minutesOfDay } from './core/calendar.ts'
 import { parseTasks } from './core/store.ts'
 import { calendarDir, ledgerPath } from './dsh-home.ts'
@@ -338,8 +338,10 @@ export class HostLedger {
         return failMissedScheduleTask(task, now, this.uuid())
       }
       const repeatDueAt = repeatTriggerDueAt(task)
-      if (repeatDueAt === undefined || hasScheduledOccurrence(task, repeatDueAt)) {
-        if (task.schedule?.repeat !== undefined && task.schedule.nextRunAt !== undefined && task.schedule.nextRunAt <= now) {
+      const consumedRepeat = task.schedule?.lastTriggeredAt !== undefined
+        || (repeatDueAt !== undefined && hasScheduledOccurrence(task, repeatDueAt))
+      if (repeatDueAt === undefined || consumedRepeat) {
+        if (task.schedule?.repeat !== undefined && task.schedule.nextRunAt !== undefined && (consumedRepeat || task.schedule.nextRunAt <= now)) {
           changed = true
           delete this.state.scheduler.nextRuns[task.id]
           return { ...task, schedule: { ...task.schedule, nextRunAt: undefined }, updatedAt: now }
@@ -563,7 +565,7 @@ export class HostLedger {
       const materialized = new Set(tpl.schedule.materialized ?? [])
       // The template occupies its own date; copies start the day after, never
       // backfilling into the past.
-      const cursor = addDays(Math.max(today, startOfDayMs(tpl.startAt)), 1)
+      const cursor = addDays(Math.max(today, repeatOccurrenceDate(tpl)), 1)
       const added: string[] = []
       for (const dateMs of repeatDatesBetween(tpl.schedule.repeat, cursor, horizonEnd)) {
         const key = dayKey(dateMs)
@@ -617,6 +619,7 @@ export class HostLedger {
       case 'create': {
         let task = createTask({ ...action.input, schedule: action.schedule }, now, this.uuid(), options.scheduledDepth)
         if (task === undefined) return false
+        if (task.schedule?.repeat !== undefined) task = { ...task, occurrenceDate: dayKey(task.startAt) }
         if (task.schedule !== undefined) {
           const armed = armSchedule(task, now)
           if (armed === undefined) return false
@@ -657,6 +660,13 @@ export class HostLedger {
         if (!Number.isFinite(action.startAt) || !Number.isFinite(action.endAt) || action.endAt <= action.startAt) return false
         const before = this.state.tasks.find(t => t.id === action.id)
         if (before === undefined) return false
+        const priorRepeat = before.schedule?.repeat
+        const priorDueAt = priorRepeat === undefined ? undefined : repeatTriggerDueAt(before)
+        const consumedTemplate = priorRepeat !== undefined && (
+          before.schedule?.lastTriggeredAt !== undefined
+          || currentRepeatOccurrenceAt(before, priorRepeat) <= now
+          || (priorDueAt !== undefined && hasScheduledOccurrence(before, priorDueAt))
+        )
         const template = before.originTaskId === undefined
           ? undefined
           : this.state.tasks.find(t => t.id === before.originTaskId)
@@ -669,7 +679,8 @@ export class HostLedger {
         let tasks = updateTask(this.state.tasks, action.id, patch, now)
         const moved = tasks.find(t => t.id === action.id)
         if (moved === undefined) return false
-        const schedule = scheduleAfterReschedule(moved, template, now)
+        let schedule = scheduleAfterReschedule(moved, template, now)
+        if (consumedTemplate && schedule?.repeat !== undefined) schedule = { ...schedule, nextRunAt: undefined }
         tasks = tasks.map(t => t.id === action.id ? { ...t, schedule, updatedAt: now } : t)
         this.state.tasks = tasks
         if (schedule === undefined) delete this.state.scheduler.nextRuns[action.id]
@@ -770,6 +781,9 @@ export class HostLedger {
         const scheduleId = target.originTaskId ?? action.id
         const before = this.state.tasks.find(t => t.id === scheduleId)
         let tasks = setSchedule(this.state.tasks, scheduleId, action.patch, now, options.scheduledDepth)
+        tasks = tasks.map(t => t.id === scheduleId && t.schedule?.repeat !== undefined && t.occurrenceDate === undefined
+          ? { ...t, occurrenceDate: dayKey(t.startAt) }
+          : t)
         const task = tasks.find(t => t.id === scheduleId)
         if (task === undefined) return false
         // Clearing the repeat rule ends the series: its bound copies go away.
@@ -836,9 +850,9 @@ export class HostLedger {
         return true
       }
       case 'shiftRepeatTimes': {
-        // "Change all copies": shift the template and only future bound copies
-        // by the same start/end deltas. Past occurrences are historical records;
-        // they must not be rewritten or accidentally re-armed.
+        // Apply the dragged block from the selected task's pre-edit start onward.
+        if (!Number.isFinite(action.startAt) || !Number.isFinite(action.endAt) || action.endAt <= action.startAt
+          || !Number.isFinite(new Date(action.startAt).getTime()) || !Number.isFinite(new Date(action.endAt).getTime())) return false
         const target = this.state.tasks.find(t => t.id === action.id)
         if (target === undefined) return false
         const root = target.originTaskId ?? (target.schedule?.repeat !== undefined ? target.id : undefined)
@@ -846,24 +860,48 @@ export class HostLedger {
         const template = this.state.tasks.find(t => t.id === root)
         const repeat = template?.schedule?.repeat
         if (template === undefined || repeat === undefined) return false
+        const fromAt = repeatOccurrenceDate(target)
+        const dayOffset = calendarDayOffset(fromAt, action.startAt)
+        const startMinutes = minutesOfDay(action.startAt)
+        const durationMinutes = (action.endAt - action.startAt) / 60_000
+        const timeOverrides = [
+          ...(template.schedule?.timeOverrides ?? []).filter(override => override.fromAt < fromAt),
+          { fromAt, startMinutes, durationMinutes, dayOffset },
+        ].sort((a, b) => a.fromAt - b.fromAt)
+        const originalStart = target.startAt
         let hit = false
         this.state.tasks = this.state.tasks.map(t => {
           if (t.id === root) {
             hit = true
-            const startAt = t.startAt + action.startDelta
-            const endAt = t.endAt + action.endDelta
-            const schedule = repeatTemplateSchedule(t.schedule!, repeat, startAt, now)
+            const occurrenceDate = repeatOccurrenceDate(t)
+            const withOverride = { ...t.schedule!, timeOverrides }
+            if (t.startAt < originalStart) {
+              this.state.scheduler.nextRuns[t.id] = mirrorOf(withOverride)
+              return { ...t, schedule: withOverride, occurrenceDate: t.occurrenceDate ?? dayKey(occurrenceDate), updatedAt: now }
+            }
+            const startAt = addDays(occurrenceDate, dayOffset) + startMinutes * 60_000
+            const endAt = startAt + durationMinutes * 60_000
+            const priorDueAt = repeatTriggerDueAt(t)
+            const processed = t.schedule?.lastTriggeredAt !== undefined
+              || currentRepeatOccurrenceAt(t, repeat) <= now
+              || (priorDueAt !== undefined && hasScheduledOccurrence(t, priorDueAt))
+            const recalculated = repeatTemplateSchedule(withOverride, repeat, startAt, now, occurrenceDate)
+            const schedule = processed ? { ...recalculated, nextRunAt: undefined } : recalculated
             this.state.scheduler.nextRuns[t.id] = mirrorOf(schedule)
-            return { ...t, startAt, endAt, schedule, updatedAt: now }
+            return { ...t, startAt, endAt, schedule, occurrenceDate: dayKey(occurrenceDate), updatedAt: now }
           }
-          if (t.originTaskId !== root || currentRepeatOccurrenceAt(t, repeat) <= now) return t
+          if (t.originTaskId !== root || t.startAt < originalStart) return t
           hit = true
-          const startAt = t.startAt + action.startDelta
-          const endAt = t.endAt + action.endDelta
-          const schedule = repeatCopySchedule(repeat, startAt, now, template.schedule?.enabled === true)
+          const occurrenceDate = repeatOccurrenceDate(t)
+          const startAt = addDays(occurrenceDate, dayOffset) + startMinutes * 60_000
+          const endAt = startAt + durationMinutes * 60_000
+          const processed = currentRepeatOccurrenceAt(t, repeat) <= now
+          const schedule = processed
+            ? undefined
+            : repeatCopySchedule(repeat, startAt, now, template.schedule?.enabled === true, occurrenceDate)
           if (schedule === undefined) delete this.state.scheduler.nextRuns[t.id]
           else this.state.scheduler.nextRuns[t.id] = mirrorOf(schedule)
-          return { ...t, startAt, endAt, schedule, updatedAt: now }
+          return { ...t, startAt, endAt, schedule, occurrenceDate: dayKey(occurrenceDate), updatedAt: now }
         })
         return hit
       }
@@ -918,7 +956,7 @@ function markRepeatTemplateOccurrence(
 ): TaskRecord {
   const schedule = task.schedule
   if (schedule?.repeat === undefined) return task
-  const dateKey = dayKey(task.startAt)
+  const dateKey = dayKey(repeatOccurrenceDate(task))
   const dates = [...new Set([...(schedule[marker] ?? []), dateKey])]
   const nextSchedule = { ...schedule, nextRunAt: undefined, retryCount: undefined }
   if (marker === 'skippedDates') nextSchedule.skippedDates = dates
@@ -941,9 +979,9 @@ function computeNextRun(task: TaskRecord, now: number): number | undefined {
   const s = task.schedule
   if (s === undefined) return undefined
   const repeatDueAt = repeatTriggerDueAt(task)
-  if (repeatDueAt !== undefined && !hasScheduledOccurrence(task, repeatDueAt) && repeatDueAt >= now) return repeatDueAt
+  if (s.lastTriggeredAt === undefined && repeatDueAt !== undefined && !hasScheduledOccurrence(task, repeatDueAt) && repeatDueAt >= now) return repeatDueAt
   // A due time already in the past is handled as a failed, non-replayed run.
-  if (s.dueAt !== undefined && s.dueAt >= now) return s.dueAt
+  if (s.lastTriggeredAt === undefined && s.dueAt !== undefined && s.dueAt >= now) return s.dueAt
   return undefined
 }
 
@@ -952,21 +990,28 @@ function repeatTriggerDueAt(task: TaskRecord | undefined): number | undefined {
   const schedule = task?.schedule
   const repeat = schedule?.repeat
   if (task === undefined || schedule?.enabled !== true || repeat?.triggerAgent !== true) return undefined
-  const dateKey = dayKey(task.startAt)
+  const occurrenceDate = repeatOccurrenceDate(task)
+  const dateKey = dayKey(occurrenceDate)
   if (schedule.skippedDates?.includes(dateKey) || schedule.deletedDates?.includes(dateKey)) return undefined
-  return repeatDueAtForStart(repeat, task.startAt)
+  return repeatDueAtForStart(repeat, task.startAt, occurrenceDate)
 }
 
 /** Derive a repeat trigger from a block start without consulting old executions. */
-function repeatDueAtForStart(repeat: NonNullable<TaskRecord['schedule']>['repeat'], startAt: number): number | undefined {
+function repeatDueAtForStart(repeat: NonNullable<TaskRecord['schedule']>['repeat'], startAt: number, occurrenceDate = startAt): number | undefined {
   if (repeat === undefined || repeat.triggerAgent !== true) return undefined
-  const dateMs = startOfDayMs(startAt)
+  const dateMs = startOfDayMs(occurrenceDate)
   if (!matchesRepeat(repeat, dateMs)) return undefined
   const triggerMinutes = parseTriggerTime(repeat.triggerAt) ?? minutesOfDay(startAt)
-  return dateMs + triggerMinutes * 60_000
+  return startOfDayMs(startAt) + triggerMinutes * 60_000
 }
 
 type Schedule = NonNullable<TaskRecord['schedule']>
+
+function calendarDayOffset(fromAt: number, toAt: number): number {
+  const from = new Date(fromAt)
+  const to = new Date(toAt)
+  return Math.round((Date.UTC(to.getFullYear(), to.getMonth(), to.getDate()) - Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())) / 86_400_000)
+}
 
 /** A fresh one-shot for a materialized or unbound repeat occurrence. */
 function oneShotSchedule(dueAt: number): Schedule {
@@ -974,15 +1019,14 @@ function oneShotSchedule(dueAt: number): Schedule {
 }
 
 /** Recompute a repeat template's first occurrence and reset retry state. */
-function repeatTemplateSchedule(current: Schedule, repeat: NonNullable<Schedule['repeat']>, startAt: number, now: number): Schedule {
-  const dueAt = current.enabled === true ? repeatDueAtForStart(repeat, startAt) : undefined
-  const dateKey = dayKey(startAt)
+function repeatTemplateSchedule(current: Schedule, repeat: NonNullable<Schedule['repeat']>, startAt: number, now: number, occurrenceDate = startAt): Schedule {
+  const dueAt = current.enabled === true ? repeatDueAtForStart(repeat, startAt, occurrenceDate) : undefined
+  const dateKey = dayKey(occurrenceDate)
   const skippedDates = current.skippedDates?.filter(key => key !== dateKey)
   const deletedDates = current.deletedDates?.filter(key => key !== dateKey)
   return {
     ...current,
     nextRunAt: dueAt !== undefined && dueAt > now ? dueAt : undefined,
-    lastTriggeredAt: undefined,
     retryCount: undefined,
     skippedDates: skippedDates !== undefined && skippedDates.length > 0 ? skippedDates : undefined,
     deletedDates: deletedDates !== undefined && deletedDates.length > 0 ? deletedDates : undefined,
@@ -990,15 +1034,15 @@ function repeatTemplateSchedule(current: Schedule, repeat: NonNullable<Schedule[
 }
 
 /** Recompute a materialized copy's one-shot without recording a missed run. */
-function repeatCopySchedule(repeat: NonNullable<Schedule['repeat']>, startAt: number, now: number, enabled = true): Schedule | undefined {
+function repeatCopySchedule(repeat: NonNullable<Schedule['repeat']>, startAt: number, now: number, enabled = true, occurrenceDate = startAt): Schedule | undefined {
   if (!enabled) return undefined
-  const dueAt = repeatDueAtForStart(repeat, startAt)
+  const dueAt = repeatDueAtForStart(repeat, startAt, occurrenceDate)
   return dueAt !== undefined && dueAt > now ? oneShotSchedule(dueAt) : undefined
 }
 
 /** The current trigger instant used to decide whether a bound copy is future. */
 function currentRepeatOccurrenceAt(task: TaskRecord, repeat: NonNullable<Schedule['repeat']>): number {
-  return task.schedule?.dueAt ?? repeatDueAtForStart(repeat, task.startAt) ?? task.startAt
+  return task.schedule?.dueAt ?? repeatDueAtForStart(repeat, task.startAt, repeatOccurrenceDate(task)) ?? task.startAt
 }
 
 /**
@@ -1018,12 +1062,12 @@ function scheduleAfterReschedule(
 ): TaskRecord['schedule'] {
   const directRepeat = moved.schedule?.repeat
   if (directRepeat !== undefined) {
-    return repeatTemplateSchedule(moved.schedule!, directRepeat, moved.startAt, now)
+    return repeatTemplateSchedule({ ...moved.schedule!, timeOverrides: undefined }, directRepeat, moved.startAt, now, repeatOccurrenceDate(moved))
   }
 
   const inheritedRepeat = template?.schedule?.repeat
   if (template?.schedule?.enabled === true && inheritedRepeat?.triggerAgent === true) {
-    return repeatCopySchedule(inheritedRepeat, moved.startAt, now)
+    return repeatCopySchedule(inheritedRepeat, moved.startAt, now, true, repeatOccurrenceDate(moved))
   }
 
   return moved.schedule

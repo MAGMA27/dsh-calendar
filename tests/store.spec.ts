@@ -63,6 +63,26 @@ describe('parseTasks', () => {
     expect(t.schedule?.repeat?.weekdays).toEqual([1, 3]) // dedup + invalid dropped
     expect(t.schedule?.repeat?.skipHolidays).toBe(true)
     expect(t.schedule?.materialized).toEqual(['2025-01-06'])
+    expect(t.occurrenceDate).toBeUndefined() // legacy ledgers keep their prior reschedule semantics
+  })
+  it('persists ordered repeat time overrides and the logical occurrence date', () => {
+    const [t] = parseTasks(JSON.stringify([{
+      id: 'copy', title: 'A', description: '', prompt: '', startAt: 1, endAt: 2, createdAt: 1, updatedAt: 1,
+      occurrenceDate: '2025-01-13',
+      schedule: {
+        enabled: true, repeat: { kind: 'daily' },
+        timeOverrides: [
+          { fromAt: 20, startMinutes: 615, durationMinutes: 90, dayOffset: 2 },
+          { fromAt: 10, startMinutes: 600, durationMinutes: 60, dayOffset: 1 },
+          { fromAt: 30, startMinutes: -1, durationMinutes: 30, dayOffset: 0 },
+        ],
+      },
+    }]))
+    expect(t.occurrenceDate).toBe('2025-01-13')
+    expect(t.schedule?.timeOverrides).toEqual([
+      { fromAt: 10, startMinutes: 600, durationMinutes: 60, dayOffset: 1 },
+      { fromAt: 20, startMinutes: 615, durationMinutes: 90, dayOffset: 2 },
+    ])
   })
   it('normalizes repeat template skipped dates', () => {
     const [t] = parseTasks(JSON.stringify([{

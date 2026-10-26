@@ -87,7 +87,7 @@ describe('WeekGrid repeat-copy time edit', () => {
     await act(async () => { root.unmount(); host.remove() })
   })
 
-  it('"all copies" resolves to a shiftRepeatTimes action with the drag deltas', async () => {
+  it('"all copies" resolves to a shiftRepeatTimes action with the dragged time range', async () => {
     const now = new Date(2026, 0, 12, 10, 0, 0)
     const copy: TaskRecord = {
       id: 'c1', title: 'Standup', description: '', prompt: '',
@@ -127,8 +127,8 @@ describe('WeekGrid repeat-copy time edit', () => {
     expect(shift.kind).toBe('shiftRepeatTimes')
     if (shift.kind === 'shiftRepeatTimes') {
       expect(shift.id).toBe('c1')
-      expect(shift.startDelta).toBe(pending.startAt - pending.origStart)
-      expect(shift.endDelta).toBe(pending.endAt - pending.origEnd)
+      expect(shift.startAt).toBe(pending.startAt)
+      expect(shift.endAt).toBe(pending.endAt)
     }
 
     await act(async () => { root.unmount(); host.remove() })

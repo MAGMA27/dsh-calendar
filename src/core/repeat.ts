@@ -11,7 +11,7 @@
  * view (next-occurrence display) share one source of truth.
  */
 import { addDays, dayKey, minutesOfDay } from './calendar.ts'
-import type { RepeatRule, ScheduleRule, TaskRecord } from './tasks.ts'
+import type { RepeatRule, RepeatTimeOverride, ScheduleRule, TaskRecord } from './tasks.ts'
 
 /** The scope selected for a repeat-series operation. */
 export type RepeatScope = 'instance' | 'series'
@@ -47,6 +47,25 @@ export function startOfDayMs(ms: number): number {
   const d = new Date(ms)
   d.setHours(0, 0, 0, 0)
   return d.getTime()
+}
+
+/** The source date used to match and materialize a repeat occurrence. */
+export function repeatOccurrenceDate(task: Pick<TaskRecord, 'startAt' | 'occurrenceDate'>): number {
+  const key = task.occurrenceDate
+  if (key === undefined) return startOfDayMs(task.startAt)
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key)
+  if (match === null) return startOfDayMs(task.startAt)
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  return dayKey(date.getTime()) === key ? date.getTime() : startOfDayMs(task.startAt)
+}
+
+function repeatTimingAt(schedule: ScheduleRule | undefined, dateMs: number): RepeatTimeOverride | undefined {
+  let found: RepeatTimeOverride | undefined
+  for (const override of schedule?.timeOverrides ?? []) {
+    if (override.fromAt > dateMs) break
+    found = override
+  }
+  return found
 }
 
 /** Whether a weekly rule has at least one weekday selected. */
@@ -155,15 +174,17 @@ export function parseTriggerTime(triggerAt: string | undefined): number | undefi
  * it; a due instant already in the past never fires.
  */
 export function buildRepeatCopy(template: TaskRecord, dateMs: number, now: number, id: string): TaskRecord {
-  const templateDay = startOfDayMs(template.startAt)
-  const startAt = dateMs + (template.startAt - templateDay)
-  const duration = template.endAt - template.startAt
+  const timing = repeatTimingAt(template.schedule, dateMs)
+  const occurrenceDay = addDays(dateMs, timing?.dayOffset ?? 0)
+  const startMinute = timing?.startMinutes ?? minutesOfDay(template.startAt)
+  const startAt = occurrenceDay + startMinute * 60_000
+  const duration = (timing?.durationMinutes ?? (template.endAt - template.startAt) / 60_000) * 60_000
   const rule = template.schedule?.repeat
   const triggerAgent = rule?.triggerAgent === true
   let schedule: ScheduleRule | undefined
   if (triggerAgent) {
-    const triggerMinutes = parseTriggerTime(rule?.triggerAt) ?? minutesOfDay(template.startAt)
-    const dueAt = dateMs + triggerMinutes * 60_000
+    const triggerMinutes = parseTriggerTime(rule?.triggerAt) ?? startMinute
+    const dueAt = occurrenceDay + triggerMinutes * 60_000
     schedule = { enabled: true, dueAt, nextRunAt: dueAt >= now ? dueAt : undefined }
   }
   return {
@@ -189,6 +210,7 @@ export function buildRepeatCopy(template: TaskRecord, dateMs: number, now: numbe
     permission: template.permission,
     ...(template.scheduledDepth !== undefined ? { scheduledDepth: template.scheduledDepth } : {}),
     originTaskId: template.id,
+    occurrenceDate: dayKey(dateMs),
     createdAt: now,
     updatedAt: now,
   }
@@ -219,9 +241,9 @@ export function alignSeries(
   const removedKeys = new Set<string>()
   const kept: TaskRecord[] = []
   for (const t of tasks) {
-    if (t.originTaskId === templateId && !matchesRepeat(rule, t.startAt)) {
+    if (t.originTaskId === templateId && !matchesRepeat(rule, repeatOccurrenceDate(t))) {
       prunedIds.push(t.id)
-      removedKeys.add(dayKey(t.startAt))
+      removedKeys.add(dayKey(repeatOccurrenceDate(t)))
       continue
     }
     kept.push(t)

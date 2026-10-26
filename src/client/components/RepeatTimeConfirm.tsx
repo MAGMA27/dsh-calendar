@@ -3,8 +3,8 @@
  * the user must choose whether to apply the change to this task only or to the
  * whole series. On a bound copy, "this" unbinds it from the template and the
  * other copies; on the template, "this" moves only the template (future copies
- * follow, existing copies keep their times). "All" shifts the template + every
- * bound copy by the same deltas. Rendered by CalendarView while the controller
+ * follow, existing copies keep their times). "All" updates this occurrence and
+ * later copies. Rendered by CalendarView while the controller
  * holds a pendingRepeatTimeEdit.
  */
 import type { calendarClientController } from '../controller.ts'

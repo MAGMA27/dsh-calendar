@@ -195,7 +195,7 @@ export class calendarClientController {
    *    (originTaskId cleared); 'this' on the template: reschedule only the
    *    template's block (future copies follow the new time, existing copies
    *    keep theirs);
-   *  - 'all': shift the template + every bound copy by the same deltas.
+   *  - 'all': apply the dragged block to the selected occurrence and later copies.
    */
   async resolveRepeatTimeEdit(choice: 'this' | 'all'): Promise<void> {
     const edit = this.state.pendingRepeatTimeEdit
@@ -215,8 +215,8 @@ export class calendarClientController {
       await this.dispatch({
         kind: 'shiftRepeatTimes',
         id: edit.taskId,
-        startDelta: edit.startAt - edit.origStart,
-        endDelta: edit.endAt - edit.origEnd,
+        startAt: edit.startAt,
+        endAt: edit.endAt,
       })
     }
   }

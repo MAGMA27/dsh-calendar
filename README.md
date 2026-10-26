@@ -138,6 +138,7 @@ tests/          core, Host, and client tests
 
 | Date | Summary |
 | --- | --- |
+| 2026-10-26 | Repeat-time edits now set one dragged block for the selected and later occurrences while preserving earlier history and recurrence dates. |
 | 2026-10-01 | Aligned SDK dependencies with DSH `0.2.0-rc.2`; migrated settings and session navigation to its current APIs. |
 | 2026-09-17 | Added stale ledger-lock recovery after abnormal shutdown, with live-owner checks and legacy lock compatibility. |
 | 2026-09-04 | Documented the DSH `0.1.2-rc.1` Host-service adapter migration and refreshed the related install, build, and runtime notes. |

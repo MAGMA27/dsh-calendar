@@ -307,9 +307,10 @@ describe('HostLedger repeat materialization', () => {
   function makeMaterializingLedger() {
     const persist = new MemoryPersist()
     let n = 0
+    let now = at(2025, 1, 6, 8)
     // Small horizon so create/setSchedule materialize deterministically in tests.
-    const ledger = new HostLedger(persist, () => at(2025, 1, 6, 8), () => `copy-${++n}`, undefined, { repeatHorizonDays: 3 })
-    return { ledger, persist }
+    const ledger = new HostLedger(persist, () => now, () => `copy-${++n}`, undefined, { repeatHorizonDays: 3 })
+    return { ledger, persist, setNow: (next: number) => { now = next } }
   }
 
   function createWithRepeat(ledger: HostLedger, repeat: unknown): string {
@@ -461,18 +462,105 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.taskById(id)).toBeDefined()
   })
 
-  it('shifts the template + all bound copies by the same deltas', () => {
-    const { ledger } = makeMaterializingLedger()
+  it('updates a dragged past copy and later copies uniformly, preserving earlier history and template', () => {
+    const { ledger, setNow } = makeMaterializingLedger()
     const id = createWithRepeat(ledger, { kind: 'daily' })
-    ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
-    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id)!
-    const r = ledger.apply({ requestId: 'shift', action: { kind: 'shiftRepeatTimes', id: copy.id, startDelta: 60 * 60 * 1000, endDelta: 60 * 60 * 1000 } })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 5)
+    const copiesBefore = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    const selected = copiesBefore.find(t => t.startAt === at(2025, 1, 8, 9))!
+    const laterWithDifferentTime = copiesBefore.find(t => t.startAt === at(2025, 1, 10, 9))!
+    ledger.apply({ requestId: 'vary-copy', action: { kind: 'update', id: laterWithDifferentTime.id, patch: { startAt: at(2025, 1, 10, 8), endAt: at(2025, 1, 10, 11) } } })
+    const templateBefore = ledger.taskById(id)!
+    const earlierBefore = ledger.getSnapshot().tasks.find(t => t.startAt === at(2025, 1, 7, 9) && t.originTaskId === id)!
+    const targetStart = at(2025, 1, 9, 10, 15)
+    const targetEnd = at(2025, 1, 9, 11, 45)
+    setNow(at(2025, 1, 10, 12))
+    const r = ledger.apply({ requestId: 'shift', action: { kind: 'shiftRepeatTimes', id: selected.id, startAt: targetStart, endAt: targetEnd } })
     expect(r.ok).toBe(true)
     const snap = ledger.getSnapshot().tasks
-    expect(snap.find(t => t.id === id)!.startAt).toBe(at(2025, 1, 6, 10))
-    for (const c of snap.filter(t => t.originTaskId === id)) {
-      expect(c.startAt).toBe(at(new Date(c.startAt).getFullYear(), new Date(c.startAt).getMonth() + 1, new Date(c.startAt).getDate(), 10))
+    const templateAfter = snap.find(t => t.id === id)!
+    expect(templateAfter).toMatchObject({
+      startAt: templateBefore.startAt,
+      endAt: templateBefore.endAt,
+      done: templateBefore.done,
+      executions: templateBefore.executions,
+    })
+    expect(templateAfter.completedAt).toBe(templateBefore.completedAt)
+    expect(snap.find(t => t.id === earlierBefore.id)).toEqual(earlierBefore)
+    for (const c of snap.filter(t => t.originTaskId === id && t.occurrenceDate !== undefined && t.occurrenceDate >= '2025-01-08')) {
+      const [year, month, date] = c.occurrenceDate!.split('-').map(Number)
+      expect(c.startAt).toBe(at(year, month, date + 1, 10, 15))
+      expect(c.endAt - c.startAt).toBe(90 * 60_000)
     }
+    expect(snap.find(t => t.id === selected.id)?.startAt).toBe(targetStart)
+    expect(templateAfter.schedule?.timeOverrides).toMatchObject([{ fromAt: at(2025, 1, 8), dayOffset: 1, startMinutes: 615, durationMinutes: 90 }])
+    ledger.materializeRepeats(at(2025, 1, 10, 12), 8)
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies.some(c => c.occurrenceDate === '2025-01-12' && c.startAt === at(2025, 1, 13, 10, 15))).toBe(true)
+    expect(new Set(copies.map(c => new Date(c.startAt).toDateString())).size).toBe(copies.length)
+  })
+
+  it('keeps weekly copies on logical weekdays after a cross-column shift without duplicates', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'weekly', weekdays: [1] })
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 14)
+    const first = ledger.getSnapshot().tasks.find(t => t.originTaskId === id && t.occurrenceDate === '2025-01-13')!
+    const moved = ledger.apply({ requestId: 'move-weekday', action: {
+      kind: 'shiftRepeatTimes', id: first.id, startAt: at(2025, 1, 15, 10, 15), endAt: at(2025, 1, 15, 11, 45),
+    } })
+    expect(moved.ok).toBe(true)
+    expect(ledger.taskById(first.id)?.startAt).toBe(at(2025, 1, 15, 10, 15))
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 21)).toBe(true)
+    const copies = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(copies.map(t => t.startAt)).toEqual([at(2025, 1, 15, 10, 15), at(2025, 1, 22, 10, 15), at(2025, 1, 29, 10, 15)])
+    expect(new Set(copies.map(t => new Date(t.startAt).toDateString())).size).toBe(copies.length)
+    expect(ledger.materializeRepeats(at(2025, 1, 6, 8), 21)).toBe(false)
+  })
+
+  it('does not re-arm a consumed template occurrence when moved into the future', () => {
+    const persist = new MemoryPersist()
+    let now = at(2025, 1, 6, 8)
+    let n = 0
+    const ledger = new HostLedger(persist, () => now, () => `template-run-${++n}`, undefined, { repeatHorizonDays: 3 })
+    const created = ledger.apply({ requestId: 'template-trigger', action: {
+      kind: 'create',
+      input: { title: 'Repeat', description: '', prompt: '', startAt: at(2025, 1, 6, 9), endAt: at(2025, 1, 6, 10), urgency: 'high', importance: 'high' },
+      schedule: { enabled: true, repeat: { kind: 'daily', triggerAgent: true } },
+    } })
+    if (!created.ok) throw new Error('create failed')
+    const id = created.snapshot.tasks[0].id
+    ledger.openExecution(id, 'template-run', at(2025, 1, 6, 9), 'schedule')
+    ledger.settleExecution(id, 'template-run', 'succeeded', at(2025, 1, 6, 9, 5), undefined)
+    ledger.advanceSchedule(id, undefined, at(2025, 1, 6, 9))
+    now = at(2025, 1, 6, 10)
+    const moved = ledger.apply({ requestId: 'move-consumed-template', action: {
+      kind: 'shiftRepeatTimes', id, startAt: at(2025, 1, 7, 10), endAt: at(2025, 1, 7, 11),
+    } })
+    expect(moved.ok).toBe(true)
+    expect(ledger.taskById(id)?.schedule).toMatchObject({ nextRunAt: undefined, lastTriggeredAt: at(2025, 1, 6, 9) })
+
+    const reloaded = new HostLedger(persist, () => now, () => `reload-${++n}`)
+    expect(reloaded.taskById(id)?.schedule?.nextRunAt).toBeUndefined()
+  })
+
+  it('clears old future timing overrides when changing only the template', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    const first = ledger.getSnapshot().tasks.find(t => t.originTaskId === id && t.occurrenceDate === '2025-01-07')!
+    expect(ledger.apply({ requestId: 'all-from-copy', action: {
+      kind: 'shiftRepeatTimes', id: first.id, startAt: at(2025, 1, 7, 10, 15), endAt: at(2025, 1, 7, 11, 15),
+    } }).ok).toBe(true)
+    const existing = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
+    expect(ledger.taskById(id)?.schedule?.timeOverrides).toHaveLength(1)
+
+    expect(ledger.apply({ requestId: 'template-only', action: {
+      kind: 'reschedule', id, startAt: at(2025, 1, 6, 12), endAt: at(2025, 1, 6, 13),
+    } }).ok).toBe(true)
+    expect(ledger.taskById(id)?.schedule?.timeOverrides).toBeUndefined()
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)).toEqual(existing)
+    ledger.materializeRepeats(at(2025, 1, 6, 8), 6)
+    const later = ledger.getSnapshot().tasks.find(t => t.originTaskId === id && t.occurrenceDate === '2025-01-10')!
+    expect(later.startAt).toBe(at(2025, 1, 10, 12))
   })
 
   it('reschedule does not re-arm a settled one-shot or backfill a past move', () => {
@@ -592,7 +680,7 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.taskById(id)!.startAt).toBe(at(2025, 1, 6, 9))
   })
 
-  it('shifts only future repeat copies and does not create a missed record', () => {
+  it('does not re-arm an already executed occurrence when changing its time', () => {
     const persist = new MemoryPersist()
     let now = at(2025, 1, 6, 8)
     let n = 0
@@ -604,22 +692,19 @@ describe('HostLedger repeat materialization', () => {
     } })
     if (!created.ok) throw new Error('create failed')
     const id = created.snapshot.tasks[0].id
-    const original = new Map(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).map(t => [t.id, t]))
-
+    const copy = ledger.getSnapshot().tasks.find(t => t.originTaskId === id && t.startAt === at(2025, 1, 7, 9))!
+    ledger.openExecution(copy.id, 'scheduled-1', at(2025, 1, 7, 9), 'schedule')
+    ledger.settleExecution(copy.id, 'scheduled-1', 'succeeded', at(2025, 1, 7, 9, 5), undefined)
     now = at(2025, 1, 8, 10)
     const shifted = ledger.apply({ requestId: 'future-shift', action: {
-      kind: 'shiftRepeatTimes', id, startDelta: 60 * 60_000, endDelta: 60 * 60_000,
+      kind: 'shiftRepeatTimes', id: copy.id, startAt: at(2025, 1, 7, 10), endAt: at(2025, 1, 7, 11),
     } })
     expect(shifted.ok).toBe(true)
-    const tasks = ledger.getSnapshot().tasks
-    const pastCopies = tasks.filter(t => t.originTaskId === id && (original.get(t.id)?.startAt ?? 0) <= at(2025, 1, 8, 9))
-    expect(pastCopies).toHaveLength(2)
-    for (const copy of pastCopies) {
-      expect(copy.startAt).toBe(original.get(copy.id)!.startAt)
-    }
-    const futureCopy = tasks.find(t => t.originTaskId === id && original.get(t.id)?.startAt === at(2025, 1, 9, 9))!
-    expect(futureCopy.startAt).toBe(at(2025, 1, 9, 10))
-    expect(futureCopy.schedule?.nextRunAt).toBe(at(2025, 1, 9, 10))
+    const updated = ledger.taskById(copy.id)!
+    expect(updated.startAt).toBe(at(2025, 1, 7, 10))
+    expect(updated.executions).toHaveLength(1)
+    expect(updated.executions[0]).toMatchObject({ id: 'scheduled-1', triggeredBy: 'schedule', result: 'succeeded' })
+    expect(updated.schedule).toBeUndefined()
     expect(ledger.taskById(id)!.executions).toHaveLength(0)
   })
 
@@ -628,7 +713,7 @@ describe('HostLedger repeat materialization', () => {
     const r = ledger.apply(createEnvelope('r0'))
     if (!r.ok) throw new Error('create failed')
     const id = r.snapshot.tasks[0].id
-    const s = ledger.apply({ requestId: 's', action: { kind: 'shiftRepeatTimes', id, startDelta: 1, endDelta: 1 } })
+    const s = ledger.apply({ requestId: 's', action: { kind: 'shiftRepeatTimes', id, startAt: 1, endAt: 2 } })
     expect(s.ok).toBe(false)
   })
 
@@ -747,14 +832,15 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).every(c => c.subtasks.length === 0)).toBe(true)
   })
 
-  it('shiftRepeatTimes also works when initiated from the template', () => {
+  it('moves the selected template while preserving its logical repeat date for future copies', () => {
     const { ledger } = makeMaterializingLedger()
     const id = createWithRepeat(ledger, { kind: 'daily' })
     ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
-    const r = ledger.apply({ requestId: 'shift', action: { kind: 'shiftRepeatTimes', id, startDelta: 30 * 60_000, endDelta: 30 * 60_000 } })
+    const r = ledger.apply({ requestId: 'shift', action: { kind: 'shiftRepeatTimes', id, startAt: at(2025, 1, 6, 10, 15), endAt: at(2025, 1, 6, 11, 45) } })
     expect(r.ok).toBe(true)
-    expect(ledger.taskById(id)!.startAt).toBe(at(2025, 1, 6, 9, 30))
-    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).every(c => new Date(c.startAt).getMinutes() === 30)).toBe(true)
+    expect(ledger.taskById(id)!.startAt).toBe(at(2025, 1, 6, 10, 15))
+    expect(ledger.taskById(id)!.occurrenceDate).toBe('2025-01-06')
+    expect(ledger.getSnapshot().tasks.filter(t => t.originTaskId === id).every(c => c.startAt === at(2025, 1, new Date(c.occurrenceDate + 'T00:00:00').getDate(), 10, 15))).toBe(true)
   })
 
   it('materializes trigger-agent copies with a one-shot due at the trigger instant', () => {

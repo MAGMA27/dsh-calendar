@@ -131,6 +131,16 @@ export interface ScheduleRule {
   skippedDates?: string[]
   /** Host-owned: repeat-template occurrence dates removed from the calendar. */
   deletedDates?: string[]
+  /** Host-owned block overrides, sorted by their logical recurrence date. */
+  timeOverrides?: RepeatTimeOverride[]
+}
+
+/** A repeat-copy block shape effective from a logical recurrence date. */
+export interface RepeatTimeOverride {
+  fromAt: number
+  startMinutes: number
+  durationMinutes: number
+  dayOffset: number
 }
 
 /** Result of one Host attempt to start a scheduled Agent occurrence. */
@@ -216,6 +226,8 @@ export interface TaskRecord {
   scheduledDepth?: number
   /** For repeat copies: the template task id that spawned this copy. */
   originTaskId?: string
+  /** Host-owned logical recurrence date; stable when a repeat block is moved. */
+  occurrenceDate?: string
   archivedAt?: number
   createdAt: number
   updatedAt: number
@@ -303,23 +315,23 @@ export function taskTriggersAgent(task: Pick<TaskRecord, 'schedule'>): boolean {
  * keep their own one-shot dueAt and therefore remain scheduled independently.
  */
 export function taskOccurrenceTriggersAgent(
-  task: Pick<TaskRecord, 'schedule' | 'originTaskId' | 'startAt'>,
+  task: Pick<TaskRecord, 'schedule' | 'originTaskId' | 'startAt' | 'occurrenceDate'>,
 ): boolean {
   if (!isTaskOccurrenceVisible(task) || !taskTriggersAgent(task)) return false
   const schedule = task.schedule
   return !(task.originTaskId === undefined
     && schedule?.repeat !== undefined
-    && schedule.skippedDates?.includes(dayKey(task.startAt)) === true)
+    && schedule.skippedDates?.includes(task.occurrenceDate ?? dayKey(task.startAt)) === true)
 }
 
 /** Whether the task occurrence should be rendered in calendar/list views. */
 export function isTaskOccurrenceVisible(
-  task: Pick<TaskRecord, 'schedule' | 'originTaskId' | 'startAt'>,
+  task: Pick<TaskRecord, 'schedule' | 'originTaskId' | 'startAt' | 'occurrenceDate'>,
 ): boolean {
   const schedule = task.schedule
   return !(task.originTaskId === undefined
     && schedule?.repeat !== undefined
-    && schedule.deletedDates?.includes(dayKey(task.startAt)) === true)
+    && schedule.deletedDates?.includes(task.occurrenceDate ?? dayKey(task.startAt)) === true)
 }
 
 /** Whether an unfinished task starts before today's local calendar day. */

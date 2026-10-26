@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { HostLedger, NoopLedgerPersist, type HostLedgerPersist } from '../src/host-ledger.ts'
-import type { calendarActionEnvelope, calendarSnapshot } from '../src/protocol.ts'
+import type { calendarAction, calendarActionEnvelope, calendarSnapshot } from '../src/protocol.ts'
 
 class MemoryPersist implements HostLedgerPersist {
   doc: Parameters<HostLedgerPersist['save']>[0] | undefined
@@ -475,7 +475,7 @@ describe('HostLedger repeat materialization', () => {
     const targetStart = at(2025, 1, 9, 10, 15)
     const targetEnd = at(2025, 1, 9, 11, 45)
     setNow(at(2025, 1, 10, 12))
-    const r = ledger.apply({ requestId: 'shift', action: { kind: 'shiftRepeatTimes', id: selected.id, startAt: targetStart, endAt: targetEnd } })
+    const r = ledger.apply({ requestId: 'shift', action: { kind: 'setRepeatTimesFrom', id: selected.id, startAt: targetStart, endAt: targetEnd } })
     expect(r.ok).toBe(true)
     const snap = ledger.getSnapshot().tasks
     const templateAfter = snap.find(t => t.id === id)!
@@ -506,7 +506,7 @@ describe('HostLedger repeat materialization', () => {
     ledger.materializeRepeats(at(2025, 1, 6, 8), 14)
     const first = ledger.getSnapshot().tasks.find(t => t.originTaskId === id && t.occurrenceDate === '2025-01-13')!
     const moved = ledger.apply({ requestId: 'move-weekday', action: {
-      kind: 'shiftRepeatTimes', id: first.id, startAt: at(2025, 1, 15, 10, 15), endAt: at(2025, 1, 15, 11, 45),
+      kind: 'setRepeatTimesFrom', id: first.id, startAt: at(2025, 1, 15, 10, 15), endAt: at(2025, 1, 15, 11, 45),
     } })
     expect(moved.ok).toBe(true)
     expect(ledger.taskById(first.id)?.startAt).toBe(at(2025, 1, 15, 10, 15))
@@ -534,7 +534,7 @@ describe('HostLedger repeat materialization', () => {
     ledger.advanceSchedule(id, undefined, at(2025, 1, 6, 9))
     now = at(2025, 1, 6, 10)
     const moved = ledger.apply({ requestId: 'move-consumed-template', action: {
-      kind: 'shiftRepeatTimes', id, startAt: at(2025, 1, 7, 10), endAt: at(2025, 1, 7, 11),
+      kind: 'setRepeatTimesFrom', id, startAt: at(2025, 1, 7, 10), endAt: at(2025, 1, 7, 11),
     } })
     expect(moved.ok).toBe(true)
     expect(ledger.taskById(id)?.schedule).toMatchObject({ nextRunAt: undefined, lastTriggeredAt: at(2025, 1, 6, 9) })
@@ -548,7 +548,7 @@ describe('HostLedger repeat materialization', () => {
     const id = createWithRepeat(ledger, { kind: 'daily' })
     const first = ledger.getSnapshot().tasks.find(t => t.originTaskId === id && t.occurrenceDate === '2025-01-07')!
     expect(ledger.apply({ requestId: 'all-from-copy', action: {
-      kind: 'shiftRepeatTimes', id: first.id, startAt: at(2025, 1, 7, 10, 15), endAt: at(2025, 1, 7, 11, 15),
+      kind: 'setRepeatTimesFrom', id: first.id, startAt: at(2025, 1, 7, 10, 15), endAt: at(2025, 1, 7, 11, 15),
     } }).ok).toBe(true)
     const existing = ledger.getSnapshot().tasks.filter(t => t.originTaskId === id)
     expect(ledger.taskById(id)?.schedule?.timeOverrides).toHaveLength(1)
@@ -697,7 +697,7 @@ describe('HostLedger repeat materialization', () => {
     ledger.settleExecution(copy.id, 'scheduled-1', 'succeeded', at(2025, 1, 7, 9, 5), undefined)
     now = at(2025, 1, 8, 10)
     const shifted = ledger.apply({ requestId: 'future-shift', action: {
-      kind: 'shiftRepeatTimes', id: copy.id, startAt: at(2025, 1, 7, 10), endAt: at(2025, 1, 7, 11),
+      kind: 'setRepeatTimesFrom', id: copy.id, startAt: at(2025, 1, 7, 10), endAt: at(2025, 1, 7, 11),
     } })
     expect(shifted.ok).toBe(true)
     const updated = ledger.taskById(copy.id)!
@@ -708,13 +708,26 @@ describe('HostLedger repeat materialization', () => {
     expect(ledger.taskById(id)!.executions).toHaveLength(0)
   })
 
-  it('rejects shiftRepeatTimes for a non-copy task', () => {
+  it('rejects setRepeatTimesFrom for a non-copy task', () => {
     const { ledger } = makeMaterializingLedger()
     const r = ledger.apply(createEnvelope('r0'))
     if (!r.ok) throw new Error('create failed')
     const id = r.snapshot.tasks[0].id
-    const s = ledger.apply({ requestId: 's', action: { kind: 'shiftRepeatTimes', id, startAt: 1, endAt: 2 } })
+    const s = ledger.apply({ requestId: 's', action: { kind: 'setRepeatTimesFrom', id, startAt: 1, endAt: 2 } })
     expect(s.ok).toBe(false)
+  })
+
+  it('rejects the legacy delta action without changing the snapshot', () => {
+    const { ledger } = makeMaterializingLedger()
+    const id = createWithRepeat(ledger, { kind: 'daily' })
+    const before = ledger.getSnapshot()
+    const copy = before.tasks.find(task => task.originTaskId === id)!
+    const result = ledger.apply({ requestId: 'legacy-delta', action: {
+      kind: 'shiftRepeatTimes', id: copy.id, startDelta: 60 * 60_000, endDelta: 60 * 60_000,
+    } as unknown as calendarAction })
+
+    expect(result.ok).toBe(false)
+    expect(ledger.getSnapshot()).toEqual(before)
   })
 
   it('clearing the repeat rule (setSchedule repeat:null) deletes the bound copies', () => {
@@ -836,7 +849,7 @@ describe('HostLedger repeat materialization', () => {
     const { ledger } = makeMaterializingLedger()
     const id = createWithRepeat(ledger, { kind: 'daily' })
     ledger.materializeRepeats(at(2025, 1, 6, 8), 3)
-    const r = ledger.apply({ requestId: 'shift', action: { kind: 'shiftRepeatTimes', id, startAt: at(2025, 1, 6, 10, 15), endAt: at(2025, 1, 6, 11, 45) } })
+    const r = ledger.apply({ requestId: 'shift', action: { kind: 'setRepeatTimesFrom', id, startAt: at(2025, 1, 6, 10, 15), endAt: at(2025, 1, 6, 11, 45) } })
     expect(r.ok).toBe(true)
     expect(ledger.taskById(id)!.startAt).toBe(at(2025, 1, 6, 10, 15))
     expect(ledger.taskById(id)!.occurrenceDate).toBe('2025-01-06')

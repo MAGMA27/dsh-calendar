@@ -849,7 +849,7 @@ export class HostLedger {
         delete this.state.scheduler.nextRuns[action.id]
         return true
       }
-      case 'shiftRepeatTimes': {
+      case 'setRepeatTimesFrom': {
         // Apply the dragged block from the selected task's pre-edit start onward.
         if (!Number.isFinite(action.startAt) || !Number.isFinite(action.endAt) || action.endAt <= action.startAt
           || !Number.isFinite(new Date(action.startAt).getTime()) || !Number.isFinite(new Date(action.endAt).getTime())) return false

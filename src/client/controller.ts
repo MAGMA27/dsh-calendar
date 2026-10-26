@@ -159,7 +159,9 @@ export class calendarClientController {
       const snap = await this.transport.action(action)
       this.setSnapshot(snap)
     } catch (e) {
-      this.set({ status: 'error', error: String(e) })
+      this.set(this.state.status === 'ready'
+        ? { error: String(e) }
+        : { status: 'error', error: String(e) })
     }
   }
 
@@ -213,7 +215,7 @@ export class calendarClientController {
       })
     } else {
       await this.dispatch({
-        kind: 'shiftRepeatTimes',
+        kind: 'setRepeatTimesFrom',
         id: edit.taskId,
         startAt: edit.startAt,
         endAt: edit.endAt,

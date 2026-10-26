@@ -76,7 +76,7 @@ export function CalendarView({ controller, onOpenSession }: CalendarViewProps) {
       <div className={css.calendarBodyWithPanel}>
         <div className={css.calendarBody}>
           {snap.status === 'loading' && <div className={css.statusLine}>{t('status.loading')}</div>}
-          {snap.status === 'error' && <div className={css.statusLine}>{t('status.error', { error: snap.error ?? 'unknown' })}</div>}
+          {snap.error !== null && <div className={css.statusLine}>{t(snap.status === 'ready' ? 'status.actionError' : 'status.error', { error: snap.error })}</div>}
           {snap.status === 'ready' && body}
         </div>
         {snap.status === 'ready' && selected !== undefined && (

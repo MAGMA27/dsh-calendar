@@ -121,8 +121,8 @@ export interface SetScheduleAction {
  * template itself): apply the dragged block to this occurrence and later copies.
  * The Host uses the target's pre-edit startAt as the cutoff.
  */
-export interface ShiftRepeatTimesAction {
-  kind: 'shiftRepeatTimes'
+export interface SetRepeatTimesFromAction {
+  kind: 'setRepeatTimesFrom'
   id: string
   startAt: number
   endAt: number
@@ -164,7 +164,7 @@ export type calendarAction =
   | ArchiveTaskAction
   | RestoreTaskAction
   | SetScheduleAction
-  | ShiftRepeatTimesAction
+  | SetRepeatTimesFromAction
   | ClearInstanceScheduleAction
   | RunTaskAction
   | ImportAction

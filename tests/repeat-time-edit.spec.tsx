@@ -66,7 +66,7 @@ describe('WeekGrid repeat-copy time edit', () => {
     })
 
     // The change must NOT be committed directly; it is staged for confirmation.
-    expect(dispatched.filter(a => a.kind === 'reschedule' || a.kind === 'shiftRepeatTimes')).toHaveLength(0)
+    expect(dispatched.filter(a => a.kind === 'reschedule' || a.kind === 'setRepeatTimesFrom')).toHaveLength(0)
     const pending = controller.getSnapshot().pendingRepeatTimeEdit
     expect(pending).toBeDefined()
     expect(pending!.taskId).toBe('c1')
@@ -87,7 +87,7 @@ describe('WeekGrid repeat-copy time edit', () => {
     await act(async () => { root.unmount(); host.remove() })
   })
 
-  it('"all copies" resolves to a shiftRepeatTimes action with the dragged time range', async () => {
+  it('"all copies" resolves to a setRepeatTimesFrom action with the dragged time range', async () => {
     const now = new Date(2026, 0, 12, 10, 0, 0)
     const copy: TaskRecord = {
       id: 'c1', title: 'Standup', description: '', prompt: '',
@@ -124,8 +124,8 @@ describe('WeekGrid repeat-copy time edit', () => {
 
     await act(async () => { await controller.resolveRepeatTimeEdit('all') })
     const shift = dispatched[dispatched.length - 1]
-    expect(shift.kind).toBe('shiftRepeatTimes')
-    if (shift.kind === 'shiftRepeatTimes') {
+    expect(shift.kind).toBe('setRepeatTimesFrom')
+    if (shift.kind === 'setRepeatTimesFrom') {
       expect(shift.id).toBe('c1')
       expect(shift.startAt).toBe(pending.startAt)
       expect(shift.endAt).toBe(pending.endAt)

@@ -16,11 +16,24 @@ describe('center-column takeover CSS', () => {
     expect(css).toContain('.entry')
     expect(css).toContain('.entryLabel')
   })
+  it('positions the calendar below the host window chrome when present', () => {
+    expect(css).toMatch(/\.calendarOverlay\s*\{[^}]*top:\s*var\(--dsh-frame-chrome-top,\s*0px\)/)
+  })
 })
 
 describe('create task modal layout CSS', () => {
   it('keeps the header and detail sections from shrinking inside the scroll area', () => {
     expect(css).toMatch(/\.createModal\s*>\s*\.detailHeader\s*\{\s*flex-shrink:\s*0;/)
     expect(css).toMatch(/\.createModal\s*>\s*\.detailBody\s*>\s*\*\s*\{\s*flex-shrink:\s*0;/)
+  })
+})
+
+describe('modal window clearance', () => {
+  it('keeps dialogs below the host title bar and limits their height to the remaining viewport', () => {
+    expect(css).toMatch(/\.modalOverlay\s*\{[^}]*inset:\s*var\(--dsh-frame-chrome-top,\s*0px\)\s+0\s+0/)
+    for (const selector of ['modal', 'createModal']) {
+      expect(css).toMatch(new RegExp(`\\.${selector}\\s*\\{[^}]*max-height:[^;]*var\\(--dsh-frame-chrome-top,\\s*0px\\)`))
+    }
+    expect(css).toMatch(/\.modal\s*\{[^}]*overflow:\s*auto/)
   })
 })

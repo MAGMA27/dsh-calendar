@@ -81,7 +81,7 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
  * the sidebar's right edge), leaving the sidebar visible and clickable. */
 .calendarOverlay {
   position: fixed;
-  top: 0;
+  top: var(--dsh-frame-chrome-top, 0px);
   right: 0;
   bottom: 0;
   z-index: 90;
@@ -1327,7 +1327,7 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
 
 .modalOverlay {
   position: fixed;
-  inset: 0;
+  inset: var(--dsh-frame-chrome-top, 0px) 0 0;
   z-index: 200;
   display: flex;
   align-items: center;
@@ -1341,6 +1341,9 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   gap: 12px;
   width: 360px;
   max-width: calc(100vw - 32px);
+  max-height: max(0px, calc(100vh - var(--dsh-frame-chrome-top, 0px) - 32px));
+  box-sizing: border-box;
+  overflow: auto;
   padding: 16px;
   background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--dsw-alias-border-l2);
@@ -1348,13 +1351,15 @@ html[data-dsh-calendar-active]:not([data-dsh-taskboard-active]):not([data-dsh-ss
   box-shadow: 0 8px 30px var(--dsw-alias-bg-mask-2);
 }
 
+.modal > * { flex-shrink: 0; }
+
 .createModal {
   display: flex;
   flex-direction: column;
   gap: 0;
   width: 420px;
   max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 32px);
+  max-height: max(0px, calc(100vh - var(--dsh-frame-chrome-top, 0px) - 32px));
   box-sizing: border-box;
   overflow: hidden;
   padding: 0 16px;

@@ -138,6 +138,7 @@ tests/          core, Host, and client tests
 
 | Date | Summary |
 | --- | --- |
+| 2026-10-27 | Keep the calendar header and dialogs below the desktop window title bar; allow tall dialogs to scroll. |
 | 2026-10-26 | Fixed create-task modal clipping at short viewport heights; the header and actions stay visible while details scroll. |
 | 2026-10-26 | Repeat-time edits now set one dragged block for the selected and later occurrences while preserving earlier history and recurrence dates. |
 | 2026-10-26 | Absolute repeat-time updates use a distinct action kind; failed actions retain the calendar and show a localized error. |
